@@ -1,3 +1,6 @@
 [submodule "src/hermes"]
 	path = src/hermes
 	url = https://github.com/larksuite/cli.git
+[submodule "src/hermes-agent"]
+	path = src/hermes-agent
+	url = https://github.com/nousresearch/hermes-agent.git
