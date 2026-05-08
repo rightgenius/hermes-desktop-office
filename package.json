@@ -4,15 +4,50 @@
   "description": "Hermes Desktop for Office — bundled AI agent with Feishu & DingTalk CLI",
   "main": "src/main/index.js",
   "scripts": {
-    "start": "echo 'Not yet implemented'",
-    "dev": "echo 'Not yet implemented'",
-    "build": "echo 'Not yet implemented'",
-    "package": "echo 'Not yet implemented'"
+    "start": "electron .",
+    "dev": "cross-env NODE_ENV=development electron .",
+    "build:mac": "npm run download-clis && electron-builder --mac",
+    "build:win": "npm run download-clis && electron-builder --win",
+    "build:linux": "npm run download-clis && electron-builder --linux",
+    "download-clis": "bash scripts/download-clis.sh",
+    "download-clis:clean": "bash scripts/download-clis.sh --clean"
+  },
+  "build": {
+    "appId": "ai.hermes.desktop.office",
+    "productName": "Hermes Desktop for Office",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "src/hermes-agent/**/*",
+      "assets/feishu-cli/**/*",
+      "assets/dws-cli/**/*",
+      "!src/hermes-agent/.git",
+      "!src/hermes-agent/.github",
+      "!src/hermes-agent/node_modules"
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"]
+    }
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/nius/hermes-desktop-office.git"
+    "url": "https://github.com/nousresearch/hermes-desktop-office.git"
   },
   "license": "MIT",
-  "keywords": ["hermes", "feishu", "lark", "dingtalk", "desktop", "ai-agent"]
+  "keywords": ["hermes", "feishu", "lark", "dingtalk", "desktop", "ai-agent"],
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "cross-env": "^7.0.3"
+  }
 }
