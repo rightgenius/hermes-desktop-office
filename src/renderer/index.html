@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+  <title>Hermes Desktop for Office</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Sidebar -->
+    <nav id="sidebar">
+      <div id="sidebar-header">
+        <div id="logo">⚡</div>
+        <div id="logo-text">Hermes</div>
+      </div>
+      <ul id="nav-menu">
+        <li class="nav-item active" data-page="settings">
+          <span class="nav-icon">⚙</span>
+          <span class="nav-label">配置</span>
+        </li>
+        <li class="nav-item" data-page="auth">
+          <span class="nav-icon">🔑</span>
+          <span class="nav-label">授权</span>
+        </li>
+        <li class="nav-item" data-page="chat">
+          <span class="nav-icon">💬</span>
+          <span class="nav-label">对话</span>
+        </li>
+        <li class="nav-item" data-page="logs">
+          <span class="nav-icon">📋</span>
+          <span class="nav-label">日志</span>
+        </li>
+      </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <div id="main-content">
+      <!-- Top Status Bar -->
+      <header id="status-bar">
+        <div class="status-indicator" id="status-agent">
+          <span class="status-dot"></span>
+          <span class="status-text">Agent: 未启动</span>
+        </div>
+        <div class="status-indicator" id="status-feishu">
+          <span class="status-dot"></span>
+          <span class="status-text">飞书: 未授权</span>
+        </div>
+        <div class="status-indicator" id="status-dingtalk">
+          <span class="status-dot"></span>
+          <span class="status-text">钉钉: 未授权</span>
+        </div>
+      </header>
+
+      <!-- Page Container -->
+      <main id="page-container">
+        <!-- Settings Page -->
+        <div class="page active" id="page-settings">
+          <div class="page-header">
+            <h2>配置</h2>
+          </div>
+          <div class="card">
+            <h3>API 配置</h3>
+            <div class="form-group">
+              <label for="gateway-url">Gateway URL</label>
+              <input type="text" id="gateway-url" placeholder="https://your-gateway-url">
+            </div>
+            <div class="form-group">
+              <label for="api-token">API Token</label>
+              <div class="input-with-action">
+                <input type="password" id="api-token" placeholder="输入你的 API Token">
+                <button id="toggle-token" class="btn-icon" title="显示/隐藏">👁</button>
+              </div>
+            </div>
+            <div class="form-actions">
+              <button id="test-connection" class="btn btn-secondary">测试连接</button>
+              <button id="save-config" class="btn btn-primary">保存配置</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auth Page -->
+        <div class="page" id="page-auth">
+          <div class="page-header">
+            <h2>CLI 授权</h2>
+          </div>
+          <div class="card">
+            <h3>飞书授权</h3>
+            <div class="auth-status" id="feishu-status">
+              <span class="status-badge unauth">未授权</span>
+            </div>
+            <button id="auth-feishu" class="btn btn-primary">开始授权</button>
+          </div>
+          <div class="card">
+            <h3>钉钉授权</h3>
+            <div class="auth-status" id="dingtalk-status">
+              <span class="status-badge unauth">未授权</span>
+            </div>
+            <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
+          </div>
+          <div class="card">
+            <h3>一键诊断</h3>
+            <button id="run-diagnostic" class="btn btn-secondary">运行诊断</button>
+            <div id="diagnostic-result" class="result-box"></div>
+          </div>
+        </div>
+
+        <!-- Chat Page -->
+        <div class="page" id="page-chat">
+          <div class="page-header">
+            <h2>对话</h2>
+          </div>
+          <div class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+              <div class="message agent">
+                <div class="message-bubble">你好！我是 Hermes，有什么可以帮你？</div>
+              </div>
+            </div>
+            <div class="chat-input-area">
+              <textarea id="chat-input" placeholder="输入消息..." rows="2"></textarea>
+              <button id="send-message" class="btn btn-primary">发送</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logs Page -->
+        <div class="page" id="page-logs">
+          <div class="page-header">
+            <h2>运行日志</h2>
+          </div>
+          <div class="log-controls">
+            <button id="agent-start" class="btn btn-secondary">启动 Agent</button>
+            <button id="agent-stop" class="btn btn-secondary">停止 Agent</button>
+            <button id="agent-restart" class="btn btn-secondary">重启 Agent</button>
+          </div>
+          <div id="log-viewer" class="log-viewer"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

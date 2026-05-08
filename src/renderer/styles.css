@@ -1,0 +1,404 @@
+/* ============================
+   CSS Variables - Claude Light Theme
+   ============================ */
+:root {
+  --bg-primary: #F9F9F9;
+  --bg-card: #FFFFFF;
+  --bg-input: #F5F5F5;
+  --bg-log: #F3F3F3;
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --border-color: #E5E5E5;
+  --color-primary: #DA7756;
+  --color-primary-hover: #C46749;
+  --color-success: #2E9B5A;
+  --color-warning: #E8A54B;
+  --color-error: #D95C41;
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --radius-card: 8px;
+  --radius-btn: 6px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-xxl: 32px;
+  --font-sans: Inter, 'PingFang SC', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --sidebar-width: 220px;
+}
+
+/* ============================
+   Reset & Base
+   ============================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ============================
+   Layout
+   ============================ */
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+#sidebar {
+  width: var(--sidebar-width);
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+#main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ============================
+   Sidebar
+   ============================ */
+#sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+#logo {
+  font-size: 24px;
+}
+
+#logo-text {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#nav-menu {
+  list-style: none;
+  padding: var(--space-sm) 0;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.nav-item:hover {
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.nav-item.active {
+  background: var(--bg-input);
+  color: var(--color-primary);
+  border-right: 3px solid var(--color-primary);
+}
+
+.nav-icon {
+  font-size: 18px;
+  width: 24px;
+  text-align: center;
+}
+
+/* ============================
+   Status Bar
+   ============================ */
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-error);
+}
+
+.status-indicator.success .status-dot { background: var(--color-success); }
+.status-indicator.warning .status-dot { background: var(--color-warning); }
+.status-indicator.error .status-dot { background: var(--color-error); }
+
+/* ============================
+   Pages
+   ============================ */
+#page-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-xl);
+}
+
+.page {
+  display: none;
+}
+
+.page.active {
+  display: block;
+}
+
+.page-header {
+  margin-bottom: var(--space-xl);
+}
+
+.page-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* ============================
+   Cards
+   ============================ */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.card h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: var(--space-lg);
+}
+
+/* ============================
+   Forms
+   ============================ */
+.form-group {
+  margin-bottom: var(--space-lg);
+}
+
+.form-group label {
+  display: block;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+}
+
+.form-group input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-btn);
+  background: var(--bg-input);
+  font-size: 14px;
+  font-family: var(--font-sans);
+  transition: border-color 0.15s;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.input-with-action {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.input-with-action input {
+  flex: 1;
+}
+
+.form-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+/* ============================
+   Buttons
+   ============================ */
+.btn {
+  padding: var(--space-sm) var(--space-lg);
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--color-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background: var(--border-color);
+}
+
+.btn-icon {
+  padding: var(--space-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+/* ============================
+   Auth Status
+   ============================ */
+.auth-status {
+  margin-bottom: var(--space-md);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.auth { background: #E6F4EA; color: var(--color-success); }
+.status-badge.unauth { background: #F5F5F5; color: var(--text-secondary); }
+.status-badge.expired { background: #FEF3E8; color: var(--color-warning); }
+.status-badge.error { background: #FCE8E6; color: var(--color-error); }
+
+/* ============================
+   Chat
+   ============================ */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 120px);
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md) 0;
+}
+
+.message {
+  display: flex;
+  margin-bottom: var(--space-lg);
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.message-bubble {
+  max-width: 70%;
+  padding: var(--space-md) var(--space-lg);
+  border-radius: var(--radius-card);
+  line-height: 1.6;
+}
+
+.message.agent .message-bubble {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+.message.user .message-bubble {
+  background: var(--color-primary);
+  color: white;
+}
+
+.chat-input-area {
+  display: flex;
+  gap: var(--space-sm);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  padding: var(--space-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-btn);
+  background: var(--bg-input);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  resize: none;
+  min-height: 44px;
+}
+
+.chat-input-area textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* ============================
+   Logs
+   ============================ */
+.log-controls {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.log-viewer {
+  background: var(--bg-log);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: var(--space-md);
+  height: calc(100vh - 200px);
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.result-box {
+  margin-top: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-log);
+  border-radius: var(--radius-card);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
