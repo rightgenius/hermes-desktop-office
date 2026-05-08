@@ -1,0 +1,18 @@
+{
+  "name": "hermes-desktop-office",
+  "version": "0.1.0",
+  "description": "Hermes Desktop for Office — bundled AI agent with Feishu & DingTalk CLI",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "echo 'Not yet implemented'",
+    "dev": "echo 'Not yet implemented'",
+    "build": "echo 'Not yet implemented'",
+    "package": "echo 'Not yet implemented'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nius/hermes-desktop-office.git"
+  },
+  "license": "MIT",
+  "keywords": ["hermes", "feishu", "lark", "dingtalk", "desktop", "ai-agent"]
+}

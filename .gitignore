@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist/
+out/
+build/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Packaged CLI binaries (download during build)
+assets/feishu-cli/*
+!assets/feishu-cli/.gitkeep
+assets/dws-cli/*
+!assets/dws-cli/.gitkeep
+
+# Hermes workspace data
+workspaces/
+.hermes/
