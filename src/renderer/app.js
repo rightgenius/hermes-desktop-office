@@ -3,110 +3,215 @@
 // ============================
 // Navigation
 // ============================
-const navItems = document.querySelectorAll('.nav-item');
-const pages = document.querySelectorAll('.page');
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => showPage(item.dataset.page));
+});
 
 function showPage(pageName) {
-  pages.forEach(p => p.classList.remove('active'));
-  navItems.forEach(n => n.classList.remove('active'));
-  const targetPage = document.getElementById(`page-${pageName}`);
-  const targetNav = document.querySelector(`.nav-item[data-page="${pageName}"]`);
-  if (targetPage) targetPage.classList.add('active');
-  if (targetNav) targetNav.classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const target = document.getElementById(`page-${pageName}`);
+  const nav = document.querySelector(`.nav-item[data-page="${pageName}"]`);
+  if (target) target.classList.add('active');
+  if (nav) nav.classList.add('active');
 }
-
-navItems.forEach(item => {
-  item.addEventListener('click', () => {
-    const page = item.dataset.page;
-    if (page) showPage(page);
-  });
-});
 
 // ============================
 // Utility
 // ============================
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
-function updateStatus(indicatorId, status, text) {
-  const el = document.getElementById(indicatorId);
+function updateStatus(id, status, text) {
+  const el = document.getElementById(id);
   if (!el) return;
   el.className = `status-indicator ${status}`;
   el.querySelector('.status-text').textContent = text;
 }
 
+function setBtnState(btn, text, duration = 2000) {
+  btn.textContent = text;
+  setTimeout(() => {
+    const defaults = { 'save-config': '保存配置', 'test-connection': '测试连接', 'auth-feishu': '开始授权', 'auth-dingtalk': '开始授权', 'run-diagnostic': '运行诊断' };
+    btn.textContent = defaults[btn.id] || text;
+  }, duration);
+}
+
 // ============================
 // Settings Page
 // ============================
-const gatewayInput = document.getElementById('gateway-url');
-const apiTokenInput = document.getElementById('api-token');
-const toggleTokenBtn = document.getElementById('toggle-token');
-const saveConfigBtn = document.getElementById('save-config');
-const testConnectionBtn = document.getElementById('test-connection');
+const els = {
+  gatewayUrl: document.getElementById('gateway-url'),
+  apiToken: document.getElementById('api-token'),
+  toggleToken: document.getElementById('toggle-token'),
+  saveConfig: document.getElementById('save-config'),
+  testConnection: document.getElementById('test-connection'),
+  workspacePath: document.getElementById('workspace-path'),
+  browseFolder: document.getElementById('browse-folder'),
+  autoStart: document.getElementById('auto-start'),
+};
 
-if (toggleTokenBtn) {
-  toggleTokenBtn.addEventListener('click', () => {
-    apiTokenInput.type = apiTokenInput.type === 'password' ? 'text' : 'password';
+if (els.toggleToken) {
+  els.toggleToken.addEventListener('click', () => {
+    els.apiToken.type = els.apiToken.type === 'password' ? 'text' : 'password';
+  });
+}
+
+if (els.browseFolder) {
+  els.browseFolder.addEventListener('click', async () => {
+    try {
+      const path = await window.api.invoke('config-browse-folder');
+      if (path) {
+        els.workspacePath.value = path;
+      }
+    } catch (err) {
+      console.error('Browse folder failed:', err);
+    }
+  });
+}
+
+if (els.saveConfig) {
+  els.saveConfig.addEventListener('click', async () => {
+    try {
+      await window.api.invoke('config-save', {
+        gatewayUrl: els.gatewayUrl.value,
+        apiToken: els.apiToken.value,
+        workspacePath: els.workspacePath.value,
+        autoStart: els.autoStart.checked,
+      });
+      setBtnState(els.saveConfig, '已保存 ✓');
+    } catch (err) {
+      setBtnState(els.saveConfig, '保存失败');
+    }
+  });
+}
+
+if (els.testConnection) {
+  els.testConnection.addEventListener('click', async () => {
+    const url = els.gatewayUrl.value.trim();
+    if (!url) { setBtnState(els.testConnection, '请输入 Gateway URL'); return; }
+    els.testConnection.textContent = '测试中...';
+    els.testConnection.disabled = true;
+    try {
+      const res = await fetch(url + '/health', {
+        headers: { 'Authorization': `Bearer ${els.apiToken.value}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      setBtnState(els.testConnection, res.ok ? '连接成功 ✓' : `失败: ${res.status}`);
+    } catch (err) {
+      setBtnState(els.testConnection, `失败: ${err.message}`);
+    }
+    setTimeout(() => { els.testConnection.textContent = '测试连接'; els.testConnection.disabled = false; }, 3000);
   });
 }
 
 async function loadConfig() {
   try {
     const config = await window.api.invoke('config-get');
-    if (gatewayInput) gatewayInput.value = config.gatewayUrl || '';
-    if (apiTokenInput) apiTokenInput.value = config.apiToken || '';
-  } catch (err) {
-    console.error('Failed to load config:', err);
+    els.gatewayUrl.value = config.gatewayUrl || '';
+    els.apiToken.value = config.apiToken || '';
+    els.workspacePath.value = config.workspacePath || '';
+    els.autoStart.checked = !!config.autoStart;
+  } catch (err) { console.error('Load config failed:', err); }
+}
+
+// ============================
+// Auth Page
+// ============================
+const authEls = {
+  feishuBtn: document.getElementById('auth-feishu'),
+  feishuReauth: document.getElementById('reauth-feishu'),
+  feishuVersion: document.getElementById('feishu-version'),
+  feishuStatus: document.getElementById('feishu-status'),
+  feishuUser: document.getElementById('feishu-user'),
+  feishuUserRow: document.getElementById('feishu-user-row'),
+  dingtalkBtn: document.getElementById('auth-dingtalk'),
+  dingtalkReauth: document.getElementById('reauth-dingtalk'),
+  dingtalkVersion: document.getElementById('dingtalk-version'),
+  dingtalkStatus: document.getElementById('dingtalk-status'),
+  dingtalkUser: document.getElementById('dingtalk-user'),
+  dingtalkUserRow: document.getElementById('dingtalk-user-row'),
+  runDiag: document.getElementById('run-diagnostic'),
+  diagResult: document.getElementById('diagnostic-result'),
+};
+
+function setAuthState(prefix, authed, userName, version) {
+  const statusEl = document.getElementById(`${prefix}-status`);
+  const userEl = document.getElementById(`${prefix}-user`);
+  const userRowEl = document.getElementById(`${prefix}-user-row`);
+  const btnEl = document.getElementById(`auth-${prefix}`);
+  const reauthEl = document.getElementById(`reauth-${prefix}`);
+  const versionEl = document.getElementById(`${prefix}-version`);
+
+  if (versionEl) versionEl.textContent = version || '-';
+  if (authed) {
+    statusEl.innerHTML = '<span class="status-badge auth">已授权</span>';
+    if (userEl) userEl.textContent = userName || '';
+    if (userRowEl) userRowEl.style.display = 'flex';
+    if (btnEl) btnEl.style.display = 'none';
+    if (reauthEl) reauthEl.style.display = '';
+    updateStatus(`status-${prefix}`, 'success', `${prefix === 'feishu' ? '飞书' : '钉钉'}: 已授权`);
+  } else {
+    statusEl.innerHTML = '<span class="status-badge unauth">未授权</span>';
+    if (userRowEl) userRowEl.style.display = 'none';
+    if (btnEl) btnEl.style.display = '';
+    if (reauthEl) reauthEl.style.display = 'none';
   }
 }
 
-if (saveConfigBtn) {
-  saveConfigBtn.addEventListener('click', async () => {
-    try {
-      await window.api.invoke('config-save', {
-        gatewayUrl: gatewayInput.value,
-        apiToken: apiTokenInput.value,
-      });
-      saveConfigBtn.textContent = '已保存 ✓';
-      setTimeout(() => { saveConfigBtn.textContent = '保存配置'; }, 2000);
-    } catch (err) {
-      saveConfigBtn.textContent = '保存失败';
-      setTimeout(() => { saveConfigBtn.textContent = '保存配置'; }, 2000);
+async function checkAuthStatus() {
+  try {
+    const result = await window.api.invoke('check-auth-status');
+    if (result.feishu.authed) {
+      setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
     }
-  });
+    if (result.dingtalk.authed) {
+      setAuthState('dingtalk', true, result.dingtalk.userName, result.dingtalk.version);
+    }
+  } catch (err) { console.error('Check auth failed:', err); }
 }
 
-if (testConnectionBtn) {
-  testConnectionBtn.addEventListener('click', async () => {
-    const url = gatewayInput.value.trim();
-    const token = apiTokenInput.value.trim();
-    if (!url) {
-      testConnectionBtn.textContent = '请输入 Gateway URL';
-      setTimeout(() => { testConnectionBtn.textContent = '测试连接'; }, 2000);
-      return;
+async function doAuth(cli, btnEl) {
+  btnEl.disabled = true;
+  btnEl.textContent = '授权中...请在浏览器中完成操作...';
+  try {
+    const result = await window.api.invoke(`auth-${cli}`);
+    if (result.success) {
+      setAuthState(cli, true, result.userName, result.version);
+    } else {
+      alert(`授权失败: ${result.error}`);
     }
-    testConnectionBtn.textContent = '测试中...';
-    testConnectionBtn.disabled = true;
+  } catch (err) {
+    alert(`授权异常: ${err.message}`);
+  }
+  btnEl.disabled = false;
+  btnEl.textContent = '开始授权';
+}
+
+if (authEls.feishuBtn) {
+  authEls.feishuBtn.addEventListener('click', () => doAuth('feishu', authEls.feishuBtn));
+}
+if (authEls.feishuReauth) {
+  authEls.feishuReauth.addEventListener('click', () => doAuth('feishu', authEls.feishuReauth));
+}
+if (authEls.dingtalkBtn) {
+  authEls.dingtalkBtn.addEventListener('click', () => doAuth('dingtalk', authEls.dingtalkBtn));
+}
+if (authEls.dingtalkReauth) {
+  authEls.dingtalkReauth.addEventListener('click', () => doAuth('dingtalk', authEls.dingtalkReauth));
+}
+
+if (authEls.runDiag) {
+  authEls.runDiag.addEventListener('click', async () => {
+    authEls.runDiag.disabled = true;
+    authEls.runDiag.textContent = '诊断中...';
+    authEls.diagResult.style.display = 'block';
+    authEls.diagResult.textContent = '正在运行诊断...';
     try {
-      const response = await fetch(url + '/health', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (response.ok) {
-        testConnectionBtn.textContent = '连接成功 ✓';
-      } else {
-        testConnectionBtn.textContent = `连接失败: ${response.status}`;
-      }
+      const result = await window.api.invoke('run-diagnostic');
+      authEls.diagResult.textContent = result.output || result.error;
     } catch (err) {
-      testConnectionBtn.textContent = `连接失败: ${err.message}`;
+      authEls.diagResult.textContent = `诊断失败: ${err.message}`;
     }
-    setTimeout(() => {
-      testConnectionBtn.textContent = '测试连接';
-      testConnectionBtn.disabled = false;
-    }, 3000);
+    authEls.runDiag.disabled = false;
+    authEls.runDiag.textContent = '运行诊断';
   });
 }
 
@@ -125,17 +230,10 @@ function addMessage(text, sender = 'user') {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-if (sendBtn) {
-  sendBtn.addEventListener('click', sendMessage);
-}
-
-if (chatInput) {
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  });
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function sendMessage() {
@@ -143,83 +241,19 @@ function sendMessage() {
   if (!text) return;
   addMessage(text, 'user');
   chatInput.value = '';
-  setTimeout(() => {
-    addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent');
-  }, 500);
+  setTimeout(() => addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent'), 500);
 }
 
-// ============================
-// Auth Page
-// ============================
-const authFeishuBtn = document.getElementById('auth-feishu');
-const authDingtalkBtn = document.getElementById('auth-dingtalk');
-const runDiagBtn = document.getElementById('run-diagnostic');
-const diagResult = document.getElementById('diagnostic-result');
-
-function updateAuthStatus(elementId, result) {
-  const el = document.getElementById(elementId);
-  if (!el) return;
-  if (result.success) {
-    el.innerHTML = `<span class="status-badge auth">已授权: ${result.userName || ''}</span>`;
-  } else {
-    el.innerHTML = `<span class="status-badge error">授权失败: ${result.error || '未知错误'}</span>`;
-  }
-}
-
-if (authFeishuBtn) {
-  authFeishuBtn.addEventListener('click', async () => {
-    authFeishuBtn.disabled = true;
-    authFeishuBtn.textContent = '授权中...';
-    try {
-      const result = await window.api.invoke('auth-feishu');
-      updateAuthStatus('feishu-status', result);
-      if (result.success) updateStatus('status-feishu', 'success', `飞书: 已授权`);
-    } catch (err) {
-      updateAuthStatus('feishu-status', { success: false, error: err.message });
-    }
-    authFeishuBtn.disabled = false;
-    authFeishuBtn.textContent = '开始授权';
-  });
-}
-
-if (authDingtalkBtn) {
-  authDingtalkBtn.addEventListener('click', async () => {
-    authDingtalkBtn.disabled = true;
-    authDingtalkBtn.textContent = '授权中...';
-    try {
-      const result = await window.api.invoke('auth-dingtalk');
-      updateAuthStatus('dingtalk-status', result);
-      if (result.success) updateStatus('status-dingtalk', 'success', `钉钉: 已授权`);
-    } catch (err) {
-      updateAuthStatus('dingtalk-status', { success: false, error: err.message });
-    }
-    authDingtalkBtn.disabled = false;
-    authDingtalkBtn.textContent = '开始授权';
-  });
-}
-
-if (runDiagBtn) {
-  runDiagBtn.addEventListener('click', async () => {
-    runDiagBtn.disabled = true;
-    runDiagBtn.textContent = '诊断中...';
-    diagResult.textContent = '正在运行诊断...';
-    try {
-      const result = await window.api.invoke('run-diagnostic');
-      diagResult.textContent = result.output || result.error;
-    } catch (err) {
-      diagResult.textContent = `诊断失败: ${err.message}`;
-    }
-    runDiagBtn.disabled = false;
-    runDiagBtn.textContent = '运行诊断';
+if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+if (chatInput) {
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   });
 }
 
 // ============================
 // Logs Page
 // ============================
-const agentStartBtn = document.getElementById('agent-start');
-const agentStopBtn = document.getElementById('agent-stop');
-const agentRestartBtn = document.getElementById('agent-restart');
 const logViewer = document.getElementById('log-viewer');
 
 function appendLog(text) {
@@ -228,57 +262,31 @@ function appendLog(text) {
   logViewer.scrollTop = logViewer.scrollHeight;
 }
 
-if (agentStartBtn) {
-  agentStartBtn.addEventListener('click', async () => {
-    appendLog('[INFO] 启动 Agent...');
-    try {
-      const config = await window.api.invoke('config-get');
-      await window.api.invoke('agent-start', config);
-      updateStatus('status-agent', 'success', 'Agent: 运行中');
-      appendLog('[INFO] Agent 已启动');
-    } catch (err) {
-      appendLog(`[ERROR] Agent 启动失败: ${err.message}`);
-    }
-  });
+document.getElementById('clear-logs')?.addEventListener('click', () => { if (logViewer) logViewer.textContent = ''; });
+
+async function agentAction(action) {
+  appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);
+  try {
+    const config = await window.api.invoke('config-get');
+    await window.api.invoke(`agent-${action}`, config);
+    updateStatus('status-agent', 'success', 'Agent: 运行中');
+    appendLog(`[INFO] Agent ${action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'}`);
+  } catch (err) {
+    appendLog(`[ERROR] Agent ${action}失败: ${err.message}`);
+  }
 }
 
-if (agentStopBtn) {
-  agentStopBtn.addEventListener('click', async () => {
-    appendLog('[INFO] 停止 Agent...');
-    try {
-      await window.api.invoke('agent-stop');
-      updateStatus('status-agent', 'error', 'Agent: 已停止');
-      appendLog('[INFO] Agent 已停止');
-    } catch (err) {
-      appendLog(`[ERROR] Agent 停止失败: ${err.message}`);
-    }
-  });
-}
-
-if (agentRestartBtn) {
-  agentRestartBtn.addEventListener('click', async () => {
-    appendLog('[INFO] 重启 Agent...');
-    try {
-      const config = await window.api.invoke('config-get');
-      await window.api.invoke('agent-restart', config);
-      updateStatus('status-agent', 'success', 'Agent: 运行中');
-      appendLog('[INFO] Agent 已重启');
-    } catch (err) {
-      appendLog(`[ERROR] Agent 重启失败: ${err.message}`);
-    }
-  });
-}
+document.getElementById('agent-start')?.addEventListener('click', () => agentAction('start'));
+document.getElementById('agent-stop')?.addEventListener('click', () => agentAction('stop'));
+document.getElementById('agent-restart')?.addEventListener('click', () => agentAction('restart'));
 
 // ============================
-// Listen for logs from main process
+// Listen for events from main process
 // ============================
 if (window.api) {
-  window.api.on('agent-log', (data) => {
-    appendLog(`[${data.level}] ${data.message}`);
-  });
+  window.api.on('agent-log', (data) => appendLog(`[${data.level}] ${data.message}`));
   window.api.on('agent-status', (data) => {
-    updateStatus('status-agent', data.running ? 'success' : 'error',
-      `Agent: ${data.running ? '运行中' : '已停止'}`);
+    updateStatus('status-agent', data.running ? 'success' : 'error', `Agent: ${data.running ? '运行中' : '已停止'}`);
   });
 }
 
@@ -286,6 +294,5 @@ if (window.api) {
 // Init
 // ============================
 loadConfig();
+checkAuthStatus();
 updateStatus('status-agent', 'error', 'Agent: 未启动');
-updateStatus('status-feishu', 'error', '飞书: 未授权');
-updateStatus('status-dingtalk', 'error', '钉钉: 未授权');

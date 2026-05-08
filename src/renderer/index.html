@@ -78,6 +78,26 @@
               <button id="save-config" class="btn btn-primary">保存配置</button>
             </div>
           </div>
+          <div class="card">
+            <h3>工作区设置</h3>
+            <div class="form-group">
+              <label for="workspace-path">工作空间路径</label>
+              <div class="input-with-action">
+                <input type="text" id="workspace-path" placeholder="~/.hermes" readonly>
+                <button id="browse-folder" class="btn btn-secondary">浏览</button>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>通用设置</h3>
+            <div class="form-group">
+              <label class="toggle-label">
+                <input type="checkbox" id="auto-start">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">开机自动启动 Agent</span>
+              </label>
+            </div>
+          </div>
         </div>
 
         <!-- Auth Page -->
@@ -87,22 +107,50 @@
           </div>
           <div class="card">
             <h3>飞书授权</h3>
-            <div class="auth-status" id="feishu-status">
-              <span class="status-badge unauth">未授权</span>
+            <div class="auth-info">
+              <div class="auth-meta">
+                <span class="auth-label">版本:</span>
+                <span class="auth-value" id="feishu-version">-</span>
+              </div>
+              <div class="auth-meta">
+                <span class="auth-label">状态:</span>
+                <span id="feishu-status"><span class="status-badge unauth">未授权</span></span>
+              </div>
+              <div class="auth-meta" id="feishu-user-row" style="display:none">
+                <span class="auth-label">用户:</span>
+                <span class="auth-value" id="feishu-user">-</span>
+              </div>
             </div>
-            <button id="auth-feishu" class="btn btn-primary">开始授权</button>
+            <div class="form-actions">
+              <button id="auth-feishu" class="btn btn-primary">开始授权</button>
+              <button id="reauth-feishu" class="btn btn-secondary" style="display:none">重新授权</button>
+            </div>
           </div>
           <div class="card">
             <h3>钉钉授权</h3>
-            <div class="auth-status" id="dingtalk-status">
-              <span class="status-badge unauth">未授权</span>
+            <div class="auth-info">
+              <div class="auth-meta">
+                <span class="auth-label">版本:</span>
+                <span class="auth-value" id="dingtalk-version">-</span>
+              </div>
+              <div class="auth-meta">
+                <span class="auth-label">状态:</span>
+                <span id="dingtalk-status"><span class="status-badge unauth">未授权</span></span>
+              </div>
+              <div class="auth-meta" id="dingtalk-user-row" style="display:none">
+                <span class="auth-label">用户:</span>
+                <span class="auth-value" id="dingtalk-user">-</span>
+              </div>
             </div>
-            <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
+            <div class="form-actions">
+              <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
+              <button id="reauth-dingtalk" class="btn btn-secondary" style="display:none">重新授权</button>
+            </div>
           </div>
           <div class="card">
             <h3>一键诊断</h3>
             <button id="run-diagnostic" class="btn btn-secondary">运行诊断</button>
-            <div id="diagnostic-result" class="result-box"></div>
+            <div id="diagnostic-result" class="result-box" style="display:none"></div>
           </div>
         </div>
 
@@ -118,7 +166,7 @@
               </div>
             </div>
             <div class="chat-input-area">
-              <textarea id="chat-input" placeholder="输入消息..." rows="2"></textarea>
+              <textarea id="chat-input" placeholder="输入消息，Shift+Enter 换行..." rows="2"></textarea>
               <button id="send-message" class="btn btn-primary">发送</button>
             </div>
           </div>
@@ -133,6 +181,7 @@
             <button id="agent-start" class="btn btn-secondary">启动 Agent</button>
             <button id="agent-stop" class="btn btn-secondary">停止 Agent</button>
             <button id="agent-restart" class="btn btn-secondary">重启 Agent</button>
+            <button id="clear-logs" class="btn btn-secondary" style="margin-left:auto">清空日志</button>
           </div>
           <div id="log-viewer" class="log-viewer"></div>
         </div>

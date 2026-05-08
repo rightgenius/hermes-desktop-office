@@ -1,4 +1,4 @@
-const { ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const { execFile } = require('child_process');
 const ConfigStore = require('./config-store');
@@ -12,39 +12,24 @@ function getCLIBinaryPath(cliName) {
   const arch = process.arch;
   const assetsDir = path.join(__dirname, '../../assets');
 
-  let cliDir, binary;
   if (cliName === 'lark-cli') {
-    cliDir = 'feishu-cli';
-    if (platform === 'darwin') {
-      binary = arch === 'arm64' ? 'darwin-arm64/lark-cli' : 'darwin-amd64/lark-cli';
-    } else if (platform === 'win32') {
-      binary = 'windows-amd64/lark-cli.exe';
-    } else {
-      binary = 'linux-amd64/lark-cli';
-    }
-  } else if (cliName === 'dws') {
-    cliDir = 'dws-cli';
-    if (platform === 'darwin') {
-      binary = arch === 'arm64' ? 'darwin-arm64/dws' : 'darwin-amd64/dws';
-    } else if (platform === 'win32') {
-      binary = 'windows-amd64/dws.exe';
-    } else {
-      binary = 'linux-amd64/dws';
-    }
+    if (platform === 'darwin') return path.join(assetsDir, 'feishu-cli', `darwin-${arch}`, 'lark-cli');
+    if (platform === 'win32') return path.join(assetsDir, 'feishu-cli', 'windows-amd64', 'lark-cli.exe');
+    return path.join(assetsDir, 'feishu-cli', 'linux-amd64', 'lark-cli');
   }
-
-  return path.join(assetsDir, cliDir, binary);
+  if (cliName === 'dws') {
+    if (platform === 'darwin') return path.join(assetsDir, 'dws-cli', `darwin-${arch}`, 'dws');
+    if (platform === 'win32') return path.join(assetsDir, 'dws-cli', 'windows-amd64', 'dws.exe');
+    return path.join(assetsDir, 'dws-cli', 'linux-amd64', 'dws');
+  }
 }
 
 function runCLI(cliName, args, timeout = 30000) {
   return new Promise((resolve, reject) => {
     const binaryPath = getCLIBinaryPath(cliName);
-    const child = execFile(binaryPath, args, { timeout }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr || error.message));
-      } else {
-        resolve({ stdout, stderr });
-      }
+    execFile(binaryPath, args, { timeout }, (error, stdout, stderr) => {
+      if (error) reject(new Error(stderr || error.message));
+      else resolve({ stdout, stderr });
     });
   });
 }
@@ -52,90 +37,86 @@ function runCLI(cliName, args, timeout = 30000) {
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
 
-  // ============================
+  // Config handlers
+  ipcMain.handle('config-get', () => configStore.get());
+  ipcMain.handle('config-save', (_, data) => configStore.save(data));
+
+  ipcMain.handle('config-browse-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: '选择工作空间路径',
+    });
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0];
+    }
+    return null;
+  });
+
   // Auth handlers
-  // ============================
   ipcMain.handle('auth-feishu', async () => {
     try {
       const result = await runCLI('lark-cli', ['auth', 'login', '--recommend', '--no-wait', '--json']);
       const auth = JSON.parse(result.stdout);
-
       if (auth.device_code && auth.verification_url) {
-        // Open browser
         shell.openExternal(auth.verification_url);
-
-        // Poll for completion
-        return new Promise((resolve, reject) => {
-          const pollInterval = setInterval(async () => {
+        return new Promise((resolve) => {
+          const poll = setInterval(async () => {
             try {
-              const statusResult = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code]);
-              const status = JSON.parse(statusResult.stdout);
-              if (status.ok) {
-                clearInterval(pollInterval);
-                resolve({ success: true, userName: status.userName, userOpenId: status.userOpenId });
-              }
-            } catch (e) {
-              // Polling not complete yet
-            }
+              const s = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code]);
+              const status = JSON.parse(s.stdout);
+              if (status.ok) { clearInterval(poll); resolve({ success: true, userName: status.userName || '', version: status.cliVersion || '' }); }
+            } catch (e) { /* still waiting */ }
           }, 3000);
-
-          // Timeout after 10 minutes
-          setTimeout(() => {
-            clearInterval(pollInterval);
-            reject(new Error('授权超时'));
-          }, 600000);
+          setTimeout(() => { clearInterval(poll); resolve({ success: false, error: '授权超时' }); }, 600000);
         });
       }
       return { success: false, error: '未获取到授权码' };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
+    } catch (err) { return { success: false, error: err.message }; }
   });
 
   ipcMain.handle('auth-dingtalk', async () => {
     try {
       const result = await runCLI('dws', ['auth', 'login', '--format', 'json']);
       const auth = JSON.parse(result.stdout);
-      if (auth.success) {
-        return { success: true, userName: auth.userName || '' };
-      }
+      if (auth.success) return { success: true, userName: auth.userName || '' };
       return { success: false, error: '授权失败' };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
+    } catch (err) { return { success: false, error: err.message }; }
+  });
+
+  ipcMain.handle('check-auth-status', async () => {
+    const status = { feishu: { authed: false, userName: '', version: '' }, dingtalk: { authed: false, userName: '', version: '' } };
+    try {
+      const r = await runCLI('lark-cli', ['auth', 'status'], 5000);
+      const data = JSON.parse(r.stdout);
+      if (data.tokenStatus === 'valid') {
+        status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
+      }
+    } catch (e) { /* not authenticated */ }
+    try {
+      const r = await runCLI('dws', ['auth', 'status', '--format', 'json'], 5000);
+      const data = JSON.parse(r.stdout);
+      if (data.success) {
+        status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
+      }
+    } catch (e) { /* not authenticated */ }
+    return status;
   });
 
   ipcMain.handle('run-diagnostic', async () => {
-    try {
-      const [larkResult, dwsResult] = await Promise.allSettled([
-        runCLI('lark-cli', ['doctor']),
-        runCLI('dws', ['doctor']),
-      ]);
-
-      let output = '=== 诊断结果 ===\n\n';
-      output += '--- 飞书 CLI (lark-cli) ---\n';
-      output += larkResult.status === 'fulfilled' ? larkResult.value.stdout : `错误: ${larkResult.reason.message}\n`;
-      output += '\n--- 钉钉 CLI (dws) ---\n';
-      output += dwsResult.status === 'fulfilled' ? dwsResult.value.stdout : `错误: ${dwsResult.reason.message}\n`;
-
-      return { output };
-    } catch (err) {
-      return { error: err.message };
-    }
+    const [lark, dws] = await Promise.allSettled([
+      runCLI('lark-cli', ['doctor']),
+      runCLI('dws', ['doctor']),
+    ]);
+    let output = '=== 诊断结果 ===\n\n--- 飞书 CLI (lark-cli) ---\n';
+    output += lark.status === 'fulfilled' ? lark.value.stdout : `错误: ${lark.reason.message}\n`;
+    output += '\n--- 钉钉 CLI (dws) ---\n';
+    output += dws.status === 'fulfilled' ? dws.value.stdout : `错误: ${dws.reason.message}\n`;
+    return { output };
   });
 
-  // ============================
   // Agent handlers
-  // ============================
-  ipcMain.handle('agent-start', async () => {
-    const config = configStore.get();
-    return agentManager.start(config);
-  });
-
-  ipcMain.handle('agent-stop', async () => {
-    return agentManager.stop();
-  });
-
+  ipcMain.handle('agent-start', (_, config) => agentManager.start(config));
+  ipcMain.handle('agent-stop', () => agentManager.stop());
   ipcMain.handle('agent-restart', async () => {
     const config = configStore.get();
     await agentManager.stop();
