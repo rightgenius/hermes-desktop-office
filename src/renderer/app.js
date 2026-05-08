@@ -291,8 +291,119 @@ if (window.api) {
 }
 
 // ============================
+// First-Run Wizard
+// ============================
+async function checkFirstRun() {
+  try {
+    const isFirst = await window.api.invoke('is-first-run');
+    if (isFirst) showWizard();
+  } catch (err) { console.error('First run check failed:', err); }
+}
+
+function showWizard() {
+  const overlay = document.createElement('div');
+  overlay.id = 'wizard-overlay';
+  overlay.innerHTML = `
+    <div class="wizard-modal">
+      <div class="wizard-step" data-step="1">
+        <h3>欢迎使用 Hermes Desktop</h3>
+        <p class="wizard-desc">完成以下步骤即可开始使用</p>
+        <div class="form-group">
+          <label for="wizard-gateway">Gateway URL</label>
+          <input type="text" id="wizard-gateway" placeholder="https://your-gateway-url">
+        </div>
+        <div class="form-group">
+          <label for="wizard-token">API Token</label>
+          <input type="password" id="wizard-token" placeholder="输入你的 API Token">
+        </div>
+        <button class="btn btn-primary wizard-next">下一步</button>
+      </div>
+      <div class="wizard-step" data-step="2" style="display:none">
+        <h3>授权飞书</h3>
+        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权</p>
+        <button class="btn btn-primary wizard-auth-feishu">开始授权</button>
+        <div id="wizard-feishu-status" class="wizard-status"></div>
+        <div class="wizard-nav">
+          <button class="btn btn-secondary wizard-prev">上一步</button>
+          <button class="btn btn-primary wizard-next">下一步</button>
+        </div>
+      </div>
+      <div class="wizard-step" data-step="3" style="display:none">
+        <h3>授权钉钉</h3>
+        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权</p>
+        <button class="btn btn-primary wizard-auth-dingtalk">开始授权</button>
+        <div id="wizard-dingtalk-status" class="wizard-status"></div>
+        <div class="wizard-nav">
+          <button class="btn btn-secondary wizard-prev">上一步</button>
+          <button class="btn btn-primary wizard-next">完成</button>
+        </div>
+      </div>
+      <div class="wizard-step" data-step="4" style="display:none">
+        <h3>设置完成 🎉</h3>
+        <p class="wizard-desc">一切就绪，开始使用吧！</p>
+        <button class="btn btn-primary wizard-done">开始使用</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  let currentStep = 1;
+  const wizardConfig = { gatewayUrl: '', apiToken: '' };
+
+  function goToStep(step) {
+    overlay.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
+    overlay.querySelector(`.wizard-step[data-step="${step}"]`).style.display = '';
+    currentStep = step;
+  }
+
+  overlay.querySelector('.wizard-next').addEventListener('click', async () => {
+    if (currentStep === 1) {
+      wizardConfig.gatewayUrl = document.getElementById('wizard-gateway').value;
+      wizardConfig.apiToken = document.getElementById('wizard-token').value;
+      await window.api.invoke('config-save', wizardConfig);
+      goToStep(2);
+    } else if (currentStep === 2) {
+      goToStep(3);
+    } else if (currentStep === 3) {
+      goToStep(4);
+    }
+  });
+
+  overlay.querySelector('.wizard-prev').addEventListener('click', () => goToStep(currentStep - 1));
+
+  overlay.querySelector('.wizard-auth-feishu').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = '授权中...';
+    const statusEl = document.getElementById('wizard-feishu-status');
+    try {
+      const result = await window.api.invoke('auth-feishu');
+      statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
+      if (result.success) setAuthState('feishu', true, result.userName);
+    } catch (err) { statusEl.textContent = `✗ ${err.message}`; }
+    btn.disabled = false; btn.textContent = '开始授权';
+  });
+
+  overlay.querySelector('.wizard-auth-dingtalk').addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = '授权中...';
+    const statusEl = document.getElementById('wizard-dingtalk-status');
+    try {
+      const result = await window.api.invoke('auth-dingtalk');
+      statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
+      if (result.success) setAuthState('dingtalk', true, result.userName);
+    } catch (err) { statusEl.textContent = `✗ ${err.message}`; }
+    btn.disabled = false; btn.textContent = '开始授权';
+  });
+
+  overlay.querySelector('.wizard-done').addEventListener('click', () => {
+    overlay.remove();
+    checkAuthStatus();
+  });
+}
+
+// ============================
 // Init
 // ============================
 loadConfig();
-checkAuthStatus();
+checkFirstRun();
 updateStatus('status-agent', 'error', 'Agent: 未启动');

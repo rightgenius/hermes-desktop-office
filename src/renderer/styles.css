@@ -474,3 +474,46 @@ body {
   font-size: 12px;
   color: var(--text-primary);
 }
+
+/* Wizard Overlay */
+#wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.wizard-modal {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  padding: var(--space-xxl);
+  width: 420px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+.wizard-modal h3 {
+  font-size: 18px;
+  margin-bottom: var(--space-sm);
+}
+
+.wizard-desc {
+  color: var(--text-secondary);
+  margin-bottom: var(--space-lg);
+}
+
+.wizard-status {
+  margin-top: var(--space-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-height: 20px;
+}
+
+.wizard-nav {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}

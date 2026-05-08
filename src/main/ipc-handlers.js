@@ -11,7 +11,6 @@ function getCLIBinaryPath(cliName) {
   const platform = process.platform;
   const arch = process.arch;
   const assetsDir = path.join(__dirname, '../../assets');
-
   if (cliName === 'lark-cli') {
     if (platform === 'darwin') return path.join(assetsDir, 'feishu-cli', `darwin-${arch}`, 'lark-cli');
     if (platform === 'win32') return path.join(assetsDir, 'feishu-cli', 'windows-amd64', 'lark-cli.exe');
@@ -37,19 +36,19 @@ function runCLI(cliName, args, timeout = 30000) {
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
 
-  // Config handlers
   ipcMain.handle('config-get', () => configStore.get());
   ipcMain.handle('config-save', (_, data) => configStore.save(data));
 
   ipcMain.handle('config-browse-folder', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-      title: '选择工作空间路径',
-    });
-    if (!result.canceled && result.filePaths.length > 0) {
-      return result.filePaths[0];
-    }
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title: '选择工作空间路径' });
+    if (!result.canceled && result.filePaths.length > 0) return result.filePaths[0];
     return null;
+  });
+
+  // First-run check
+  ipcMain.handle('is-first-run', () => {
+    const config = configStore.get();
+    return !config.gatewayUrl && !config.apiToken;
   });
 
   // Auth handlers
@@ -65,7 +64,7 @@ function setupIPCHandlers(mainWindow) {
               const s = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code]);
               const status = JSON.parse(s.stdout);
               if (status.ok) { clearInterval(poll); resolve({ success: true, userName: status.userName || '', version: status.cliVersion || '' }); }
-            } catch (e) { /* still waiting */ }
+            } catch (e) { /* waiting */ }
           }, 3000);
           setTimeout(() => { clearInterval(poll); resolve({ success: false, error: '授权超时' }); }, 600000);
         });
@@ -88,25 +87,18 @@ function setupIPCHandlers(mainWindow) {
     try {
       const r = await runCLI('lark-cli', ['auth', 'status'], 5000);
       const data = JSON.parse(r.stdout);
-      if (data.tokenStatus === 'valid') {
-        status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
-      }
-    } catch (e) { /* not authenticated */ }
+      if (data.tokenStatus === 'valid') status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
+    } catch (e) { /* not authed */ }
     try {
       const r = await runCLI('dws', ['auth', 'status', '--format', 'json'], 5000);
       const data = JSON.parse(r.stdout);
-      if (data.success) {
-        status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
-      }
-    } catch (e) { /* not authenticated */ }
+      if (data.success) status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
+    } catch (e) { /* not authed */ }
     return status;
   });
 
   ipcMain.handle('run-diagnostic', async () => {
-    const [lark, dws] = await Promise.allSettled([
-      runCLI('lark-cli', ['doctor']),
-      runCLI('dws', ['doctor']),
-    ]);
+    const [lark, dws] = await Promise.allSettled([runCLI('lark-cli', ['doctor']), runCLI('dws', ['doctor'])]);
     let output = '=== 诊断结果 ===\n\n--- 飞书 CLI (lark-cli) ---\n';
     output += lark.status === 'fulfilled' ? lark.value.stdout : `错误: ${lark.reason.message}\n`;
     output += '\n--- 钉钉 CLI (dws) ---\n';
