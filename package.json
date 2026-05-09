@@ -20,12 +20,13 @@
     },
     "files": [
       "src/**/*",
-      "src/hermes-agent/**/*",
-      "assets/feishu-cli/**/*",
-      "assets/dws-cli/**/*",
       "!src/hermes-agent/.git",
       "!src/hermes-agent/.github",
-      "!src/hermes-agent/node_modules"
+      "!src/hermes-agent/node_modules",
+      "assets/feishu-cli/**/lark-cli",
+      "assets/feishu-cli/**/lark-cli.exe",
+      "assets/dws-cli/**/dws",
+      "assets/dws-cli/**/dws.exe"
     ],
     "mac": {
       "target": [
