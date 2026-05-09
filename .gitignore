@@ -27,11 +27,9 @@ Thumbs.db
 *.log
 npm-debug.log*
 
-# Packaged CLI binaries (download during build)
-assets/feishu-cli/*
-!assets/feishu-cli/.gitkeep
-assets/dws-cli/*
-!assets/dws-cli/.gitkeep
+# Packaged CLI binaries (downloaded during build by download-clis.sh)
+assets/feishu-cli/
+assets/dws-cli/
 
 # Hermes workspace data
 workspaces/
