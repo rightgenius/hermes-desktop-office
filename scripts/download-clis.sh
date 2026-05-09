@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ASSETS_DIR="$PROJECT_DIR/assets"
 
-LARK_CLI_VERSION="1.0.24"
+LARK_CLI_VERSION="1.0.26"
 DWS_CLI_VERSION="1.0.21"
 
 # Determine platforms
@@ -23,18 +23,8 @@ clean_assets() {
 download_bin() {
     local platform="$1"
     local version="$2"
-    local repo="$3"
-    local out_dir="$4"
-    local bin_name="$5"
-
-    local dir_name
-    if [[ "$platform" == windows-* ]]; then
-        dir_name="win-x86_64"
-    elif [[ "$platform" == darwin-* ]]; then
-        dir_name="macos-${platform#darwin-}"
-    else
-        dir_name="linux-${platform#linux-}"
-    fi
+    local out_dir="$3"
+    local bin_name="$4"
 
     local out_path="$out_dir/$platform"
     mkdir -p "$out_path"
@@ -45,10 +35,15 @@ download_bin() {
         return
     fi
 
-    local url="https://github.com/$repo/releases/download/v$version/$repo-$version-$dir_name.tar.gz"
+    # lark-cli uses: lark-cli-VERSION-PLATFORM.tar.gz
+    local ext="tar.gz"
+    if [[ "$platform" == windows-* ]]; then
+        ext="zip"
+    fi
+    local url="https://github.com/larksuite/cli/releases/download/v$version/lark-cli-$version-$platform.$ext"
     echo "  Downloading $url ..."
 
-    local tmp_file="/tmp/cli-tmp-$$.tar.gz"
+    local tmp_file="/tmp/cli-tmp-$$.$ext"
     if command -v curl &>/dev/null; then
         curl -fSL --connect-timeout 10 --max-time 120 -o "$tmp_file" "$url" || {
             echo "  ✗ Failed to download $platform"
@@ -61,7 +56,11 @@ download_bin() {
         }
     fi
 
-    tar -xzf "$tmp_file" -C "$out_path"
+    if [[ "$ext" == "zip" ]]; then
+        unzip -o "$tmp_file" -d "$out_path"
+    else
+        tar -xzf "$tmp_file" -C "$out_path"
+    fi
     rm -f "$tmp_file"
 
     # Rename if needed
@@ -84,13 +83,28 @@ fi
 
 echo "Downloading lark-cli v$LARK_CLI_VERSION ..."
 for plat in "${PLATFORMS[@]}"; do
-    download_bin "$plat" "$LARK_CLI_VERSION" "larksuite/cli" "$ASSETS_DIR/feishu-cli" "lark-cli"
+    download_bin "$plat" "$LARK_CLI_VERSION" "$ASSETS_DIR/feishu-cli" "lark-cli"
 done
 
 echo ""
 echo "Downloading dws-cli v$DWS_CLI_VERSION ..."
 for plat in "${PLATFORMS[@]}"; do
-    download_bin "$plat" "$DWS_CLI_VERSION" "dingtalk-workspace-cli" "$ASSETS_DIR/dws-cli" "dws"
+    # dws-cli doesn't publish GitHub releases — use npm package
+    if [[ "$plat" == "darwin-arm64" && ! -f "$ASSETS_DIR/dws-cli/$plat/dws" ]]; then
+        echo "  Installing dws-cli via npm for current platform..."
+        npm install -g dingtalk-workspace-cli 2>/dev/null || true
+        DWS_BIN=$(find "$(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli" -name "dws" -type f 2>/dev/null | head -1)
+        if [[ -n "$DWS_BIN" ]]; then
+            mkdir -p "$ASSETS_DIR/dws-cli/$plat"
+            cp "$DWS_BIN" "$ASSETS_DIR/dws-cli/$plat/dws"
+            chmod +x "$ASSETS_DIR/dws-cli/$plat/dws"
+            echo "  ✓ $plat/dws installed from npm"
+        else
+            echo "  ✗ Failed to find dws binary from npm package"
+        fi
+    else
+        echo "  ○ $plat — dws-cli binary not available via GitHub releases, skip"
+    fi
 done
 
 echo ""
