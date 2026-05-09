@@ -23,7 +23,10 @@
 
     <div class="layout-container">
       <div class="rail">
-        <button class="rail-btn active" data-page="settings" title="配置">
+        <button class="rail-btn active" data-page="chat" title="对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button class="rail-btn" data-page="settings" title="配置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         <button class="rail-btn" data-page="auth" title="授权">
@@ -38,7 +41,8 @@
       </div>
 
       <div class="sidebar">
-        <div class="sidebar-panel active" data-panel="settings">
+        <!-- Settings panel -->
+        <div class="sidebar-panel" data-panel="settings">
           <div class="sidebar-section">
             <div class="sidebar-section-title">配置菜单</div>
             <div class="sidebar-menu-item active" data-card="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>API 配置</span></div>
@@ -46,6 +50,7 @@
             <div class="sidebar-menu-item" data-card="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span>通用设置</span></div>
           </div>
         </div>
+        <!-- Auth panel -->
         <div class="sidebar-panel" data-panel="auth">
           <div class="sidebar-section">
             <div class="sidebar-section-title">授权状态</div>
@@ -59,7 +64,8 @@
             </div>
           </div>
         </div>
-        <div class="sidebar-panel" data-panel="chat">
+        <!-- Chat panel (active by default) -->
+        <div class="sidebar-panel active" data-panel="chat">
           <div class="sidebar-section">
             <div class="sidebar-section-title">会话列表</div>
             <button class="new-chat-btn" id="new-chat-btn">
@@ -69,6 +75,7 @@
             <div class="sidebar-empty">暂无会话</div>
           </div>
         </div>
+        <!-- Logs panel -->
         <div class="sidebar-panel" data-panel="logs">
           <div class="sidebar-section">
             <div class="sidebar-section-title">日志筛选</div>
@@ -78,7 +85,7 @@
       </div>
 
       <div class="main">
-        <div class="page active" id="page-settings">
+        <div class="page" id="page-settings">
           <div class="page-header">
             <h2>配置</h2>
           </div>
@@ -175,7 +182,7 @@
           </div>
         </div>
 
-        <div class="page" id="page-chat">
+        <div class="page active" id="page-chat">
           <div class="page-header">
             <h2>对话</h2>
           </div>
