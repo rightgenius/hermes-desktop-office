@@ -1,161 +1,116 @@
-# Hermes Desktop for Office — macOS 安装指南
+# Hermes Desktop for Office — 安装指南
 
-## 前置要求
+## 🟢 场景 A：普通用户安装（零依赖，推荐）
 
-| 依赖 | 版本 | 安装方式 |
+**适用人群**：只需要使用软件，不关心代码
+
+**适用系统**：macOS ARM64 (Apple Silicon) / Windows (待发布)
+
+### 安装步骤
+
+1. 获取安装包：
+   - 从 Release 页面下载 `Hermes Desktop for Office-x.x.x-arm64.dmg`
+   - 或从已构建电脑复制 `dist/` 目录下的 `.dmg` 文件
+
+2. 双击 `.dmg` 文件
+
+3. 将 `Hermes Desktop for Office.app` 拖入 Applications 文件夹
+
+4. 从 Applications 打开应用
+
+5. 首次启动会自动弹出向导：
+   - 输入 Gateway URL 和 API Token
+   - 点击"授权飞书"→ 浏览器完成 OAuth
+   - 点击"授权钉钉"→ 浏览器完成 OAuth
+
+> **重要**：安装包已内置所有依赖（Electron 运行时、lark-cli、dws-cli），新电脑无需安装 Node.js、Python 或任何其他环境。
+
+---
+
+## 🟡 场景 B：开发者运行源码
+
+**适用人群**：需要修改代码、调试、贡献代码
+
+### 前置要求
+
+| 依赖 | 版本 | 安装命令 |
 |------|------|----------|
-| Node.js | >= 20 | `brew install node` 或 [nvm](https://github.com/nvm-sh/nvm) |
-| Git | >= 2.30 | `brew install git` (macOS 自带) |
-| Python 3 | >= 3.9 | `brew install python` (macOS 自带 3.x) |
-| 网络代理 | socks5://127.0.0.1:7897 | 用于拉取 GitHub submodule |
+| Node.js | >= 20 | `brew install node` |
+| Git | >= 2.30 | `brew install git` |
+| Python 3 | >= 3.9 | `brew install python` (macOS 通常自带) |
 
-## 方式一：开发模式运行
-
-### Step 1: 克隆仓库（含 submodule）
+### 快速安装
 
 ```bash
-# 启用代理以拉取 GitHub 仓库
-export http_proxy=socks5://127.0.0.1:7897
+# 1. 安装基础依赖（如果新电脑没有）
+brew install node git python
+
+# 2. 启用网络代理（如果需要访问 GitHub）
 export https_proxy=socks5://127.0.0.1:7897
-export all_proxy=socks5://127.0.0.1:7897
 
-git clone https://github.com/rightgenius/hermes-desktop-office.git
+# 3. 克隆仓库
+git clone --recurse-submodules https://github.com/rightgenius/hermes-desktop-office.git
 cd hermes-desktop-office
-git submodule update --init --recursive
-```
 
-### Step 2: 安装 Node 依赖
-
-```bash
-npm install
-```
-
-如果 npm 默认 registry 慢，可换镜像：
-```bash
+# 4. 安装 npm 依赖（国内镜像加速）
 npm install --registry=https://registry.npmmirror.com
 export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
-```
 
-### Step 3: 放置 CLI 二进制
-
-CLI 工具需要放在 `assets/` 目录下。从本机已安装的环境复制：
-
-```bash
-# 飞书 CLI (lark-cli) - 找到已安装的二进制路径
-# 方式 A: npm 全局安装的二进制
-LARK_PKG=$(npm prefix -g)/lib/node_modules/@larksuite/cli/bin/lark-cli
+# 5. 放置 CLI 二进制
 mkdir -p assets/feishu-cli/darwin-arm64
-cp "$LARK_PKG" assets/feishu-cli/darwin-arm64/lark-cli
-chmod +x assets/feishu-cli/darwin-arm64/lark-cli
-
-# 方式 B: 如果已通过脚本安装到 ~/.lark-cli/
-# 找实际二进制: find ~/.lark-cli -name "lark-cli" -type f
-
-# 钉钉 CLI (dws)
-DWS_PKG=$(find $(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli -name "dws" -type f | head -1)
 mkdir -p assets/dws-cli/darwin-arm64
-cp "$DWS_PKG" assets/dws-cli/darwin-arm64/dws
-chmod +x assets/dws-cli/darwin-arm64/dws
-```
+npm install -g @larksuite/cli dingtalk-workspace-cli
+cp $(npm prefix -g)/lib/node_modules/@larksuite/cli/bin/lark-cli assets/feishu-cli/darwin-arm64/lark-cli
+cp $(find $(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli -name "dws" -type f | head -1) assets/dws-cli/darwin-arm64/dws
+chmod +x assets/feishu-cli/darwin-arm64/lark-cli assets/dws-cli/darwin-arm64/dws
 
-### Step 4: 启动应用
-
-```bash
-# 开发模式（自动打开 DevTools）
-NODE_ENV=development npx electron .
-
-# 或者直接运行
+# 6. 启动
 npx electron .
 ```
-
-## 方式二：打包安装
 
 ### 构建打包
 
 ```bash
-# 确保 CLI 二进制已放置到 assets/ 目录
-npm run download-clis  # 或手动放置
+# 下载各平台 CLI 二进制（自动）
+bash scripts/download-clis.sh --clean
 
-# 打包 macOS
+# 打包 macOS .dmg
 npx electron-builder --mac
+
+# 打包 Windows .exe
+npx electron-builder --win
 ```
 
-产出文件在 `dist/` 目录：
-- `Hermes Desktop for Office-0.1.0-arm64.dmg` — 磁盘镜像，拖拽安装
-- `Hermes Desktop for Office-0.1.0-arm64-mac.zip` — 压缩包
+---
 
-### 安装后
+## ❓ 常见问题
 
-1. 双击 `.dmg` 文件
-2. 将 `Hermes Desktop for Office.app` 拖入 Applications
-3. 从 Applications 打开
+### Q: 双击 .dmg 安装后打开白屏
+1. 检查是否从 Applications 打开（不要在 .dmg 中直接双击）
+2. macOS 安全提示：首次打开右键 → "打开" → 确认
+3. 如果仍然白屏，打开 Console.app 搜索 "Hermes" 查看日志
 
-首次启动会自动弹出向导：
-1. 输入 Gateway URL 和 API Token
-2. 点击授权飞书（浏览器中完成 OAuth）
-3. 点击授权钉钉（浏览器中完成 OAuth）
-
-## 常见问题
-
-### Q: git clone 超时
-启用代理后重试：
+### Q: 源码运行报错 "Cannot find module electron"
 ```bash
-export https_proxy=socks5://127.0.0.1:7897
-git clone https://github.com/rightgenius/hermes-desktop-office.git
-```
-
-### Q: npm install 慢
-使用国内镜像：
-```bash
-npm install --registry=https://registry.npmmirror.com
-export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
 npm install
 ```
 
-### Q: lark-cli 是脚本不是二进制
-npm 全局安装的 `lark-cli` 是一个 Node.js 脚本包装器，实际二进制在包内的 `bin/` 目录。使用上面 Step 3 的方法从包内复制真实二进制。
+### Q: 源码运行报错 "Agent 未安装"
+```bash
+git submodule update --init --recursive
+```
+
+### Q: lark-cli 报错 MODULE_NOT_FOUND
+lark-cli 的实际二进制在 npm 包内部，需要复制 `bin/lark-cli` 而不是 npm wrapper 脚本。参考场景 B Step 5。
 
 ### Q: dws 找不到
-确保已安装 dingtalk-workspace-cli：
 ```bash
 npm install -g dingtalk-workspace-cli
 ```
 
-### Q: 应用启动白屏
-打开 DevTools 查看错误（开发模式自动打开，或按 Cmd+Option+I）。常见原因：
-- CLI 二进制缺失或不可执行
-- hermes-agent submodule 未初始化
-
-### Q: Agent 启动失败
-确保 `src/hermes-agent/` 目录存在且包含 `cli.py`：
+### Q: git clone 超时
+启用代理：
 ```bash
-ls src/hermes-agent/cli.py
-# 如果不存在，重新初始化 submodule
-git submodule update --init --recursive
-```
-
-## 目录结构
-
-```
-hermes-desktop-office/
-├── src/
-│   ├── main/              # Electron 主进程
-│   ├── renderer/          # 前端界面
-│   ├── preload/           # IPC 桥接
-│   └── hermes-agent/      # Hermes Agent (git submodule)
-├── assets/
-│   ├── feishu-cli/        # lark-cli 二进制
-│   │   └── darwin-arm64/
-│   │       └── lark-cli
-│   └── dws-cli/           # dws 二进制
-│       └── darwin-arm64/
-│           └── dws
-├── scripts/
-│   └── download-clis.sh   # CLI 自动下载脚本
-├── docs/
-│   ├── development-plan.md
-│   ├── tasks.md
-│   └── install.md         # 本文件
-├── package.json
-└── dist/                  # 构建产物
+export https_proxy=socks5://127.0.0.1:7897
+git clone --recurse-submodules https://github.com/rightgenius/hermes-desktop-office.git
 ```
