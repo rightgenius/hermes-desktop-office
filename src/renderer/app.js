@@ -3,8 +3,8 @@
 // ============================
 // Navigation
 // ============================
-document.querySelectorAll('.rail-btn').forEach(item => {
-  item.addEventListener('click', () => showPage(item.dataset.page));
+document.querySelectorAll('.rail-btn').forEach(btn => {
+  btn.addEventListener('click', () => showPage(btn.dataset.page));
 });
 
 document.querySelectorAll('.sidebar-menu-item').forEach(item => {
@@ -12,9 +12,7 @@ document.querySelectorAll('.sidebar-menu-item').forEach(item => {
     const cardIndex = item.dataset.card;
     if (!cardIndex) return;
     const settingsPage = document.getElementById('page-settings');
-    if (settingsPage && !settingsPage.classList.contains('active')) {
-      showPage('settings');
-    }
+    if (settingsPage && !settingsPage.classList.contains('active')) showPage('settings');
     const cards = settingsPage?.querySelectorAll('.card');
     if (cards && cards[cardIndex]) {
       cards[cardIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -25,50 +23,55 @@ document.querySelectorAll('.sidebar-menu-item').forEach(item => {
   });
 });
 
-document.addEventListener('keydown', (e) => {
-  if (e.metaKey && e.key >= '1' && e.key <= '4') {
-    e.preventDefault();
-    const pages = ['settings', 'auth', 'chat', 'logs'];
-    showPage(pages[parseInt(e.key) - 1]);
-  }
+// Workspace toggle
+document.getElementById('workspace-toggle')?.addEventListener('click', () => {
+  const header = document.getElementById('workspace-toggle');
+  const tree = document.getElementById('workspace-tree');
+  header.classList.toggle('collapsed');
+  tree.classList.toggle('collapsed');
 });
 
 function showPage(pageName) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.rail-btn').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
   const target = document.getElementById(`page-${pageName}`);
   const nav = document.querySelector(`.rail-btn[data-page="${pageName}"]`);
-  const panel = document.querySelector(`.sidebar-panel[data-panel="${pageName}"]`);
   if (target) target.classList.add('active');
   if (nav) nav.classList.add('active');
-  if (panel) panel.classList.add('active');
 }
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey && e.key >= '1' && e.key <= '4') {
+    e.preventDefault();
+    const pages = ['chat', 'settings', 'auth', 'logs'];
+    showPage(pages[parseInt(e.key) - 1]);
+  }
+});
 
 // ============================
 // Utility
 // ============================
-function updateStatus(id, status, text) {
-  const el = document.getElementById(id);
+function updateStatus(id, status) {
   const dotEl = document.getElementById(`${id}-dot`);
-  if (!el) return;
-  const indicator = el.parentElement;
-  if (indicator) {
-    indicator.className = `status-indicator ${status}`;
-  }
-  el.textContent = text;
   if (dotEl) {
     dotEl.className = 'status-dot';
     if (status === 'success') dotEl.classList.add('success');
   }
+  // Update titlebar agent status text
+  if (id === 'status-agent') {
+    const titleStatus = document.getElementById('titlebar-agent-status');
+    if (titleStatus) {
+      titleStatus.textContent = status === 'success' ? '运行中' : '未启动';
+      titleStatus.style.color = status === 'success' ? 'var(--success)' : 'var(--text-primary)';
+    }
+  }
 }
 
 function setBtnState(btn, text, duration = 2000) {
+  const orig = btn.textContent;
   btn.textContent = text;
-  setTimeout(() => {
-    const defaults = { 'save-config': '保存配置', 'test-connection': '测试连接', 'auth-feishu': '开始授权', 'auth-dingtalk': '开始授权', 'run-diagnostic': '运行诊断' };
-    btn.textContent = defaults[btn.id] || text;
-  }, duration);
+  setTimeout(() => { btn.textContent = orig; }, duration);
 }
 
 // ============================
@@ -95,12 +98,8 @@ if (els.browseFolder) {
   els.browseFolder.addEventListener('click', async () => {
     try {
       const path = await window.api.configBrowseFolder();
-      if (path) {
-        els.workspacePath.value = path;
-      }
-    } catch (err) {
-      console.error('Browse folder failed:', err);
-    }
+      if (path) els.workspacePath.value = path;
+    } catch (err) { console.error('Browse folder failed:', err); }
   });
 }
 
@@ -114,9 +113,7 @@ if (els.saveConfig) {
         autoStart: els.autoStart.checked,
       });
       setBtnState(els.saveConfig, '已保存 ✓');
-    } catch (err) {
-      setBtnState(els.saveConfig, '保存失败');
-    }
+    } catch (err) { setBtnState(els.saveConfig, '保存失败'); }
   });
 }
 
@@ -127,14 +124,9 @@ if (els.testConnection) {
     els.testConnection.textContent = '测试中...';
     els.testConnection.disabled = true;
     try {
-      const res = await fetch(url + '/health', {
-        headers: { 'Authorization': `Bearer ${els.apiToken.value}` },
-        signal: AbortSignal.timeout(5000),
-      });
+      const res = await fetch(url + '/health', { headers: { 'Authorization': `Bearer ${els.apiToken.value}` }, signal: AbortSignal.timeout(5000) });
       setBtnState(els.testConnection, res.ok ? '连接成功 ✓' : `失败: ${res.status}`);
-    } catch (err) {
-      setBtnState(els.testConnection, `失败: ${err.message}`);
-    }
+    } catch (err) { setBtnState(els.testConnection, `失败: ${err.message}`); }
     setTimeout(() => { els.testConnection.textContent = '测试连接'; els.testConnection.disabled = false; }, 3000);
   });
 }
@@ -152,23 +144,6 @@ async function loadConfig() {
 // ============================
 // Auth Page
 // ============================
-const authEls = {
-  feishuBtn: document.getElementById('auth-feishu'),
-  feishuReauth: document.getElementById('reauth-feishu'),
-  feishuVersion: document.getElementById('feishu-version'),
-  feishuStatus: document.getElementById('feishu-status'),
-  feishuUser: document.getElementById('feishu-user'),
-  feishuUserRow: document.getElementById('feishu-user-row'),
-  dingtalkBtn: document.getElementById('auth-dingtalk'),
-  dingtalkReauth: document.getElementById('reauth-dingtalk'),
-  dingtalkVersion: document.getElementById('dingtalk-version'),
-  dingtalkStatus: document.getElementById('dingtalk-status'),
-  dingtalkUser: document.getElementById('dingtalk-user'),
-  dingtalkUserRow: document.getElementById('dingtalk-user-row'),
-  runDiag: document.getElementById('run-diagnostic'),
-  diagResult: document.getElementById('diagnostic-result'),
-};
-
 function setAuthState(prefix, authed, userName, version) {
   const statusEl = document.getElementById(`${prefix}-status`);
   const userEl = document.getElementById(`${prefix}-user`);
@@ -176,7 +151,6 @@ function setAuthState(prefix, authed, userName, version) {
   const btnEl = document.getElementById(`auth-${prefix}`);
   const reauthEl = document.getElementById(`reauth-${prefix}`);
   const versionEl = document.getElementById(`${prefix}-version`);
-  const sidebarStatusEl = document.getElementById(`${prefix}-sidebar-status`);
 
   if (versionEl) versionEl.textContent = version || '-';
   if (authed) {
@@ -185,79 +159,54 @@ function setAuthState(prefix, authed, userName, version) {
     if (userRowEl) userRowEl.style.display = 'flex';
     if (btnEl) btnEl.style.display = 'none';
     if (reauthEl) reauthEl.style.display = '';
-    updateStatus(`status-${prefix}`, 'success', `${prefix === 'feishu' ? '飞书' : '钉钉'}: 已授权`);
-    if (sidebarStatusEl) {
-      sidebarStatusEl.innerHTML = `<span class="status-dot success"></span><span>${userName || '已授权'}</span>`;
-    }
+    updateStatus(`status-${prefix}`, 'success');
   } else {
     statusEl.innerHTML = '<span class="status-badge unauth">未授权</span>';
     if (userRowEl) userRowEl.style.display = 'none';
     if (btnEl) btnEl.style.display = '';
     if (reauthEl) reauthEl.style.display = 'none';
-    if (sidebarStatusEl) {
-      sidebarStatusEl.innerHTML = '<span class="status-dot"></span><span>未授权</span>';
-    }
   }
 }
 
 async function checkAuthStatus() {
   try {
     const result = await window.api.checkAuthStatus();
-    if (result.feishu.authed) {
-      setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
-    }
-    if (result.dingtalk.authed) {
-      setAuthState('dingtalk', true, result.dingtalk.userName, result.dingtalk.version);
-    }
+    if (result.feishu.authed) setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
+    if (result.dingtalk.authed) setAuthState('dingtalk', true, result.dingtalk.userName, result.dingtalk.version);
   } catch (err) { console.error('Check auth failed:', err); }
 }
 
 async function doAuth(cli, btnEl) {
   btnEl.disabled = true;
-  btnEl.textContent = '授权中...请在浏览器中完成操作...';
+  btnEl.textContent = '授权中...';
   try {
-    const result = await cli === 'feishu' ? window.api.authFeishu() : window.api.authDingtalk();
-    if (result.success) {
-      setAuthState(cli, true, result.userName, result.version);
-    } else {
-      alert(`授权失败: ${result.error}`);
-    }
-  } catch (err) {
-    alert(`授权异常: ${err.message}`);
-  }
+    const result = await (cli === 'feishu' ? window.api.authFeishu() : window.api.authDingtalk());
+    if (result.success) setAuthState(cli, true, result.userName, result.version);
+    else alert(`授权失败: ${result.error}`);
+  } catch (err) { alert(`授权异常: ${err.message}`); }
   btnEl.disabled = false;
   btnEl.textContent = '开始授权';
 }
 
-if (authEls.feishuBtn) {
-  authEls.feishuBtn.addEventListener('click', () => doAuth('feishu', authEls.feishuBtn));
-}
-if (authEls.feishuReauth) {
-  authEls.feishuReauth.addEventListener('click', () => doAuth('feishu', authEls.feishuReauth));
-}
-if (authEls.dingtalkBtn) {
-  authEls.dingtalkBtn.addEventListener('click', () => doAuth('dingtalk', authEls.dingtalkBtn));
-}
-if (authEls.dingtalkReauth) {
-  authEls.dingtalkReauth.addEventListener('click', () => doAuth('dingtalk', authEls.dingtalkReauth));
-}
+document.getElementById('auth-feishu')?.addEventListener('click', () => doAuth('feishu', document.getElementById('auth-feishu')));
+document.getElementById('reauth-feishu')?.addEventListener('click', () => doAuth('feishu', document.getElementById('reauth-feishu')));
+document.getElementById('auth-dingtalk')?.addEventListener('click', () => doAuth('dingtalk', document.getElementById('auth-dingtalk')));
+document.getElementById('reauth-dingtalk')?.addEventListener('click', () => doAuth('dingtalk', document.getElementById('reauth-dingtalk')));
 
-if (authEls.runDiag) {
-  authEls.runDiag.addEventListener('click', async () => {
-    authEls.runDiag.disabled = true;
-    authEls.runDiag.textContent = '诊断中...';
-    authEls.diagResult.style.display = 'block';
-    authEls.diagResult.textContent = '正在运行诊断...';
-    try {
-      const result = await window.api.runDiagnostic();
-      authEls.diagResult.textContent = result.output || result.error;
-    } catch (err) {
-      authEls.diagResult.textContent = `诊断失败: ${err.message}`;
-    }
-    authEls.runDiag.disabled = false;
-    authEls.runDiag.textContent = '运行诊断';
-  });
-}
+document.getElementById('run-diagnostic')?.addEventListener('click', async () => {
+  const btn = document.getElementById('run-diagnostic');
+  const resultBox = document.getElementById('diagnostic-result');
+  btn.disabled = true;
+  btn.textContent = '诊断中...';
+  resultBox.style.display = 'block';
+  resultBox.textContent = '正在运行诊断...';
+  try {
+    const result = await window.api.runDiagnostic();
+    resultBox.textContent = result.output || result.error;
+  } catch (err) { resultBox.textContent = `诊断失败: ${err.message}`; }
+  btn.disabled = false;
+  btn.textContent = '运行诊断';
+});
 
 // ============================
 // Chat Page
@@ -285,6 +234,7 @@ function sendMessage() {
   if (!text) return;
   addMessage(text, 'user');
   chatInput.value = '';
+  chatInput.style.height = 'auto';
   setTimeout(() => addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent'), 500);
 }
 
@@ -292,6 +242,10 @@ if (sendBtn) sendBtn.addEventListener('click', sendMessage);
 if (chatInput) {
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
   });
 }
 
@@ -312,12 +266,10 @@ async function agentAction(action) {
   appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);
   try {
     const config = await window.api.configGet();
-    await action === 'start' ? window.api.agentStart(config) : action === 'stop' ? window.api.agentStop() : window.api.agentRestart();
-    updateStatus('status-agent', 'success', 'Agent: 运行中');
+    await (action === 'start' ? window.api.agentStart(config) : action === 'stop' ? window.api.agentStop() : window.api.agentRestart());
+    updateStatus('status-agent', 'success');
     appendLog(`[INFO] Agent ${action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'}`);
-  } catch (err) {
-    appendLog(`[ERROR] Agent ${action}失败: ${err.message}`);
-  }
+  } catch (err) { appendLog(`[ERROR] Agent ${action}失败: ${err.message}`); }
 }
 
 document.getElementById('agent-start')?.addEventListener('click', () => agentAction('start'));
@@ -328,9 +280,9 @@ document.getElementById('agent-restart')?.addEventListener('click', () => agentA
 // Listen for events from main process
 // ============================
 if (window.api) {
-  window.api.onAgentLog( (data) => appendLog(`[${data.level}] ${data.message}`));
-  window.api.onAgentStatus( (data) => {
-    updateStatus('status-agent', data.running ? 'success' : 'error', `Agent: ${data.running ? '运行中' : '已停止'}`);
+  window.api.onAgentLog((data) => appendLog(`[${data.level}] ${data.message}`));
+  window.api.onAgentStatus((data) => {
+    updateStatus('status-agent', data.running ? 'success' : 'error');
   });
 }
 
@@ -384,7 +336,7 @@ function showWizard() {
         </div>
       </div>
       <div class="wizard-step" data-step="4" style="display:none">
-        <h3>设置完成 🎉</h3>
+        <h3>设置完成</h3>
         <p class="wizard-desc">一切就绪，开始使用吧！</p>
         <button class="btn btn-primary wizard-done">开始使用</button>
       </div>
@@ -405,17 +357,13 @@ function showWizard() {
     if (currentStep === 1) {
       wizardConfig.gatewayUrl = document.getElementById('wizard-gateway').value;
       wizardConfig.apiToken = document.getElementById('wizard-token').value;
-      await window.api.invoke('config-save', wizardConfig);
+      await window.api.configSave(wizardConfig);
       goToStep(2);
-    } else if (currentStep === 2) {
-      goToStep(3);
-    } else if (currentStep === 3) {
-      goToStep(4);
-    }
+    } else if (currentStep === 2) { goToStep(3); }
+    else if (currentStep === 3) { goToStep(4); }
   });
 
   overlay.querySelector('.wizard-prev').addEventListener('click', () => goToStep(currentStep - 1));
-
   overlay.querySelector('.wizard-close').addEventListener('click', () => overlay.remove());
 
   overlay.querySelector('.wizard-auth-feishu').addEventListener('click', async (e) => {
@@ -442,15 +390,20 @@ function showWizard() {
     btn.disabled = false; btn.textContent = '开始授权';
   });
 
-  overlay.querySelector('.wizard-done').addEventListener('click', () => {
-    overlay.remove();
-    checkAuthStatus();
-  });
+  overlay.querySelector('.wizard-done').addEventListener('click', () => { overlay.remove(); checkAuthStatus(); });
 }
+
+// ============================
+// New Chat Button
+// ============================
+document.getElementById('new-chat-btn')?.addEventListener('click', () => {
+  chatMessages.innerHTML = '';
+  addMessage('你好！我是 Hermes，有什么可以帮你？', 'agent');
+});
 
 // ============================
 // Init
 // ============================
 loadConfig();
 checkFirstRun();
-updateStatus('status-agent', 'error', 'Agent: 未启动');
+updateStatus('status-agent', 'error');

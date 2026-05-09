@@ -9,20 +9,25 @@
 </head>
 <body>
   <div id="app">
-    <div class="app-titlebar">
-      <div class="titlebar-brand">
-        <div id="logo">⚡</div>
-        <div id="logo-text">Hermes</div>
+    <!-- Top Titlebar -->
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <span class="titlebar-logo">⚡</span>
+        <span class="titlebar-brand">Hermes</span>
       </div>
-      <div class="titlebar-status">
-        <span class="status-indicator" data-tooltip="Agent"><span class="status-dot" id="status-agent-dot"></span></span>
-        <span class="status-indicator" data-tooltip="飞书"><span class="status-dot" id="status-feishu-dot"></span></span>
-        <span class="status-indicator" data-tooltip="钉钉"><span class="status-dot" id="status-dingtalk-dot"></span></span>
+      <div class="titlebar-center">
+        <span class="titlebar-status">Agent Status: <span id="titlebar-agent-status">未启动</span></span>
       </div>
-    </div>
+      <div class="titlebar-right">
+        <span class="status-dot" id="status-agent-dot" data-tooltip="Agent"></span>
+        <span class="status-dot" id="status-feishu-dot" data-tooltip="飞书"></span>
+        <span class="status-dot" id="status-dingtalk-dot" data-tooltip="钉钉"></span>
+      </div>
+    </header>
 
-    <div class="layout-container">
-      <div class="rail">
+    <div class="layout">
+      <!-- Left Rail -->
+      <nav class="rail">
         <button class="rail-btn active" data-page="chat" title="对话">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         </button>
@@ -35,180 +40,166 @@
         <button class="rail-btn" data-page="logs" title="日志">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
         </button>
-      </div>
+      </nav>
 
-      <div class="sidebar">
-        <!-- Settings panel -->
-        <div class="sidebar-panel" data-panel="settings">
-          <div class="sidebar-section">
-            <div class="sidebar-section-title">配置菜单</div>
-            <div class="sidebar-menu-item active" data-card="0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>API 配置</span></div>
-            <div class="sidebar-menu-item" data-card="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>工作区设置</span></div>
-            <div class="sidebar-menu-item" data-card="2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span>通用设置</span></div>
-          </div>
-        </div>
-        <!-- Auth panel -->
-        <div class="sidebar-panel" data-panel="auth">
-          <div class="sidebar-section">
-            <div class="sidebar-section-title">授权状态</div>
-            <div class="sidebar-card">
-              <div class="sidebar-card-title">飞书</div>
-              <div class="sidebar-card-status"><span class="status-dot" id="feishu-sidebar-dot"></span><span id="feishu-sidebar-status">未授权</span></div>
-            </div>
-            <div class="sidebar-card">
-              <div class="sidebar-card-title">钉钉</div>
-              <div class="sidebar-card-status"><span class="status-dot" id="dingtalk-sidebar-dot"></span><span id="dingtalk-sidebar-status">未授权</span></div>
-            </div>
-          </div>
-        </div>
-        <!-- Chat panel (active by default) -->
-        <div class="sidebar-panel active" data-panel="chat">
-          <div class="sidebar-section">
-            <div class="sidebar-section-title">会话列表</div>
-            <button class="new-chat-btn" id="new-chat-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              <span>新建对话</span>
+      <!-- Middle Panel -->
+      <aside class="mid-panel">
+        <!-- Sessions Section -->
+        <div class="mid-section sessions-section">
+          <div class="mid-section-header">
+            <span>会话列表</span>
+            <button class="new-session-btn" id="new-chat-btn" title="新建对话">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
-            <div class="sidebar-empty">暂无会话</div>
           </div>
-        </div>
-        <!-- Logs panel -->
-        <div class="sidebar-panel" data-panel="logs">
-          <div class="sidebar-section">
-            <div class="sidebar-section-title">日志筛选</div>
-            <div class="sidebar-empty">无筛选选项</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="main">
-        <div class="page" id="page-settings">
-          <div class="page-header">
-            <h2>配置</h2>
-          </div>
-          <div class="card">
-            <h3>API 配置</h3>
-            <div class="form-group">
-              <label for="gateway-url">Gateway URL</label>
-              <input type="text" id="gateway-url" placeholder="https://your-gateway-url">
-            </div>
-            <div class="form-group">
-              <label for="api-token">API Token</label>
-              <div class="input-with-action">
-                <input type="password" id="api-token" placeholder="输入你的 API Token">
-                <button id="toggle-token" class="btn-icon" title="显示/隐藏">👁</button>
-              </div>
-            </div>
-            <div class="form-actions">
-              <button id="test-connection" class="btn btn-secondary">测试连接</button>
-              <button id="save-config" class="btn btn-primary">保存配置</button>
-            </div>
-          </div>
-          <div class="card">
-            <h3>工作区设置</h3>
-            <div class="form-group">
-              <label for="workspace-path">工作空间路径</label>
-              <div class="input-with-action">
-                <input type="text" id="workspace-path" placeholder="~/.hermes" readonly>
-                <button id="browse-folder" class="btn btn-secondary">浏览</button>
-              </div>
-            </div>
-          </div>
-          <div class="card">
-            <h3>通用设置</h3>
-            <div class="form-group">
-              <label class="toggle-label">
-                <input type="checkbox" id="auto-start">
-                <span class="toggle-slider"></span>
-                <span class="toggle-text">开机自动启动 Agent</span>
-              </label>
-            </div>
+          <div class="session-list">
+            <div class="empty-state-text">暂无会话</div>
           </div>
         </div>
 
-        <div class="page" id="page-auth">
-          <div class="page-header">
-            <h2>CLI 授权</h2>
+        <!-- Workspace Section -->
+        <div class="mid-section workspace-section">
+          <div class="mid-section-header collapsible" id="workspace-toggle">
+            <span>Workspace</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card">
-            <h3>飞书授权</h3>
-            <div class="auth-info">
-              <div class="auth-meta">
-                <span class="auth-label">版本:</span>
-                <span class="auth-value" id="feishu-version">-</span>
+          <div class="workspace-tree" id="workspace-tree">
+            <div class="tree-item" data-type="folder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <span>项目目录</span>
+            </div>
+            <div class="tree-item tree-children">
+              <div class="tree-item" data-type="file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                <span>package.json</span>
               </div>
-              <div class="auth-meta">
-                <span class="auth-label">状态:</span>
-                <span id="feishu-status"><span class="status-badge unauth">未授权</span></span>
-              </div>
-              <div class="auth-meta" id="feishu-user-row" style="display:none">
-                <span class="auth-label">用户:</span>
-                <span class="auth-value" id="feishu-user">-</span>
+              <div class="tree-item" data-type="file">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                <span>README.md</span>
               </div>
             </div>
-            <div class="form-actions">
-              <button id="auth-feishu" class="btn btn-primary">开始授权</button>
-              <button id="reauth-feishu" class="btn btn-secondary" style="display:none">重新授权</button>
-            </div>
-          </div>
-          <div class="card">
-            <h3>钉钉授权</h3>
-            <div class="auth-info">
-              <div class="auth-meta">
-                <span class="auth-label">版本:</span>
-                <span class="auth-value" id="dingtalk-version">-</span>
-              </div>
-              <div class="auth-meta">
-                <span class="auth-label">状态:</span>
-                <span id="dingtalk-status"><span class="status-badge unauth">未授权</span></span>
-              </div>
-              <div class="auth-meta" id="dingtalk-user-row" style="display:none">
-                <span class="auth-label">用户:</span>
-                <span class="auth-value" id="dingtalk-user">-</span>
-              </div>
-            </div>
-            <div class="form-actions">
-              <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
-              <button id="reauth-dingtalk" class="btn btn-secondary" style="display:none">重新授权</button>
-            </div>
-          </div>
-          <div class="card">
-            <h3>一键诊断</h3>
-            <button id="run-diagnostic" class="btn btn-secondary">运行诊断</button>
-            <div id="diagnostic-result" class="result-box" style="display:none"></div>
           </div>
         </div>
+      </aside>
 
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Chat Page -->
         <div class="page active" id="page-chat">
-          <div class="page-header">
-            <h2>对话</h2>
-          </div>
-          <div class="chat-container">
+          <div class="chat-area">
             <div id="chat-messages" class="chat-messages">
               <div class="message agent">
                 <div class="message-bubble">你好！我是 Hermes，有什么可以帮你？</div>
               </div>
             </div>
             <div class="chat-input-area">
-              <textarea id="chat-input" placeholder="输入消息，Shift+Enter 换行..." rows="2"></textarea>
-              <button id="send-message" class="btn btn-primary">发送</button>
+              <textarea id="chat-input" placeholder="输入消息，Shift+Enter 换行..." rows="1"></textarea>
+              <button id="send-message" class="send-btn">发送</button>
             </div>
           </div>
         </div>
 
+        <!-- Settings Page -->
+        <div class="page" id="page-settings">
+          <div class="page-header">
+            <h2>配置</h2>
+          </div>
+          <div class="content-scroll">
+            <div class="card">
+              <h3>API 配置</h3>
+              <div class="form-group">
+                <label for="gateway-url">Gateway URL</label>
+                <input type="text" id="gateway-url" placeholder="https://your-gateway-url">
+              </div>
+              <div class="form-group">
+                <label for="api-token">API Token</label>
+                <div class="input-with-action">
+                  <input type="password" id="api-token" placeholder="输入你的 API Token">
+                  <button id="toggle-token" class="btn-icon" title="显示/隐藏">👁</button>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button id="test-connection" class="btn btn-secondary">测试连接</button>
+                <button id="save-config" class="btn btn-primary">保存配置</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>工作区设置</h3>
+              <div class="form-group">
+                <label for="workspace-path">工作空间路径</label>
+                <div class="input-with-action">
+                  <input type="text" id="workspace-path" placeholder="~/.hermes" readonly>
+                  <button id="browse-folder" class="btn btn-secondary">浏览</button>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>通用设置</h3>
+              <div class="form-group">
+                <label class="toggle-label">
+                  <input type="checkbox" id="auto-start">
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-text">开机自动启动 Agent</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Auth Page -->
+        <div class="page" id="page-auth">
+          <div class="page-header">
+            <h2>CLI 授权</h2>
+          </div>
+          <div class="content-scroll">
+            <div class="card">
+              <h3>飞书授权</h3>
+              <div class="auth-info">
+                <div class="auth-meta"><span class="auth-label">版本:</span><span class="auth-value" id="feishu-version">-</span></div>
+                <div class="auth-meta"><span class="auth-label">状态:</span><span id="feishu-status"><span class="status-badge unauth">未授权</span></span></div>
+                <div class="auth-meta" id="feishu-user-row" style="display:none"><span class="auth-label">用户:</span><span class="auth-value" id="feishu-user">-</span></div>
+              </div>
+              <div class="form-actions">
+                <button id="auth-feishu" class="btn btn-primary">开始授权</button>
+                <button id="reauth-feishu" class="btn btn-secondary" style="display:none">重新授权</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>钉钉授权</h3>
+              <div class="auth-info">
+                <div class="auth-meta"><span class="auth-label">版本:</span><span class="auth-value" id="dingtalk-version">-</span></div>
+                <div class="auth-meta"><span class="auth-label">状态:</span><span id="dingtalk-status"><span class="status-badge unauth">未授权</span></span></div>
+                <div class="auth-meta" id="dingtalk-user-row" style="display:none"><span class="auth-label">用户:</span><span class="auth-value" id="dingtalk-user">-</span></div>
+              </div>
+              <div class="form-actions">
+                <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
+                <button id="reauth-dingtalk" class="btn btn-secondary" style="display:none">重新授权</button>
+              </div>
+            </div>
+            <div class="card">
+              <h3>一键诊断</h3>
+              <button id="run-diagnostic" class="btn btn-secondary">运行诊断</button>
+              <div id="diagnostic-result" class="result-box" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Logs Page -->
         <div class="page" id="page-logs">
           <div class="page-header">
             <h2>运行日志</h2>
           </div>
-          <div class="log-controls">
-            <button id="agent-start" class="btn btn-secondary">启动 Agent</button>
-            <button id="agent-stop" class="btn btn-secondary">停止 Agent</button>
-            <button id="agent-restart" class="btn btn-secondary">重启 Agent</button>
-            <button id="clear-logs" class="btn btn-secondary" style="margin-left:auto">清空日志</button>
+          <div class="content-scroll">
+            <div class="log-controls">
+              <button id="agent-start" class="btn btn-secondary">启动 Agent</button>
+              <button id="agent-stop" class="btn btn-secondary">停止 Agent</button>
+              <button id="agent-restart" class="btn btn-secondary">重启 Agent</button>
+              <button id="clear-logs" class="btn btn-secondary" style="margin-left:auto">清空日志</button>
+            </div>
+            <div id="log-viewer" class="log-viewer"></div>
           </div>
-          <div id="log-viewer" class="log-viewer"></div>
         </div>
-      </div>
+      </main>
     </div>
   </div>
   <script src="app.js"></script>
