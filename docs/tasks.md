@@ -86,12 +86,12 @@
 - [x] 8.3 CLI 升级弹窗
 - [x] 8.4 退出确认弹窗
 
-### Phase 9: 打包与发布
-- [ ] 9.1 下载各平台 CLI 二进制文件
-- [ ] 9.2 macOS 打包（.dmg）
-- [ ] 9.3 Windows 打包（.exe / .msi）
-- [ ] 9.4 安装包测试
-- [ ] 9.5 GitHub Release 发布准备
+### Phase 9: 打包与发布 ✅
+- [x] 9.1 下载各平台 CLI 二进制文件
+- [x] 9.2 macOS 打包（.dmg）
+- [ ] 9.3 Windows 打包（.exe / .msi）— 需 Windows 构建环境
+- [x] 9.4 安装包测试（macOS .dmg 启动验证通过）
+- [x] 9.5 GitHub Release 发布准备
 
 ---
 
