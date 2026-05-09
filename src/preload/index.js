@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('api', {
   agentStart: (config) => ipcRenderer.invoke('agent-start', config),
   agentStop: () => ipcRenderer.invoke('agent-stop'),
   agentRestart: () => ipcRenderer.invoke('agent-restart'),
+  agentSendMessage: (text) => ipcRenderer.invoke('agent-send-message', text),
+  agentStopGeneration: () => ipcRenderer.invoke('agent-stop-generation'),
 
   // Events from main process
   onAgentLog: (fn) => {
@@ -29,6 +31,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_, data) => fn(data);
     ipcRenderer.on('agent-status', handler);
     return () => ipcRenderer.removeListener('agent-status', handler);
+  },
+  onAgentResponse: (fn) => {
+    const handler = (_, data) => fn(data);
+    ipcRenderer.on('agent-response', handler);
+    return () => ipcRenderer.removeListener('agent-response', handler);
   },
 
   // Legacy raw IPC (for backward compatibility during migration)

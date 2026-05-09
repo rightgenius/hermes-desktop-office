@@ -213,14 +213,104 @@ document.getElementById('run-diagnostic')?.addEventListener('click', async () =>
 // ============================
 const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-message');
+const stopBtn = document.getElementById('stop-generation');
 const chatMessages = document.getElementById('chat-messages');
+const sessionList = document.querySelector('.session-list');
 
-function addMessage(text, sender = 'user') {
+let currentSessionId = null;
+let currentAgentMessageEl = null;
+let agentRunning = false;
+
+const SESSIONS_KEY = 'hermes-chat-sessions';
+
+function loadSessions() {
+  try {
+    const data = localStorage.getItem(SESSIONS_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch { return {}; }
+}
+
+function saveSessions(sessions) {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+}
+
+function createNewSession() {
+  const id = `session-${Date.now()}`;
+  const sessions = loadSessions();
+  sessions[id] = { id, messages: [], created: Date.now(), title: '新对话' };
+  saveSessions(sessions);
+  return id;
+}
+
+function addMessageToSession(text, sender) {
+  if (!currentSessionId) return;
+  const sessions = loadSessions();
+  if (sessions[currentSessionId]) {
+    sessions[currentSessionId].messages.push({ text, sender, timestamp: Date.now() });
+    if (sender === 'user' && sessions[currentSessionId].messages.length <= 2) {
+      sessions[currentSessionId].title = text.slice(0, 30);
+    }
+    saveSessions(sessions);
+    renderSessionList();
+  }
+}
+
+function renderSessionList() {
+  const sessions = loadSessions();
+  const sorted = Object.values(sessions).sort((a, b) => b.created - a.created);
+  sessionList.innerHTML = sorted.length ? sorted.map(s => `
+    <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-session-id="${s.id}">
+      <span class="session-title">${escapeHtml(s.title)}</span>
+      <span class="session-time">${formatTime(s.created)}</span>
+    </div>
+  `).join('') : '<div class="empty-state-text">暂无会话</div>';
+
+  sessionList.querySelectorAll('.session-item').forEach(item => {
+    item.addEventListener('click', () => loadSession(item.dataset.sessionId));
+  });
+}
+
+function loadSession(sessionId) {
+  currentSessionId = sessionId;
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session) return;
+  chatMessages.innerHTML = '';
+  session.messages.forEach(m => addMessage(m.text, m.sender));
+  renderSessionList();
+}
+
+function formatTime(timestamp) {
+  const d = new Date(timestamp);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function addMessage(text, sender = 'user', isStreaming = false) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
+  if (isStreaming) msg.classList.add('streaming');
   msg.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`;
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  if (sender === 'agent' && isStreaming) {
+    currentAgentMessageEl = msg;
+  }
+  return msg;
+}
+
+function updateStreamingMessage(chunk) {
+  if (!currentAgentMessageEl) return;
+  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  bubble.textContent += chunk;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function finalizeStreamingMessage() {
+  if (!currentAgentMessageEl) return;
+  currentAgentMessageEl.classList.remove('streaming');
+  const text = currentAgentMessageEl.querySelector('.message-bubble').textContent;
+  addMessageToSession(text, 'agent');
+  currentAgentMessageEl = null;
 }
 
 function escapeHtml(text) {
@@ -229,16 +319,41 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-function sendMessage() {
+async function sendMessage() {
   const text = chatInput.value.trim();
   if (!text) return;
+  if (!agentRunning) {
+    addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent');
+    return;
+  }
+
   addMessage(text, 'user');
+  addMessageToSession(text, 'user');
   chatInput.value = '';
   chatInput.style.height = 'auto';
-  setTimeout(() => addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent'), 500);
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = '发送中...';
+  if (stopBtn) stopBtn.style.display = '';
+
+  try {
+    const result = await window.api.agentSendMessage(text);
+    if (!result.success) {
+      addMessage(result.error || '发送失败', 'agent');
+    }
+  } catch (err) {
+    addMessage(`发送异常: ${err.message}`, 'agent');
+  }
+}
+
+async function stopGeneration() {
+  try {
+    await window.api.agentStopGeneration();
+  } catch (err) { console.error('Stop generation failed:', err); }
 }
 
 if (sendBtn) sendBtn.addEventListener('click', sendMessage);
+if (stopBtn) stopBtn.addEventListener('click', stopGeneration);
 if (chatInput) {
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -248,6 +363,10 @@ if (chatInput) {
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
   });
 }
+
+renderSessionList();
+currentSessionId = createNewSession();
+addMessage('你好！我是 Hermes，有什么可以帮你？', 'agent');
 
 // ============================
 // Logs Page
@@ -283,6 +402,40 @@ if (window.api) {
   window.api.onAgentLog((data) => appendLog(`[${data.level}] ${data.message}`));
   window.api.onAgentStatus((data) => {
     updateStatus('status-agent', data.running ? 'success' : 'error');
+    agentRunning = data.running;
+  });
+  window.api.onAgentResponse((data) => {
+    switch (data.event) {
+      case 'start':
+        addMessage('', 'agent', true);
+        break;
+      case 'chunk':
+        updateStreamingMessage(data.data);
+        break;
+      case 'complete':
+        finalizeStreamingMessage();
+        sendBtn.disabled = false;
+        sendBtn.textContent = '发送';
+        if (stopBtn) stopBtn.style.display = 'none';
+        break;
+      case 'error':
+        if (currentAgentMessageEl) {
+          currentAgentMessageEl.querySelector('.message-bubble').textContent = data.data;
+          finalizeStreamingMessage();
+        } else {
+          addMessage(data.data, 'agent');
+        }
+        sendBtn.disabled = false;
+        sendBtn.textContent = '发送';
+        if (stopBtn) stopBtn.style.display = 'none';
+        break;
+      case 'stopped':
+        finalizeStreamingMessage();
+        sendBtn.disabled = false;
+        sendBtn.textContent = '发送';
+        if (stopBtn) stopBtn.style.display = 'none';
+        break;
+    }
   });
 }
 
@@ -397,8 +550,11 @@ function showWizard() {
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
+  currentSessionId = createNewSession();
   chatMessages.innerHTML = '';
   addMessage('你好！我是 Hermes，有什么可以帮你？', 'agent');
+  addMessageToSession('你好！我是 Hermes，有什么可以帮你？', 'agent');
+  renderSessionList();
 });
 
 // ============================

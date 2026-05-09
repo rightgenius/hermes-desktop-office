@@ -114,6 +114,8 @@ function setupIPCHandlers(mainWindow) {
     await agentManager.stop();
     return agentManager.start(config);
   });
+  ipcMain.handle('agent-send-message', (_, text) => agentManager.sendMessage(text));
+  ipcMain.handle('agent-stop-generation', () => agentManager.stopGeneration());
 }
 
 // Expose agentManager for graceful shutdown on app quit

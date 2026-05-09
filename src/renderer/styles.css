@@ -490,6 +490,76 @@ body {
   background: var(--accent-hover);
 }
 
+.send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.stop-btn {
+  padding: 0 var(--space-xl);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--error);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.stop-btn:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+.message.streaming .message-bubble {
+  position: relative;
+}
+
+.message.streaming .message-bubble::after {
+  content: '...';
+  animation: typing-cursor 1s infinite;
+}
+
+@keyframes typing-cursor {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.session-item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-sm) var(--space-md);
+  margin: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.session-item:hover {
+  background: var(--bg-hover);
+}
+
+.session-item.active {
+  background: var(--accent-light);
+}
+
+.session-title {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.space-2xl { padding: 32px; }
+
 /* Cards & Forms */
 .card {
   background: var(--bg-tertiary);
