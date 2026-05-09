@@ -3,17 +3,46 @@
 // ============================
 // Navigation
 // ============================
-document.querySelectorAll('.nav-item').forEach(item => {
+document.querySelectorAll('.rail-btn').forEach(item => {
   item.addEventListener('click', () => showPage(item.dataset.page));
+});
+
+document.querySelectorAll('.sidebar-menu-item').forEach(item => {
+  item.addEventListener('click', () => {
+    const cardIndex = item.dataset.card;
+    if (!cardIndex) return;
+    const settingsPage = document.getElementById('page-settings');
+    if (settingsPage && !settingsPage.classList.contains('active')) {
+      showPage('settings');
+    }
+    const cards = settingsPage?.querySelectorAll('.card');
+    if (cards && cards[cardIndex]) {
+      cards[cardIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      cards.forEach(c => c.classList.remove('highlight'));
+      cards[cardIndex].classList.add('highlight');
+      setTimeout(() => cards[cardIndex].classList.remove('highlight'), 2000);
+    }
+  });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.metaKey && e.key >= '1' && e.key <= '4') {
+    e.preventDefault();
+    const pages = ['settings', 'auth', 'chat', 'logs'];
+    showPage(pages[parseInt(e.key) - 1]);
+  }
 });
 
 function showPage(pageName) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.rail-btn').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
   const target = document.getElementById(`page-${pageName}`);
-  const nav = document.querySelector(`.nav-item[data-page="${pageName}"]`);
+  const nav = document.querySelector(`.rail-btn[data-page="${pageName}"]`);
+  const panel = document.querySelector(`.sidebar-panel[data-panel="${pageName}"]`);
   if (target) target.classList.add('active');
   if (nav) nav.classList.add('active');
+  if (panel) panel.classList.add('active');
 }
 
 // ============================
@@ -139,6 +168,7 @@ function setAuthState(prefix, authed, userName, version) {
   const btnEl = document.getElementById(`auth-${prefix}`);
   const reauthEl = document.getElementById(`reauth-${prefix}`);
   const versionEl = document.getElementById(`${prefix}-version`);
+  const sidebarStatusEl = document.getElementById(`${prefix}-sidebar-status`);
 
   if (versionEl) versionEl.textContent = version || '-';
   if (authed) {
@@ -148,11 +178,17 @@ function setAuthState(prefix, authed, userName, version) {
     if (btnEl) btnEl.style.display = 'none';
     if (reauthEl) reauthEl.style.display = '';
     updateStatus(`status-${prefix}`, 'success', `${prefix === 'feishu' ? '飞书' : '钉钉'}: 已授权`);
+    if (sidebarStatusEl) {
+      sidebarStatusEl.innerHTML = `<span class="status-dot success"></span><span>${userName || '已授权'}</span>`;
+    }
   } else {
     statusEl.innerHTML = '<span class="status-badge unauth">未授权</span>';
     if (userRowEl) userRowEl.style.display = 'none';
     if (btnEl) btnEl.style.display = '';
     if (reauthEl) reauthEl.style.display = 'none';
+    if (sidebarStatusEl) {
+      sidebarStatusEl.innerHTML = '<span class="status-dot"></span><span>未授权</span>';
+    }
   }
 }
 

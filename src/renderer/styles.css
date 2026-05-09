@@ -939,3 +939,271 @@ body {
     border: 1px solid #ddd;
   }
 }
+/* ==========================================
+   Three-Column Layout (Phase 10.2)
+   ========================================== */
+
+/* App Title Bar */
+.app-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 var(--space-lg);
+  background: var(--sidebar);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+  color: var(--text);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-brand #logo {
+  font-size: 18px;
+}
+
+.titlebar-brand #logo-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-status .status-indicator {
+  font-size: var(--font-size-xs);
+  color: var(--muted);
+}
+
+.titlebar-status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--error);
+  display: inline-block;
+}
+
+.titlebar-status .status-indicator.success .status-dot {
+  background: var(--success);
+  box-shadow: 0 0 4px var(--success);
+}
+
+/* Layout Container */
+.layout-container {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Rail (narrow icon navigation) */
+.rail {
+  width: 48px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-sm) 0;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.rail-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  color: var(--muted);
+  transition: all var(--transition-fast);
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.rail-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.rail-btn.active {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.rail-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+}
+
+.rail-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Rail Tooltip */
+.rail-btn::after {
+  content: attr(title);
+  position: absolute;
+  left: 52px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 10px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+  z-index: 100;
+}
+
+.rail-btn:hover::after {
+  opacity: 1;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 280px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.sidebar-panel {
+  display: none;
+}
+
+.sidebar-panel.active {
+  display: block;
+}
+
+.sidebar-section {
+  padding: var(--space-lg);
+}
+
+.sidebar-section-title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: var(--space-md);
+}
+
+/* Sidebar Menu Items */
+.sidebar-menu-item {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: 2px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.sidebar-menu-item:hover {
+  background: var(--hover-bg);
+  color: var(--text);
+}
+
+.sidebar-menu-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* Sidebar Cards (auth status) */
+.sidebar-card {
+  padding: var(--space-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-sm);
+}
+
+.sidebar-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: var(--space-xs);
+}
+
+.sidebar-card-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: var(--font-size-xs);
+  color: var(--muted);
+}
+
+.sidebar-card-status .status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--error);
+}
+
+.sidebar-card-status .status-dot.success {
+  background: var(--success);
+}
+
+/* Sidebar Empty State */
+.sidebar-empty {
+  padding: var(--space-xl) var(--space-md);
+  text-align: center;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+/* Main Content */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.main #page-container {
+  padding: var(--space-xl);
+}
+
+/* Card Highlight (sidebar menu scroll) */
+.card.highlight {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light), var(--shadow-hover);
+}
+
+/* Dark mode: rail tooltip */
+:root.dark .rail-btn::after {
+  background: var(--text);
+  color: var(--bg);
+}

@@ -9,36 +9,12 @@
 </head>
 <body>
   <div id="app">
-    <!-- Sidebar -->
-    <nav id="sidebar">
-      <div id="sidebar-header">
+    <div class="app-titlebar">
+      <div class="titlebar-brand">
         <div id="logo">⚡</div>
         <div id="logo-text">Hermes</div>
       </div>
-      <ul id="nav-menu">
-        <li class="nav-item active" data-page="settings">
-          <span class="nav-icon">⚙</span>
-          <span class="nav-label">配置</span>
-        </li>
-        <li class="nav-item" data-page="auth">
-          <span class="nav-icon">🔑</span>
-          <span class="nav-label">授权</span>
-        </li>
-        <li class="nav-item" data-page="chat">
-          <span class="nav-icon">💬</span>
-          <span class="nav-label">对话</span>
-        </li>
-        <li class="nav-item" data-page="logs">
-          <span class="nav-icon">📋</span>
-          <span class="nav-label">日志</span>
-        </li>
-      </ul>
-    </nav>
-
-    <!-- Main Content -->
-    <div id="main-content">
-      <!-- Top Status Bar -->
-      <header id="status-bar">
+      <div class="titlebar-status">
         <div class="status-indicator" id="status-agent">
           <span class="status-dot"></span>
           <span class="status-text">Agent: 未启动</span>
@@ -51,11 +27,62 @@
           <span class="status-dot"></span>
           <span class="status-text">钉钉: 未授权</span>
         </div>
-      </header>
+      </div>
+    </div>
 
-      <!-- Page Container -->
-      <main id="page-container">
-        <!-- Settings Page -->
+    <div class="layout-container">
+      <div class="rail">
+        <button class="rail-btn active" data-page="settings" title="配置">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="rail-btn" data-page="auth" title="授权">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        </button>
+        <button class="rail-btn" data-page="chat" title="对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button class="rail-btn" data-page="logs" title="日志">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+        </button>
+      </div>
+
+      <div class="sidebar">
+        <div class="sidebar-panel active" data-panel="settings">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">配置菜单</div>
+            <div class="sidebar-menu-item active" data-card="0">API 配置</div>
+            <div class="sidebar-menu-item" data-card="1">工作区设置</div>
+            <div class="sidebar-menu-item" data-card="2">通用设置</div>
+          </div>
+        </div>
+        <div class="sidebar-panel" data-panel="auth">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">授权状态</div>
+            <div class="sidebar-card">
+              <div class="sidebar-card-title">飞书</div>
+              <div class="sidebar-card-status" id="feishu-sidebar-status">未授权</div>
+            </div>
+            <div class="sidebar-card">
+              <div class="sidebar-card-title">钉钉</div>
+              <div class="sidebar-card-status" id="dingtalk-sidebar-status">未授权</div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-panel" data-panel="chat">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">会话列表</div>
+            <div class="sidebar-empty">暂无会话</div>
+          </div>
+        </div>
+        <div class="sidebar-panel" data-panel="logs">
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">日志筛选</div>
+            <div class="sidebar-empty">无筛选选项</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="main">
         <div class="page active" id="page-settings">
           <div class="page-header">
             <h2>配置</h2>
@@ -100,7 +127,6 @@
           </div>
         </div>
 
-        <!-- Auth Page -->
         <div class="page" id="page-auth">
           <div class="page-header">
             <h2>CLI 授权</h2>
@@ -154,7 +180,6 @@
           </div>
         </div>
 
-        <!-- Chat Page -->
         <div class="page" id="page-chat">
           <div class="page-header">
             <h2>对话</h2>
@@ -172,7 +197,6 @@
           </div>
         </div>
 
-        <!-- Logs Page -->
         <div class="page" id="page-logs">
           <div class="page-header">
             <h2>运行日志</h2>
@@ -185,7 +209,7 @@
           </div>
           <div id="log-viewer" class="log-viewer"></div>
         </div>
-      </main>
+      </div>
     </div>
   </div>
   <script src="app.js"></script>
