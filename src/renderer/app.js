@@ -50,9 +50,17 @@ function showPage(pageName) {
 // ============================
 function updateStatus(id, status, text) {
   const el = document.getElementById(id);
+  const dotEl = document.getElementById(`${id}-dot`);
   if (!el) return;
-  el.className = `status-indicator ${status}`;
-  el.querySelector('.status-text').textContent = text;
+  const indicator = el.parentElement;
+  if (indicator) {
+    indicator.className = `status-indicator ${status}`;
+  }
+  el.textContent = text;
+  if (dotEl) {
+    dotEl.className = 'status-dot';
+    if (status === 'success') dotEl.classList.add('success');
+  }
 }
 
 function setBtnState(btn, text, duration = 2000) {
@@ -341,6 +349,7 @@ function showWizard() {
   overlay.id = 'wizard-overlay';
   overlay.innerHTML = `
     <div class="wizard-modal">
+      <button class="wizard-close">&times;</button>
       <div class="wizard-step" data-step="1">
         <h3>欢迎使用 Hermes Desktop</h3>
         <p class="wizard-desc">完成以下步骤即可开始使用</p>
@@ -406,6 +415,8 @@ function showWizard() {
   });
 
   overlay.querySelector('.wizard-prev').addEventListener('click', () => goToStep(currentStep - 1));
+
+  overlay.querySelector('.wizard-close').addEventListener('click', () => overlay.remove());
 
   overlay.querySelector('.wizard-auth-feishu').addEventListener('click', async (e) => {
     const btn = e.target;
