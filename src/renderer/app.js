@@ -57,7 +57,7 @@ if (els.toggleToken) {
 if (els.browseFolder) {
   els.browseFolder.addEventListener('click', async () => {
     try {
-      const path = await window.api.invoke('config-browse-folder');
+      const path = await window.api.configBrowseFolder();
       if (path) {
         els.workspacePath.value = path;
       }
@@ -70,7 +70,7 @@ if (els.browseFolder) {
 if (els.saveConfig) {
   els.saveConfig.addEventListener('click', async () => {
     try {
-      await window.api.invoke('config-save', {
+      await window.api.configSave({
         gatewayUrl: els.gatewayUrl.value,
         apiToken: els.apiToken.value,
         workspacePath: els.workspacePath.value,
@@ -104,7 +104,7 @@ if (els.testConnection) {
 
 async function loadConfig() {
   try {
-    const config = await window.api.invoke('config-get');
+    const config = await window.api.configGet();
     els.gatewayUrl.value = config.gatewayUrl || '';
     els.apiToken.value = config.apiToken || '';
     els.workspacePath.value = config.workspacePath || '';
@@ -158,7 +158,7 @@ function setAuthState(prefix, authed, userName, version) {
 
 async function checkAuthStatus() {
   try {
-    const result = await window.api.invoke('check-auth-status');
+    const result = await window.api.checkAuthStatus();
     if (result.feishu.authed) {
       setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
     }
@@ -172,7 +172,7 @@ async function doAuth(cli, btnEl) {
   btnEl.disabled = true;
   btnEl.textContent = '授权中...请在浏览器中完成操作...';
   try {
-    const result = await window.api.invoke(`auth-${cli}`);
+    const result = await cli === 'feishu' ? window.api.authFeishu() : window.api.authDingtalk();
     if (result.success) {
       setAuthState(cli, true, result.userName, result.version);
     } else {
@@ -205,7 +205,7 @@ if (authEls.runDiag) {
     authEls.diagResult.style.display = 'block';
     authEls.diagResult.textContent = '正在运行诊断...';
     try {
-      const result = await window.api.invoke('run-diagnostic');
+      const result = await window.api.runDiagnostic();
       authEls.diagResult.textContent = result.output || result.error;
     } catch (err) {
       authEls.diagResult.textContent = `诊断失败: ${err.message}`;
@@ -267,8 +267,8 @@ document.getElementById('clear-logs')?.addEventListener('click', () => { if (log
 async function agentAction(action) {
   appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);
   try {
-    const config = await window.api.invoke('config-get');
-    await window.api.invoke(`agent-${action}`, config);
+    const config = await window.api.configGet();
+    await action === 'start' ? window.api.agentStart(config) : action === 'stop' ? window.api.agentStop() : window.api.agentRestart();
     updateStatus('status-agent', 'success', 'Agent: 运行中');
     appendLog(`[INFO] Agent ${action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'}`);
   } catch (err) {
@@ -284,8 +284,8 @@ document.getElementById('agent-restart')?.addEventListener('click', () => agentA
 // Listen for events from main process
 // ============================
 if (window.api) {
-  window.api.on('agent-log', (data) => appendLog(`[${data.level}] ${data.message}`));
-  window.api.on('agent-status', (data) => {
+  window.api.onAgentLog( (data) => appendLog(`[${data.level}] ${data.message}`));
+  window.api.onAgentStatus( (data) => {
     updateStatus('status-agent', data.running ? 'success' : 'error', `Agent: ${data.running ? '运行中' : '已停止'}`);
   });
 }
@@ -295,7 +295,7 @@ if (window.api) {
 // ============================
 async function checkFirstRun() {
   try {
-    const isFirst = await window.api.invoke('is-first-run');
+    const isFirst = await window.api.isFirstRun();
     if (isFirst) showWizard();
   } catch (err) { console.error('First run check failed:', err); }
 }
@@ -376,7 +376,7 @@ function showWizard() {
     btn.disabled = true; btn.textContent = '授权中...';
     const statusEl = document.getElementById('wizard-feishu-status');
     try {
-      const result = await window.api.invoke('auth-feishu');
+      const result = await window.api.authFeishu();
       statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
       if (result.success) setAuthState('feishu', true, result.userName);
     } catch (err) { statusEl.textContent = `✗ ${err.message}`; }
@@ -388,7 +388,7 @@ function showWizard() {
     btn.disabled = true; btn.textContent = '授权中...';
     const statusEl = document.getElementById('wizard-dingtalk-status');
     try {
-      const result = await window.api.invoke('auth-dingtalk');
+      const result = await window.api.authDingtalk();
       statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
       if (result.success) setAuthState('dingtalk', true, result.userName);
     } catch (err) { statusEl.textContent = `✗ ${err.message}`; }

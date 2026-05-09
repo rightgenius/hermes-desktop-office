@@ -12,7 +12,7 @@ class AgentManager {
   async start(config = {}) {
     if (this.running) return { success: false, error: 'Agent 已在运行中' };
 
-    const hermesPath = path.join(__dirname, '../../hermes-agent');
+    const hermesPath = path.join(__dirname, '../hermes-agent');
     if (!fs.existsSync(path.join(hermesPath, 'cli.py'))) {
       return { success: false, error: 'Hermes Agent 未安装，请确保 hermes-agent submodule 已正确初始化' };
     }

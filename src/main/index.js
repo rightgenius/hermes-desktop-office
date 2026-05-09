@@ -1,10 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { setupIPCHandlers } = require('./ipc-handlers');
-const ConfigStore = require('./config-store');
+const { setupIPCHandlers, getAgentManager } = require('./ipc-handlers');
 
 let mainWindow = null;
-const configStore = new ConfigStore();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -41,12 +39,19 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Graceful shutdown: stop Agent before quitting
+app.on('before-quit', async () => {
+  const agent = getAgentManager();
+  if (agent && agent.running) {
+    try { await agent.stop(); } catch (_) { /* best effort */ }
+  }
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
 
-// Config IPC
-ipcMain.handle('config-get', () => configStore.get());
-ipcMain.handle('config-save', (_, data) => configStore.save(data));
+// NOTE: config-get/config-save handlers are registered in ipc-handlers.js (setupIPCHandlers).
+// Do NOT register them here to avoid duplicates and separate ConfigStore instances.

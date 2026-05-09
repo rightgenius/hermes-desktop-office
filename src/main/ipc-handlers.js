@@ -116,4 +116,5 @@ function setupIPCHandlers(mainWindow) {
   });
 }
 
-module.exports = { setupIPCHandlers };
+// Expose agentManager for graceful shutdown on app quit
+module.exports = { setupIPCHandlers, getAgentManager: () => agentManager };
