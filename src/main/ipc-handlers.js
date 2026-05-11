@@ -119,8 +119,12 @@ function setupIPCHandlers(mainWindow) {
 
   // Test API connection from main process (no CORS issues)
   ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model }) => {
-    const { https } = require('https');
+    const https = require('https');
     const url = new URL(baseUrl + '/chat/completions');
+    const cleanApiKey = (apiKey || '').trim().replace(/[^\x20-\x7E]/g, '');
+    if (!cleanApiKey) {
+      return { success: false, error: 'API Key 为空或包含无效字符', hint: '请确保只包含 ASCII 可见字符' };
+    }
     const payload = JSON.stringify({
       model: model || 'gpt-4o-mini',
       messages: [{ role: 'user', content: 'Hi' }],
@@ -136,7 +140,7 @@ function setupIPCHandlers(mainWindow) {
         headers: {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
-          'Authorization': `Bearer ${apiKey}`
+          'Authorization': `Bearer ${cleanApiKey}`
         },
         timeout: 15000
       }, (res) => {
