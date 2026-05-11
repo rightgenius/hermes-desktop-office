@@ -95,6 +95,20 @@ const els = {
   apiKeyHint: document.getElementById('api-key-hint'),
 };
 
+// Provider to base_url mapping
+const PROVIDER_URLS = {
+  'auto': '',
+  'anthropic': 'https://api.anthropic.com',
+  'openrouter': 'https://openrouter.ai/api/v1',
+  'gemini': 'https://generativelanguage.googleapis.com/v1beta',
+  'openai': 'https://api.openai.com/v1',
+  'deepseek': 'https://api.deepseek.com',
+  'zhipuai': 'https://open.bigmodel.cn/api/paas/v4',
+  'moonshot': 'https://api.moonshot.cn/v1',
+  'minimax': 'https://api.minimax.chat/v1',
+  'custom': ''
+};
+
 function updateProviderUI() {
   const provider = els.provider.value;
   const hints = {
@@ -112,6 +126,11 @@ function updateProviderUI() {
   };
   
   els.apiKeyHint.textContent = hints[provider] || '';
+  
+  // Auto-fill base_url for known providers
+  if (PROVIDER_URLS[provider]) {
+    els.baseUrl.value = PROVIDER_URLS[provider];
+  }
   
   if (provider === 'custom') {
     els.baseUrlGroup.style.display = 'block';
@@ -178,34 +197,43 @@ async function loadConfig() {
 
 // Test API connection
 async function testApiConnection() {
-  const baseUrl = els.baseUrl.value.trim() || 'https://openrouter.ai/api/v1';
+  const provider = els.provider.value;
+  let baseUrl = els.baseUrl.value.trim();
+  // Auto-fill from provider if base_url is empty
+  if (!baseUrl && PROVIDER_URLS[provider]) {
+    baseUrl = PROVIDER_URLS[provider];
+  }
+  if (!baseUrl) {
+    alert('请先选择服务商或填写自定义端点 URL');
+    return;
+  }
   const apiKey = els.apiKey.value.trim();
+  if (!apiKey) {
+    alert('请先填写 API Key');
+    return;
+  }
   const model = els.model.value.trim() || 'gpt-4o-mini';
 
   try {
-    const res = await fetch(baseUrl + '/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'user', content: 'Hi' }],
-        max_tokens: 10
-      }),
-      signal: AbortSignal.timeout(10000)
-    });
-    
-    if (res.ok) {
-      const data = await res.json();
-      alert('API 连接成功！\n模型: ' + (data.model || '未知') + '\n响应: ' + (data.choices?.[0]?.message?.content || '无'));
+    const result = await window.api.testApiConnection({ baseUrl, apiKey, model });
+    if (result.success) {
+      alert(`API 连接成功！\n\n模型: ${result.model || '未知'}\n响应: ${result.response || '(无内容)'}\n\n原始响应 (前500字符):\n${result.raw || ''}`);
     } else {
-      const errText = await res.text().catch(() => res.statusText);
-      alert('API 连接失败: HTTP ' + res.status + '\n' + errText);
+      let msg = `API 连接失败\n\n`;
+      if (result.statusCode) {
+        msg += `HTTP 状态: ${result.statusCode} ${result.statusMessage}\n\n`;
+      }
+      if (result.code) {
+        msg += `错误代码: ${result.code}\n\n`;
+      }
+      msg += `错误详情:\n${result.error || '未知错误'}`;
+      if (result.headers && Object.keys(result.headers).length) {
+        msg += `\n\n响应头:\n${JSON.stringify(result.headers, null, 2)}`;
+      }
+      alert(msg);
     }
   } catch (err) {
-    alert('API 连接失败: ' + err.message);
+    alert(`API 连接异常: ${err.message}\n\n堆栈:\n${err.stack || ''}`);
   }
 }
 

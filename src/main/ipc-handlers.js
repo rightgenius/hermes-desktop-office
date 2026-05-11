@@ -116,6 +116,68 @@ function setupIPCHandlers(mainWindow) {
   });
   ipcMain.handle('agent-send-message', (_, text) => agentManager.sendMessage(text));
   ipcMain.handle('agent-stop-generation', () => agentManager.stopGeneration());
+
+  // Test API connection from main process (no CORS issues)
+  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model }) => {
+    const { https } = require('https');
+    const url = new URL(baseUrl + '/chat/completions');
+    const payload = JSON.stringify({
+      model: model || 'gpt-4o-mini',
+      messages: [{ role: 'user', content: 'Hi' }],
+      max_tokens: 10
+    });
+
+    return new Promise((resolve) => {
+      const req = https.request({
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 15000
+      }, (res) => {
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const data = JSON.parse(body);
+              resolve({
+                success: true,
+                model: data.model || 'unknown',
+                response: data.choices?.[0]?.message?.content || '(no content)',
+                raw: body.substring(0, 500)
+              });
+            } catch {
+              resolve({ success: true, raw: body.substring(0, 500) });
+            }
+          } else {
+            resolve({
+              success: false,
+              statusCode: res.statusCode,
+              statusMessage: res.statusMessage,
+              error: body.substring(0, 1000),
+              headers: Object.fromEntries(Object.entries(res.headers).slice(0, 5))
+            });
+          }
+        });
+      });
+
+      req.on('error', (err) => {
+        resolve({ success: false, error: err.message, code: err.code });
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ success: false, error: 'Request timed out after 15s' });
+      });
+      req.write(payload);
+      req.end();
+    });
+  });
 }
 
 // Expose agentManager for graceful shutdown on app quit
