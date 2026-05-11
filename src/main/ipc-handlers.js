@@ -182,6 +182,31 @@ function setupIPCHandlers(mainWindow) {
       req.end();
     });
   });
+
+  // Try starting agent and report result
+  ipcMain.handle('try-start-agent', async () => {
+    const config = configStore.get();
+    const result = await agentManager.start(config);
+
+    // Wait briefly to catch early startup errors
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    if (result.success && agentManager.running) {
+      return {
+        success: true,
+        message: 'Agent 启动成功',
+        pid: agentManager.process?.pid || null
+      };
+    } else {
+      return {
+        success: false,
+        message: result.error || 'Agent 启动失败',
+        details: agentManager.running ? '已启动但响应异常' : '未运行'
+      };
+    }
+  });
+
+  ipcMain.handle('agent-send-message', (_, text) => agentManager.sendMessage(text));
 }
 
 // Expose agentManager for graceful shutdown on app quit

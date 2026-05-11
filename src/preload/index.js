@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   agentSendMessage: (text) => ipcRenderer.invoke('agent-send-message', text),
   agentStopGeneration: () => ipcRenderer.invoke('agent-stop-generation'),
   testApiConnection: (params) => ipcRenderer.invoke('test-api-connection', params),
+  tryStartAgent: () => ipcRenderer.invoke('try-start-agent'),
 
   // Events from main process
   onAgentLog: (fn) => {

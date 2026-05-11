@@ -237,7 +237,35 @@ async function testApiConnection() {
   }
 }
 
-document.getElementById('test-api-connection')?.addEventListener('click', () => testApiConnection());
+// Try starting agent and report result
+async function tryStartAgent() {
+  try {
+    const result = await window.api.tryStartAgent();
+    if (result.success) {
+      let msg = `✅ Agent 启动成功\n\n`;
+      if (result.pid) msg += `进程 ID: ${result.pid}\n`;
+      msg += `\nAgent 已在后台运行，可以切换到对话页面开始使用。`;
+      alert(msg);
+      // Update status in titlebar
+      updateStatus('status-agent', 'success');
+    } else {
+      let msg = `❌ Agent 启动失败\n\n`;
+      msg += `错误: ${result.message || '未知错误'}\n`;
+      if (result.details) msg += `详情: ${result.details}\n`;
+      msg += `\n请检查:\n`;
+      msg += `1. hermes-agent submodule 是否正确初始化\n`;
+      msg += `2. ~/.hermes/.env 中 API Key 是否配置正确\n`;
+      msg += `3. 日志页面查看完整日志`;
+      alert(msg);
+      updateStatus('status-agent', 'error');
+    }
+  } catch (err) {
+    alert(`启动 Agent 异常: ${err.message}\n\n堆栈:\n${err.stack || ''}`);
+    updateStatus('status-agent', 'error');
+  }
+}
+
+document.getElementById('try-start-agent')?.addEventListener('click', () => tryStartAgent());
 
 // ============================
 // Auth Page
