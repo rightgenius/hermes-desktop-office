@@ -5,8 +5,10 @@ const { app } = require('electron');
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 
 const DEFAULT_CONFIG = {
-  gatewayUrl: '',
-  apiToken: '',
+  provider: 'auto',
+  apiKey: '',
+  baseUrl: '',
+  model: '',
   workspacePath: '',
   autoStart: false,
 };

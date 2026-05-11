@@ -78,19 +78,57 @@ function setBtnState(btn, text, duration = 2000) {
 // Settings Page
 // ============================
 const els = {
-  gatewayUrl: document.getElementById('gateway-url'),
-  apiToken: document.getElementById('api-token'),
-  toggleToken: document.getElementById('toggle-token'),
-  saveConfig: document.getElementById('save-config'),
-  testConnection: document.getElementById('test-connection'),
+  provider: document.getElementById('provider'),
+  apiKey: document.getElementById('api-key'),
+  baseUrl: document.getElementById('base-url'),
+  model: document.getElementById('model'),
   workspacePath: document.getElementById('workspace-path'),
-  browseFolder: document.getElementById('browse-folder'),
   autoStart: document.getElementById('auto-start'),
+  saveConfig: document.getElementById('save-config'),
+  runSetupWizard: document.getElementById('run-setup-wizard'),
+  toggleApiKey: document.getElementById('toggle-api-key'),
+  browseFolder: document.getElementById('browse-folder'),
+  checkConfig: document.getElementById('check-config'),
+  configStatus: document.getElementById('config-status'),
+  apiKeyGroup: document.getElementById('api-key-group'),
+  baseUrlGroup: document.getElementById('base-url-group'),
+  apiKeyHint: document.getElementById('api-key-hint'),
 };
 
-if (els.toggleToken) {
-  els.toggleToken.addEventListener('click', () => {
-    els.apiToken.type = els.apiToken.type === 'password' ? 'text' : 'password';
+function updateProviderUI() {
+  const provider = els.provider.value;
+  const hints = {
+    'auto': '自动检测已配置的 API Key',
+    'anthropic': '需要 ANTHROPIC_API_KEY',
+    'openrouter': '需要 OPENROUTER_API_KEY',
+    'nous': '需要通过 hermes login 命令授权',
+    'gemini': '需要 GOOGLE_API_KEY 或 GEMINI_API_KEY',
+    'openai': '需要 OPENAI_API_KEY',
+    'deepseek': '需要 DEEPSEEK_API_KEY',
+    'zhipuai': '需要 GLM_API_KEY',
+    'moonshot': '需要 KIMI_API_KEY',
+    'minimax': '需要 MINIMAX_API_KEY',
+    'custom': '需要自定义 API Key 和端点 URL',
+  };
+  
+  els.apiKeyHint.textContent = hints[provider] || '';
+  
+  if (provider === 'custom') {
+    els.baseUrlGroup.style.display = 'block';
+  } else {
+    els.baseUrlGroup.style.display = 'none';
+  }
+}
+
+if (els.provider) {
+  els.provider.addEventListener('change', updateProviderUI);
+}
+
+if (els.toggleApiKey) {
+  els.toggleApiKey.addEventListener('click', () => {
+    const input = els.apiKey;
+    input.type = input.type === 'password' ? 'text' : 'password';
+    els.toggleApiKey.textContent = input.type === 'password' ? '👁' : '👁‍🗨';
   });
 }
 
@@ -99,47 +137,79 @@ if (els.browseFolder) {
     try {
       const path = await window.api.configBrowseFolder();
       if (path) els.workspacePath.value = path;
-    } catch (err) { console.error('Browse folder failed:', err); }
+    } catch (err) {
+      console.error('Browse folder failed:', err);
+      alert('选择目录失败: ' + err.message);
+    }
   });
 }
 
 if (els.saveConfig) {
   els.saveConfig.addEventListener('click', async () => {
     try {
+      setBtnState(els.saveConfig, '保存中...');
       await window.api.configSave({
-        gatewayUrl: els.gatewayUrl.value,
-        apiToken: els.apiToken.value,
+        provider: els.provider.value,
+        apiKey: els.apiKey.value,
+        baseUrl: els.baseUrl.value,
+        model: els.model.value,
         workspacePath: els.workspacePath.value,
         autoStart: els.autoStart.checked,
       });
       setBtnState(els.saveConfig, '已保存 ✓');
-    } catch (err) { setBtnState(els.saveConfig, '保存失败'); }
-  });
-}
-
-if (els.testConnection) {
-  els.testConnection.addEventListener('click', async () => {
-    const url = els.gatewayUrl.value.trim();
-    if (!url) { setBtnState(els.testConnection, '请输入 Gateway URL'); return; }
-    els.testConnection.textContent = '测试中...';
-    els.testConnection.disabled = true;
-    try {
-      const res = await fetch(url + '/health', { headers: { 'Authorization': `Bearer ${els.apiToken.value}` }, signal: AbortSignal.timeout(5000) });
-      setBtnState(els.testConnection, res.ok ? '连接成功 ✓' : `失败: ${res.status}`);
-    } catch (err) { setBtnState(els.testConnection, `失败: ${err.message}`); }
-    setTimeout(() => { els.testConnection.textContent = '测试连接'; els.testConnection.disabled = false; }, 3000);
+    } catch (err) {
+      setBtnState(els.saveConfig, '保存失败: ' + err.message);
+    }
   });
 }
 
 async function loadConfig() {
   try {
     const config = await window.api.configGet();
-    els.gatewayUrl.value = config.gatewayUrl || '';
-    els.apiToken.value = config.apiToken || '';
+    els.provider.value = config.provider || 'auto';
+    els.apiKey.value = config.apiKey || '';
+    els.baseUrl.value = config.baseUrl || '';
+    els.model.value = config.model || '';
     els.workspacePath.value = config.workspacePath || '';
     els.autoStart.checked = !!config.autoStart;
+    updateProviderUI();
   } catch (err) { console.error('Load config failed:', err); }
 }
+
+// Test API connection
+async function testApiConnection() {
+  const baseUrl = els.baseUrl.value.trim() || 'https://openrouter.ai/api/v1';
+  const apiKey = els.apiKey.value.trim();
+  const model = els.model.value.trim() || 'gpt-4o-mini';
+
+  try {
+    const res = await fetch(baseUrl + '/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 10
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      alert('API 连接成功！\n模型: ' + (data.model || '未知') + '\n响应: ' + (data.choices?.[0]?.message?.content || '无'));
+    } else {
+      const errText = await res.text().catch(() => res.statusText);
+      alert('API 连接失败: HTTP ' + res.status + '\n' + errText);
+    }
+  } catch (err) {
+    alert('API 连接失败: ' + err.message);
+  }
+}
+
+document.getElementById('test-api-connection')?.addEventListener('click', () => testApiConnection());
 
 // ============================
 // Auth Page

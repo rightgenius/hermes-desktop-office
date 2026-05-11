@@ -107,31 +107,61 @@
           </div>
           <div class="content-scroll">
             <div class="card">
-              <h3>API 配置</h3>
+              <h3>AI 模型配置</h3>
               <div class="form-group">
-                <label for="gateway-url">Gateway URL</label>
-                <input type="text" id="gateway-url" placeholder="https://your-gateway-url">
+                <label for="provider">推理服务商</label>
+                <select id="provider">
+                  <option value="auto">自动检测</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="nous">Nous Portal</option>
+                  <option value="gemini">Google Gemini</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="zhipuai">智谱 AI (GLM)</option>
+                  <option value="moonshot">Moonshot (Kimi)</option>
+                  <option value="minimax">MiniMax</option>
+                  <option value="custom">自定义端点</option>
+                </select>
+              </div>
+              <div class="form-group" id="api-key-group">
+                <label for="api-key">API Key</label>
+                <div class="input-with-action">
+                  <input type="password" id="api-key" placeholder="输入 API Key">
+                  <button id="toggle-api-key" class="btn-icon" title="显示/隐藏">👁</button>
+                </div>
+                <small class="form-hint" id="api-key-hint"></small>
+              </div>
+              <div class="form-group" id="base-url-group" style="display: none;">
+                <label for="base-url">自定义端点 URL</label>
+                <input type="text" id="base-url" placeholder="https://your-api-endpoint">
               </div>
               <div class="form-group">
-                <label for="api-token">API Token</label>
-                <div class="input-with-action">
-                  <input type="password" id="api-token" placeholder="输入你的 API Token">
-                  <button id="toggle-token" class="btn-icon" title="显示/隐藏">👁</button>
-                </div>
+                <label for="model">默认模型（可选）</label>
+                <input type="text" id="model" placeholder="留空自动选择">
+                <small class="form-hint">例如: anthropic/claude-sonnet-4, openrouter/anthropic/claude-3.5-sonnet</small>
               </div>
               <div class="form-actions">
-                <button id="test-connection" class="btn btn-secondary">测试连接</button>
-                <button id="save-config" class="btn btn-primary">保存配置</button>
+      <button id="test-api-connection" class="btn btn-secondary">测试 API 连接</button>
+      <button id="save-config" class="btn btn-primary">保存配置</button>
               </div>
             </div>
             <div class="card">
               <h3>工作区设置</h3>
               <div class="form-group">
-                <label for="workspace-path">工作空间路径</label>
+                <label for="workspace-path">Hermes 配置目录</label>
                 <div class="input-with-action">
                   <input type="text" id="workspace-path" placeholder="~/.hermes" readonly>
                   <button id="browse-folder" class="btn btn-secondary">浏览</button>
                 </div>
+                <small class="form-hint">配置文件位于 ~/.hermes/config.yaml 和 ~/.hermes/.env</small>
+              </div>
+              <div class="form-group">
+                <label for="config-status">配置状态</label>
+                <div id="config-status" class="status-display">
+                  <span class="status-badge">未检查</span>
+                </div>
+                <button id="check-config" class="btn btn-secondary" style="margin-top: 8px;">检查配置</button>
               </div>
             </div>
             <div class="card">
