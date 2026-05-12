@@ -22,14 +22,15 @@ class AgentManager {
       return { success: false, error: 'Hermes Agent 未安装，请确保 hermes-agent submodule 已正确初始化' };
     }
 
-    // Find Python interpreter: prefer venv, then .venv, then fail gracefully
+    // Find Python interpreter: check dev venv, packaged venv, then fail
     const venvPython = path.join(hermesPath, 'venv', 'bin', 'python3');
     const dotVenvPython = path.join(hermesPath, '.venv', 'bin', 'python3');
-    // In packaged Electron app, venv is under Resources/
-    const bundledVenv = path.join(__dirname, '..', '..', 'hermes-agent', 'venv', 'bin', 'python3');
+    // In packaged Electron app, resources are in Resources/ (mac) or similar
+    const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+    const packagedVenv = path.join(resourcesDir, 'hermes-agent', 'venv', 'bin', 'python3');
     const pythonCmd = fs.existsSync(venvPython) ? venvPython
                     : fs.existsSync(dotVenvPython) ? dotVenvPython
-                    : fs.existsSync(bundledVenv) ? bundledVenv
+                    : fs.existsSync(packagedVenv) ? packagedVenv
                     : null;
 
     if (!pythonCmd) {

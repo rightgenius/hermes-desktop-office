@@ -29,11 +29,27 @@
       "!src/hermes-agent/node_modules",
       "!src/hermes-agent/__pycache__",
       "!src/hermes-agent/.pytest_cache",
-      "src/hermes-agent/venv/**/*",
+      "!src/hermes-agent/venv",
+      "!src/hermes-agent/.venv",
       "assets/feishu-cli/**/lark-cli",
       "assets/feishu-cli/**/lark-cli.exe",
       "assets/dws-cli/**/dws",
       "assets/dws-cli/**/dws.exe"
+    ],
+    "extraResources": [
+      {
+        "from": "src/hermes-agent",
+        "to": "hermes-agent",
+        "filter": [
+          "**/*",
+          "!**/.git/**",
+          "!**/.github/**",
+          "!**/node_modules/**",
+          "!**/__pycache__/**",
+          "!**/.pytest_cache/**",
+          "!**/.venv/**"
+        ]
+      }
     ],
     "mac": {
       "target": [

@@ -47,10 +47,10 @@ echo "→ Creating Python venv with uv..."
 uv venv
 
 echo "→ Installing hermes-agent dependencies (this may take a few minutes)..."
-uv pip install -e "." || {
+uv pip install "." || {
   echo ""
   echo "⚠️  Base install failed. Try manual install:"
-  echo "   cd src/hermes-agent && uv venv && uv pip install -e ."
+  echo "   cd src/hermes-agent && uv venv && uv pip install ."
   exit 1
 }
 
