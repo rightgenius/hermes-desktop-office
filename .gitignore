@@ -34,3 +34,7 @@ assets/dws-cli/
 # Hermes workspace data
 workspaces/
 .hermes/
+
+# Hermes Agent venv (created by scripts/setup-agent.sh, bundled in build)
+src/hermes-agent/venv/
+src/hermes-agent/.venv/

@@ -1,7 +1,7 @@
 {
   "name": "hermes-desktop-office",
   "version": "0.1.0",
-  "description": "Hermes Desktop for Office — bundled AI agent with Feishu & DingTalk CLI",
+  "description": "Hermes Desktop for Office \u2014 bundled AI agent with Feishu & DingTalk CLI",
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
@@ -10,7 +10,11 @@
     "build:win": "npm run download-clis && electron-builder --win",
     "build:linux": "npm run download-clis && electron-builder --linux",
     "download-clis": "bash scripts/download-clis.sh",
-    "download-clis:clean": "bash scripts/download-clis.sh --clean"
+    "download-clis:clean": "bash scripts/download-clis.sh --clean",
+    "setup:agent": "bash scripts/setup-agent.sh",
+    "prebuild:mac": "npm run setup:agent",
+    "prebuild:win": "npm run setup:agent",
+    "prebuild:linux": "npm run setup:agent"
   },
   "build": {
     "appId": "ai.hermes.desktop.office",
@@ -23,6 +27,9 @@
       "!src/hermes-agent/.git",
       "!src/hermes-agent/.github",
       "!src/hermes-agent/node_modules",
+      "!src/hermes-agent/__pycache__",
+      "!src/hermes-agent/.pytest_cache",
+      "src/hermes-agent/venv/**/*",
       "assets/feishu-cli/**/lark-cli",
       "assets/feishu-cli/**/lark-cli.exe",
       "assets/dws-cli/**/dws",
