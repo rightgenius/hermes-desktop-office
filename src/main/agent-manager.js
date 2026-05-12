@@ -24,10 +24,10 @@ class AgentManager {
 
     const workspacePath = config.workspacePath || '';
     const env = { ...process.env, HERMES_WORKSPACE: workspacePath };
-    if (config.apiKey) env.HERMES_API_TOKEN = config.apiKey;
-    if (config.baseUrl) env.HERMES_BASE_URL = config.baseUrl;
+    if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
+    if (config.baseUrl) env.OPENROUTER_BASE_URL = config.baseUrl;
     if (config.provider && config.provider !== 'auto') env.HERMES_INFERENCE_PROVIDER = config.provider;
-    if (config.model) env.HERMES_MODEL = config.model;
+    if (config.model) env.HERMES_INFERENCE_MODEL = config.model;
 
     try {
       this.process = spawn('python3', ['cli.py'], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
