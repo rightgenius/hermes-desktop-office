@@ -22,6 +22,35 @@ class AgentManager {
       return { success: false, error: 'Hermes Agent 未安装，请确保 hermes-agent submodule 已正确初始化' };
     }
 
+    // Find Python interpreter: prefer venv, fallback to system python3
+    const venvPython = path.join(hermesPath, 'venv', 'bin', 'python3');
+    const dotVenvPython = path.join(hermesPath, '.venv', 'bin', 'python3');
+    let pythonCmd = 'python3';
+
+    if (fs.existsSync(venvPython)) {
+      pythonCmd = venvPython;
+    } else if (fs.existsSync(dotVenvPython)) {
+      pythonCmd = dotVenvPython;
+    } else {
+      // No venv — create one using uv
+      try {
+        const { execFileSync } = require('child_process');
+        const uv = execFileSync('which', ['uv'], { encoding: 'utf-8' }).trim();
+        if (uv) {
+          this.emitLog('info', '首次启动：正在创建 Python 虚拟环境...');
+          execFileSync(uv, ['venv'], { cwd: hermesPath });
+          this.emitLog('info', '正在安装依赖（首次可能需要几分钟）...');
+          execFileSync(uv, ['pip', 'install', '-e', '.[all]'], { cwd: hermesPath, timeout: 300000 });
+          pythonCmd = venvPython;
+          this.emitLog('info', '依赖安装完成');
+        }
+      } catch (setupErr) {
+        this.emitLog('error', `自动安装 venv 失败: ${setupErr.message}`);
+        this.emitLog('info', '请手动运行: cd src/hermes-agent && uv venv && uv pip install -e .[all]');
+        pythonCmd = 'python3';
+      }
+    }
+
     const workspacePath = config.workspacePath || '';
     const env = { ...process.env, HERMES_WORKSPACE: workspacePath };
     if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
@@ -30,7 +59,7 @@ class AgentManager {
     if (config.model) env.HERMES_INFERENCE_MODEL = config.model;
 
     try {
-      this.process = spawn('python3', ['cli.py'], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
+      this.process = spawn(pythonCmd, ['cli.py'], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
       this.running = true;
       this.sendStatusUpdate();
 
