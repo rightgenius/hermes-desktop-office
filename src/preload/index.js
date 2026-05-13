@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('api', {
   agentStart: (config) => ipcRenderer.invoke('agent-start', config),
   agentStop: () => ipcRenderer.invoke('agent-stop'),
   agentRestart: () => ipcRenderer.invoke('agent-restart'),
-  agentSendMessage: (text) => ipcRenderer.invoke('agent-send-message', text),
+  agentSendMessage: (text, history) => ipcRenderer.invoke('agent-send-message', { text, history }),
   agentStopGeneration: () => ipcRenderer.invoke('agent-stop-generation'),
   testApiConnection: (params) => ipcRenderer.invoke('test-api-connection', params),
   tryStartAgent: () => ipcRenderer.invoke('try-start-agent'),

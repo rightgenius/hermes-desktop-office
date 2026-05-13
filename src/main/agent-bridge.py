@@ -6,7 +6,7 @@ Reads JSON messages from stdin, calls AIAgent.chat(), writes responses to stdout
 Usage: python3 bridge.py <hermes-agent-dir>
 
 Protocol:
-  Input:  {"type": "message", "content": "user message"}\n
+  Input:  {"type": "message", "content": "user message", "history": [...]}\n
   Output: {"type": "ready"}\n
           {"type": "start"}\n
           {"type": "chunk", "text": "..."}\n
@@ -59,6 +59,7 @@ def main():
 
         if msg.get("type") == "message":
             content = msg.get("content", "")
+            history = msg.get("history", [])
             if not content:
                 sys.stdout.write(json.dumps({"type": "error", "message": "Empty message"}) + "\n")
                 sys.stdout.flush()
@@ -72,7 +73,23 @@ def main():
                 sys.stdout.write(json.dumps({"type": "start"}) + "\n")
                 sys.stdout.flush()
 
-                result = agent.chat(content, stream_callback=on_chunk)
+                # Build the full message with history context
+                if history:
+                    # Prepend history to the current message so the agent has context
+                    context_parts = []
+                    for h in history:
+                        role = h.get("role", "unknown")
+                        text = h.get("content", "")
+                        if role == "user":
+                            context_parts.append(f"User: {text}")
+                        elif role == "assistant":
+                            context_parts.append(f"Assistant: {text}")
+                    context = "\n\n".join(context_parts)
+                    full_message = f"Previous conversation:\n{context}\n\nNow please respond to: {content}"
+                else:
+                    full_message = content
+
+                result = agent.chat(full_message, stream_callback=on_chunk)
                 sys.stdout.write(json.dumps({"type": "done", "text": result}) + "\n")
                 sys.stdout.flush()
 

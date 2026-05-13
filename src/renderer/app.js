@@ -415,7 +415,12 @@ function addMessage(text, sender = 'user', isStreaming = false) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   if (isStreaming) msg.classList.add('streaming');
-  msg.innerHTML = `<div class="message-bubble">${escapeHtml(text)}</div>`;
+  // Agent messages render markdown, user messages use plain text
+  const content = sender === 'agent' ? renderMarkdown(text) : escapeHtml(text);
+  msg.innerHTML = `<div class="message-bubble">${content}</div>`;
+  // Store raw text for streaming updates
+  const bubble = msg.querySelector('.message-bubble');
+  bubble._rawText = text;
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   if (sender === 'agent' && isStreaming) {
@@ -427,14 +432,17 @@ function addMessage(text, sender = 'user', isStreaming = false) {
 function updateStreamingMessage(chunk) {
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-  bubble.textContent += chunk;
+  // Append chunk and re-render markdown
+  bubble._rawText = (bubble._rawText || '') + chunk;
+  bubble.innerHTML = renderMarkdown(bubble._rawText);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function finalizeStreamingMessage() {
   if (!currentAgentMessageEl) return;
   currentAgentMessageEl.classList.remove('streaming');
-  const text = currentAgentMessageEl.querySelector('.message-bubble').textContent;
+  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  const text = bubble._rawText || bubble.textContent;
   addMessageToSession(text, 'agent');
   currentAgentMessageEl = null;
 }
@@ -443,6 +451,96 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// Lightweight markdown-to-HTML renderer for chat messages
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  // Extract and protect code blocks first
+  const codeBlocks = [];
+  text = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
+    const placeholder = `\x00CODEBLOCK${codeBlocks.length}\x00`;
+    codeBlocks.push({ lang, code: code.trim() });
+    return placeholder;
+  });
+
+  // Escape HTML
+  let html = escapeHtml(text);
+
+  // Restore code blocks
+  codeBlocks.forEach((block, i) => {
+    const placeholder = `\x00CODEBLOCK${i}\x00`;
+    const langLabel = block.lang ? `<span class="code-lang">${block.lang}</span>` : '';
+    html = html.replace(placeholder, `<pre class="code-block">${langLabel}<code>${escapeHtml(block.code)}</code></pre>`);
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+  // Tables: | col | col |\n|---|---|\n| data | data |
+  html = html.replace(/^((?:\|.+\|(?:\n|$))+)/gm, (tableMatch) => {
+    const lines = tableMatch.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) return tableMatch;
+    // Check second line is separator
+    const sepLine = lines[1].trim();
+    if (!/^[\|\-\s:]+$/.test(sepLine)) return tableMatch;
+
+    const parseCells = (line) => line.split('|').slice(1, -1).map(c => c.trim());
+    const headers = parseCells(lines[0]);
+    let result = '<table class="md-table"><thead><tr>';
+    headers.forEach(h => { result += `<th>${h}</th>`; });
+    result += '</tr></thead><tbody>';
+    for (let i = 2; i < lines.length; i++) {
+      const cells = parseCells(lines[i]);
+      result += '<tr>';
+      cells.forEach(c => { result += `<td>${c}</td>`; });
+      result += '</tr>';
+    }
+    result += '</tbody></table>';
+    return result;
+  });
+
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Bold and italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Unordered lists
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>(?:<br>)?)+)/g, (match) => {
+    const cleaned = match.replace(/<br>/g, '\n');
+    return `<ul>${cleaned}</ul>`;
+  });
+
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Horizontal rules
+  html = html.replace(/^---$/gm, '<hr>');
+
+  // Line breaks: convert double newlines to paragraph breaks, single newlines to <br>
+  // But not inside tables or code blocks
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+
+  // Wrap in paragraph if not already wrapped
+  if (!html.startsWith('<')) {
+    html = '<p>' + html + '</p>';
+  }
+
+  return html;
 }
 
 async function sendMessage() {
@@ -462,14 +560,27 @@ async function sendMessage() {
   sendBtn.textContent = '发送中...';
   if (stopBtn) stopBtn.style.display = '';
 
+  // Build conversation history from current session
+  const history = buildConversationHistory();
+
   try {
-    const result = await window.api.agentSendMessage(text);
+    const result = await window.api.agentSendMessage(text, history);
     if (!result.success) {
       addMessage(result.error || '发送失败', 'agent');
     }
   } catch (err) {
     addMessage(`发送异常: ${err.message}`, 'agent');
   }
+}
+
+function buildConversationHistory() {
+  if (!currentSessionId) return [];
+  const sessions = loadSessions();
+  const session = sessions[currentSessionId];
+  if (!session || !session.messages) return [];
+  return session.messages
+    .filter(m => m.sender === 'user' || m.sender === 'agent')
+    .map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }));
 }
 
 async function stopGeneration() {
@@ -546,7 +657,9 @@ if (window.api) {
         break;
       case 'error':
         if (currentAgentMessageEl) {
-          currentAgentMessageEl.querySelector('.message-bubble').textContent = data.data;
+          const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+          bubble._rawText = data.data;
+          bubble.innerHTML = renderMarkdown(data.data);
           finalizeStreamingMessage();
         } else {
           addMessage(data.data, 'agent');

@@ -114,7 +114,6 @@ function setupIPCHandlers(mainWindow) {
     await agentManager.stop();
     return agentManager.start(config);
   });
-  ipcMain.handle('agent-send-message', (_, text) => agentManager.sendMessage(text));
   ipcMain.handle('agent-stop-generation', () => agentManager.stopGeneration());
 
   // Test API connection from main process (no CORS issues)
@@ -206,7 +205,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('agent-send-message', (_, text) => agentManager.sendMessage(text));
+  ipcMain.handle('agent-send-message', (_, { text, history }) => agentManager.sendMessage(text, history));
 }
 
 // Expose agentManager for graceful shutdown on app quit

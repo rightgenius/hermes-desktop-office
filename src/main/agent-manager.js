@@ -116,7 +116,7 @@ class AgentManager {
     });
   }
 
-  sendMessage(text) {
+  sendMessage(text, history = []) {
     if (!this.running || !this.process) {
       return { success: false, error: 'Agent 未运行' };
     }
@@ -125,7 +125,7 @@ class AgentManager {
     }
 
     try {
-      const message = JSON.stringify({ type: 'message', content: text }) + '\n';
+      const message = JSON.stringify({ type: 'message', content: text, history }) + '\n';
       this.process.stdin.write(message);
       this.isGenerating = true;
       return { success: true };
