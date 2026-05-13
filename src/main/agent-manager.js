@@ -48,12 +48,12 @@ class AgentManager {
 
     try {
       // Use bridge.py for JSON-based GUI communication instead of cli.py
-      const bridgeScript = path.join(hermesPath, 'bridge.py');
+      const bridgeScript = path.join(__dirname, 'agent-bridge.py');
       if (!fs.existsSync(bridgeScript)) {
-        return { success: false, error: 'bridge.py 未找到，请更新 hermes-agent submodule' };
+        return { success: false, error: 'agent-bridge.py 未找到' };
       }
 
-      this.process = spawn(pythonCmd, [bridgeScript], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
+      this.process = spawn(pythonCmd, [bridgeScript, hermesPath], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
       this.running = true;
       this.sendStatusUpdate();
 
