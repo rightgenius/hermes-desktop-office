@@ -8,10 +8,7 @@ class AgentManager {
     this.mainWindow = mainWindow;
     this.process = null;
     this.running = false;
-    this.messageQueue = [];
     this.isGenerating = false;
-    this.responseBuffer = '';
-    this.currentResponseCallback = null;
   }
 
   async start(config = {}) {
@@ -37,7 +34,7 @@ class AgentManager {
       return {
         success: false,
         error: 'Hermes Agent 依赖未安装。请运行以下命令安装依赖：\n' +
-          'cd src/hermes-agent && uv venv && uv pip install -e .[all]\n\n' +
+          'cd src/hermes-agent && uv venv && uv pip install .\n\n' +
           '或使用项目脚本：bash scripts/setup-agent.sh'
       };
     }
@@ -50,12 +47,33 @@ class AgentManager {
     if (config.model) env.HERMES_INFERENCE_MODEL = config.model;
 
     try {
-      this.process = spawn(pythonCmd, ['cli.py'], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
+      // Use bridge.py for JSON-based GUI communication instead of cli.py
+      const bridgeScript = path.join(hermesPath, 'bridge.py');
+      if (!fs.existsSync(bridgeScript)) {
+        return { success: false, error: 'bridge.py 未找到，请更新 hermes-agent submodule' };
+      }
+
+      this.process = spawn(pythonCmd, [bridgeScript], { cwd: hermesPath, env, stdio: ['pipe', 'pipe', 'pipe'] });
       this.running = true;
       this.sendStatusUpdate();
 
-      const stdoutRL = readline.createInterface({ input: this.process.stdout });
-      stdoutRL.on('line', (line) => this.handleStdoutLine(line));
+      // Read JSON responses from bridge
+      this._buffer = '';
+      this.process.stdout.on('data', (d) => {
+        this._buffer += d.toString();
+        const lines = this._buffer.split('\n');
+        this._buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            this._handleBridgeMessage(msg);
+          } catch {
+            // Non-JSON output (warnings, etc.) - treat as log
+            this.emitLog('info', line.trim());
+          }
+        }
+      });
 
       this.process.stderr.on('data', (d) => this.emitLog('error', d.toString().trim()));
       this.process.on('close', (code) => {
@@ -98,42 +116,6 @@ class AgentManager {
     });
   }
 
-  handleStdoutLine(line) {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-
-    this.emitLog('info', trimmed);
-
-    if (trimmed.startsWith('[RESPONSE_START]')) {
-      this.isGenerating = true;
-      this.responseBuffer = '';
-      this.emitResponse('start', '');
-      return;
-    }
-
-    if (trimmed.startsWith('[RESPONSE_END]')) {
-      this.isGenerating = false;
-      this.emitResponse('complete', this.responseBuffer);
-      this.responseBuffer = '';
-      return;
-    }
-
-    if (trimmed.startsWith('[RESPONSE_CHUNK]')) {
-      const chunk = trimmed.replace('[RESPONSE_CHUNK]', '').trim();
-      this.responseBuffer += chunk;
-      this.emitResponse('chunk', chunk);
-      return;
-    }
-
-    if (trimmed.startsWith('[RESPONSE_ERROR]')) {
-      const errorMsg = trimmed.replace('[RESPONSE_ERROR]', '').trim();
-      this.isGenerating = false;
-      this.emitResponse('error', errorMsg);
-      this.responseBuffer = '';
-      return;
-    }
-  }
-
   sendMessage(text) {
     if (!this.running || !this.process) {
       return { success: false, error: 'Agent 未运行' };
@@ -143,7 +125,7 @@ class AgentManager {
     }
 
     try {
-      const message = JSON.stringify({ type: 'user_message', content: text }) + '\n';
+      const message = JSON.stringify({ type: 'message', content: text }) + '\n';
       this.process.stdin.write(message);
       this.isGenerating = true;
       return { success: true };
@@ -161,13 +143,41 @@ class AgentManager {
     }
 
     try {
-      this.process.kill('SIGINT');
+      this.process.stdin.write(JSON.stringify({ type: 'stop' }) + '\n');
       this.isGenerating = false;
-      this.responseBuffer = '';
       this.emitResponse('stopped', '');
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
+    }
+  }
+
+  _handleBridgeMessage(msg) {
+    switch (msg.type) {
+      case 'ready':
+        this.emitLog('info', 'Agent 已就绪，等待消息...');
+        break;
+      case 'start':
+        this.emitResponse('start', '');
+        break;
+      case 'chunk':
+        this.emitResponse('chunk', msg.text || '');
+        break;
+      case 'done':
+        this.isGenerating = false;
+        this.emitResponse('complete', msg.text || '');
+        break;
+      case 'error':
+        this.isGenerating = false;
+        this.emitResponse('error', msg.message || '未知错误');
+        this.emitLog('error', `Agent 错误: ${msg.message}`);
+        break;
+      case 'stopped':
+        this.isGenerating = false;
+        this.emitResponse('stopped', '');
+        break;
+      default:
+        this.emitLog('info', `[bridge] ${JSON.stringify(msg)}`);
     }
   }
 
