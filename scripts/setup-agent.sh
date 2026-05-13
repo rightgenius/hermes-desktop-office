@@ -30,18 +30,20 @@ if ! command -v uv &> /dev/null; then
   exit 1
 fi
 
-# Check if venv already exists
-if [ -d "venv" ] && [ -f "venv/bin/python3" ]; then
-  echo "✅ venv already exists. Checking dependencies..."
-  # Quick check: does yaml module exist?
-  if "venv/bin/python3" -c "import yaml" 2>/dev/null; then
-    echo "✅ Dependencies verified. Agent is ready."
-    exit 0
-  else
-    echo "⚠️  venv exists but dependencies incomplete. Reinstalling..."
-    rm -rf venv
+# Check if venv already exists (clear if broken)
+for VENV_DIR in "venv" ".venv"; do
+  if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/bin/python3" ]; then
+    echo "✅ Checking existing $VENV_DIR..."
+    if "$VENV_DIR/bin/python3" -c "import yaml" 2>/dev/null; then
+      echo "✅ Dependencies verified. Agent is ready."
+      exit 0
+    else
+      echo "⚠️  $VENV_DIR exists but dependencies incomplete. Clearing..."
+      rm -rf "$VENV_DIR"
+      break
+    fi
   fi
-fi
+done
 
 echo "→ Creating Python venv with uv..."
 uv venv
