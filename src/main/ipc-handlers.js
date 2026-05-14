@@ -262,6 +262,7 @@ function setupIPCHandlers(mainWindow) {
     return agentManager.start(config);
   });
   ipcMain.handle('agent-stop-generation', () => agentManager.stopGeneration());
+  ipcMain.handle('agent-respond', (_, { requestId, answer }) => agentManager.respondToPrompt(requestId, answer));
 
   // Test API connection from main process (no CORS issues)
   ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model }) => {
