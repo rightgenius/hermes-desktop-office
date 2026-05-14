@@ -112,7 +112,7 @@ function setupIPCHandlers(mainWindow) {
           if (jsonMatch) {
             const status = JSON.parse(jsonMatch[0]);
             console.log('Feishu auth status:', JSON.stringify(status).slice(0, 200));
-            if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+            if (status.ok || status.already_granted) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
             if (status.error) return { success: false, error: status.error.message || '授权失败' };
           }
         } catch (err) {
@@ -125,7 +125,7 @@ function setupIPCHandlers(mainWindow) {
             try {
               const status = JSON.parse(jsonMatch[0]);
               console.log('Feishu auth status from error:', JSON.stringify(status).slice(0, 200));
-              if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+              if (status.ok || status.already_granted) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
               if (status.error) return { success: false, error: status.error.message || '授权失败' };
             } catch {}
           }
@@ -159,12 +159,15 @@ function setupIPCHandlers(mainWindow) {
     try {
       const r = await runCLI('lark-cli', ['auth', 'status'], 5000);
       const data = JSON.parse(r.stdout);
-      if (data.tokenStatus === 'valid') status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
+      // Accept both 'valid' and 'needs_refresh' as authenticated
+      if (data.tokenStatus === 'valid' || data.tokenStatus === 'needs_refresh') {
+        status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
+      }
     } catch (e) { /* not authed */ }
     try {
       const r = await runCLI('dws', ['auth', 'status', '--format', 'json'], 5000);
       const data = JSON.parse(r.stdout);
-      if (data.success) status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
+      if (data.success || data.authenticated) status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
     } catch (e) { /* not authed */ }
     return status;
   });
