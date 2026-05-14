@@ -1192,14 +1192,22 @@ body {
   border: 1px solid var(--border-color);
   border-left: 3px solid var(--warning);
   border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
   margin-bottom: var(--space-sm);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
+  overflow: hidden;
+}
+
+.message-reasoning-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-md);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+}
+
+.message-reasoning-header:hover {
+  background: var(--bg-hover);
 }
 
 .message-reasoning-label {
@@ -1208,7 +1216,6 @@ body {
   color: var(--warning);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-bottom: 4px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1222,6 +1229,41 @@ body {
   border-radius: 50%;
   background: var(--warning);
   animation: pulse-dot 1.5s infinite;
+}
+
+.message-reasoning.finished .message-reasoning-label {
+  color: var(--text-muted);
+}
+
+.message-reasoning.finished .message-reasoning-label::before {
+  animation: none;
+  opacity: 0.5;
+}
+
+.message-reasoning-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--transition);
+  color: var(--text-muted);
+}
+
+.message-reasoning.expanded .message-reasoning-chevron {
+  transform: rotate(90deg);
+}
+
+.message-reasoning-content {
+  display: none;
+  padding: 0 var(--space-md) var(--space-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-reasoning.expanded .message-reasoning-content {
+  display: block;
 }
 
 @keyframes pulse-dot {
@@ -1243,7 +1285,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-sm) var(--space-md);
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   transition: background var(--transition);
 }
@@ -1305,11 +1347,14 @@ body {
   height: 14px;
   transition: transform var(--transition);
   color: var(--text-muted);
-  display: none;
+}
+
+.message-tool-call.expanded .message-tool-call-chevron {
+  transform: rotate(90deg);
 }
 
 .message-tool-call-body {
-  display: block;
+  display: none;
   border-top: 1px solid var(--border-color);
 }
 

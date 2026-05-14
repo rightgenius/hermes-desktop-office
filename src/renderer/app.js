@@ -759,10 +759,16 @@ function updateReasoning(text) {
   if (!reasoningEl) {
     reasoningEl = document.createElement('div');
     reasoningEl.className = 'message-reasoning';
-    reasoningEl.innerHTML = `<div class="message-reasoning-label">思考中</div><div class="message-reasoning-text"></div>`;
+    reasoningEl.innerHTML = `
+      <div class="message-reasoning-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <span class="message-reasoning-label">思考过程</span>
+        <svg class="message-reasoning-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="message-reasoning-content"></div>
+    `;
     currentAgentMessageEl.insertBefore(reasoningEl, currentAgentMessageEl.firstChild);
   }
-  reasoningEl.querySelector('.message-reasoning-text').textContent = bubble._rawReasoning;
+  reasoningEl.querySelector('.message-reasoning-content').textContent = bubble._rawReasoning;
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
@@ -770,7 +776,7 @@ function hideReasoning() {
   if (!currentAgentMessageEl) return;
   const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
   if (reasoningEl) {
-    reasoningEl.style.opacity = '0.6';
+    reasoningEl.classList.add('finished');
     const label = reasoningEl.querySelector('.message-reasoning-label');
     if (label) label.textContent = '思考完成';
   }
@@ -813,10 +819,12 @@ function renderToolCalls(bubble) {
     const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
     const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
     const statusText = tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成');
-    return `<div class="message-tool-call expanded" data-tool-id="${toolId}">
-      <div class="message-tool-call-header">
+    const isExpanded = tc.status === 'done';
+    return `<div class="message-tool-call ${isExpanded ? 'expanded' : ''}" data-tool-id="${toolId}">
+      <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
         <span class="message-tool-call-name">${escapeHtml(tc.name)}</span>
         <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${statusText}</span>
+        <svg class="message-tool-call-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
       <div class="message-tool-call-body">
         <div class="message-tool-call-body-inner">
