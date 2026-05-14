@@ -142,7 +142,7 @@ function setupIPCHandlers(mainWindow) {
       const result = await runCLISpawn('dws', ['auth', 'login', '--device', '--format', 'json'], 600000);
       try {
         const auth = JSON.parse(result.stdout);
-        if (auth.success) return { success: true, userName: auth.userName || '' };
+        if (auth.success) return { success: true, userName: auth.corp_id || '已认证' };
         if (auth.error) return { success: false, error: auth.error.message || '授权失败' };
       } catch {}
       // Try to extract URL from stderr if not already opened
@@ -167,7 +167,10 @@ function setupIPCHandlers(mainWindow) {
     try {
       const r = await runCLI('dws', ['auth', 'status', '--format', 'json'], 5000);
       const data = JSON.parse(r.stdout);
-      if (data.success || data.authenticated) status.dingtalk = { authed: true, userName: data.userName || '', version: data.version || '' };
+      if (data.success || data.authenticated) {
+        // DingTalk CLI doesn't return userName, use corp_id as identifier
+        status.dingtalk = { authed: true, userName: data.corp_id || '已认证', version: data.version || '' };
+      }
     } catch (e) { /* not authed */ }
     return status;
   });
