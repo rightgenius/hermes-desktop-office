@@ -673,21 +673,6 @@ function saveSessions(sessions) {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
 }
 
-function saveStreamingState() {
-  if (!currentSessionId) return;
-  const msg = getCurrentStreamingMessage();
-  if (!msg) {
-    delete streamingSessions[currentSessionId];
-    return;
-  }
-  const bubble = msg.querySelector('.message-bubble');
-  streamingSessions[currentSessionId] = {
-    text: bubble._rawText || '',
-    reasoning: bubble._rawReasoning || '',
-    toolCalls: bubble._toolCalls || {}
-  };
-}
-
 function restoreStreamingState() {
   const state = streamingSessions[currentSessionId];
   if (!state || !state.text) return;
@@ -848,29 +833,53 @@ function getCurrentStreamingMessage() {
   return chatMessages.querySelector('.message.agent.streaming:last-of-type');
 }
 
+function saveStreamingState() {
+  if (!currentSessionId) return;
+  const msg = getCurrentStreamingMessage();
+  if (msg) {
+    const bubble = msg.querySelector('.message-bubble');
+    streamingSessions[currentSessionId] = {
+      text: bubble._rawText || '',
+      reasoning: bubble._rawReasoning || '',
+      toolCalls: bubble._toolCalls || {}
+    };
+  }
+  // If msg is null, preserve existing memory state
+}
+
 function updateStreamingMessage(chunk) {
+  // Update memory first (works even if DOM is gone)
+  if (currentSessionId) {
+    if (!streamingSessions[currentSessionId]) {
+      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+    }
+    streamingSessions[currentSessionId].text += chunk;
+  }
+
+  // Update DOM if available
   currentAgentMessageEl = getCurrentStreamingMessage();
   if (currentAgentMessageEl) {
     const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-    
-    // Save tool calls container before updating HTML
     const toolCallsContainer = bubble.querySelector('.message-tool-calls');
-    
     bubble._rawText = (bubble._rawText || '') + chunk;
     bubble.innerHTML = renderMarkdown(bubble._rawText);
-    
-    // Restore tool calls container
     if (toolCallsContainer) {
       bubble.insertBefore(toolCallsContainer, bubble.firstChild);
     }
-    
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
-  // Also update in-memory state for background sessions
-  saveStreamingState();
 }
 
 function updateReasoning(text) {
+  // Update memory
+  if (currentSessionId) {
+    if (!streamingSessions[currentSessionId]) {
+      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+    }
+    streamingSessions[currentSessionId].reasoning += text;
+  }
+
+  // Update DOM
   currentAgentMessageEl = getCurrentStreamingMessage();
   if (currentAgentMessageEl) {
     const bubble = currentAgentMessageEl.querySelector('.message-bubble');
@@ -891,8 +900,6 @@ function updateReasoning(text) {
     reasoningEl.querySelector('.message-reasoning-content').textContent = bubble._rawReasoning;
     chatMessages.scrollTop = chatMessages.scrollHeight;
   }
-  // Also update in-memory state for background sessions
-  saveStreamingState();
 }
 
 function hideReasoning() {
@@ -905,10 +912,18 @@ function hideReasoning() {
       if (label) label.textContent = '思考完成';
     }
   }
-  saveStreamingState();
 }
 
 function addToolCall(toolId, name, args) {
+  // Update memory
+  if (currentSessionId) {
+    if (!streamingSessions[currentSessionId]) {
+      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+    }
+    streamingSessions[currentSessionId].toolCalls[toolId] = { name, args, result: null, status: 'running' };
+  }
+
+  // Update DOM
   currentAgentMessageEl = getCurrentStreamingMessage();
   if (currentAgentMessageEl) {
     const bubble = currentAgentMessageEl.querySelector('.message-bubble');
@@ -917,10 +932,19 @@ function addToolCall(toolId, name, args) {
     bubble._toolCalls = toolCalls;
     renderToolCalls(bubble);
   }
-  saveStreamingState();
 }
 
 function updateToolCall(toolId, result) {
+  // Update memory
+  if (currentSessionId && streamingSessions[currentSessionId]) {
+    const tc = streamingSessions[currentSessionId].toolCalls[toolId];
+    if (tc) {
+      tc.result = result;
+      tc.status = 'done';
+    }
+  }
+
+  // Update DOM
   let targetEl = getCurrentStreamingMessage();
   if (targetEl) {
     const bubble = targetEl.querySelector('.message-bubble');
@@ -933,7 +957,6 @@ function updateToolCall(toolId, result) {
       renderToolCalls(bubble);
     }
   }
-  saveStreamingState();
 }
 
 function renderToolCalls(bubble) {
