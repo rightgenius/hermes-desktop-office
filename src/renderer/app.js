@@ -788,8 +788,18 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
 function updateStreamingMessage(chunk) {
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  
+  // Save tool calls container before updating HTML
+  const toolCallsContainer = bubble.querySelector('.message-tool-calls');
+  
   bubble._rawText = (bubble._rawText || '') + chunk;
   bubble.innerHTML = renderMarkdown(bubble._rawText);
+  
+  // Restore tool calls container
+  if (toolCallsContainer) {
+    bubble.insertBefore(toolCallsContainer, bubble.firstChild);
+  }
+  
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
