@@ -158,17 +158,12 @@ function setupIPCHandlers(mainWindow) {
     const status = { feishu: { authed: false, userName: '', version: '' }, dingtalk: { authed: false, userName: '', version: '' } };
     try {
       const r = await runCLI('lark-cli', ['auth', 'status'], 5000);
-      console.log('Feishu auth status stdout:', r.stdout.slice(0, 200));
       const data = JSON.parse(r.stdout);
-      console.log('Feishu tokenStatus:', data.tokenStatus);
       // Accept both 'valid' and 'needs_refresh' as authenticated
       if (data.tokenStatus === 'valid' || data.tokenStatus === 'needs_refresh') {
         status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
-        console.log('Feishu authed:', status.feishu);
       }
-    } catch (e) {
-      console.log('Feishu auth status error:', e.message);
-    }
+    } catch (e) { /* not authed */ }
     try {
       const r = await runCLI('dws', ['auth', 'status', '--format', 'json'], 5000);
       const data = JSON.parse(r.stdout);
