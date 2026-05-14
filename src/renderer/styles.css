@@ -403,6 +403,7 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  position: relative;
 }
 
 .chat-messages {
@@ -412,15 +413,19 @@ body {
   position: relative;
 }
 
-/* Empty State - Centered */
+/* Empty State - Centered in main panel */
 .chat-empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  min-height: 400px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   text-align: center;
+  pointer-events: none;
 }
 
 .chat-empty-icon {
@@ -438,12 +443,12 @@ body {
 
 /* Centered input when no messages */
 .chat-area.has-no-messages .chat-input-area {
-  position: fixed;
+  position: absolute;
   left: 50%;
-  bottom: 80px;
-  transform: translateX(-50%);
+  top: 55%;
+  transform: translate(-50%, -50%);
   width: 600px;
-  max-width: 90vw;
+  max-width: 90%;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-xl);
@@ -452,8 +457,7 @@ body {
 }
 
 .chat-area.has-no-messages .chat-messages {
-  display: flex;
-  align-items: center;
+  display: block;
 }
 
 .chat-area.has-no-messages .chat-input-area textarea {
