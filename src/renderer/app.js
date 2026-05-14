@@ -716,6 +716,11 @@ function renderSessionList() {
 }
 
 function loadSession(sessionId) {
+  // Finalize any in-progress streaming message before switching
+  if (currentAgentMessageEl) {
+    finalizeStreamingMessage();
+  }
+  
   currentSessionId = sessionId;
   const sessions = loadSessions();
   const session = sessions[sessionId];
@@ -1452,6 +1457,11 @@ function showWizard() {
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
+  // Finalize any in-progress streaming message before creating new chat
+  if (currentAgentMessageEl) {
+    finalizeStreamingMessage();
+  }
+  
   currentSessionId = null;
   chatMessages.innerHTML = '';
   const emptyState = document.getElementById('chat-empty-state');
