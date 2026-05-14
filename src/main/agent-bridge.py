@@ -102,6 +102,9 @@ def main():
             "choices": json.dumps(choices, ensure_ascii=False) if choices else None
         }),
         status_callback=lambda kind, text: _emit({"type": "status", "kind": kind, "text": text}),
+        # TODO: approval_request requires register_gateway_notify from hermes-agent's approval.py
+        # which needs session key management. The TUI gateway handles this in server.py session init.
+        # For now, tool execution status is visible via tool_progress_callback (tool.started/tool.completed).
     )
 
     # Signal ready
