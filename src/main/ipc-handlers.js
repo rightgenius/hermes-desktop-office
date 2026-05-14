@@ -39,6 +39,17 @@ function runCLI(cliName, args, timeout = 30000, maxBuffer = 1024 * 1024) {
   });
 }
 
+function getCLIVersion(cliName) {
+  return new Promise((resolve) => {
+    runCLI(cliName, ['--version'], 5000).then(r => {
+      // lark-cli: "lark-cli version 1.0.26"
+      // dws: "dws version v1.0.26 (2ba1dcd, ...)"
+      const match = r.stdout.match(/version\s+([v\d.]+)/i);
+      resolve(match ? match[1] : '');
+    }).catch(() => resolve(''));
+  });
+}
+
 function runCLISpawn(cliName, args, timeout = 30000) {
   return new Promise((resolve, reject) => {
     const binaryPath = getCLIBinaryPath(cliName);
@@ -107,25 +118,26 @@ function setupIPCHandlers(mainWindow) {
           const waitResult = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code, '--json'], 600000, 10 * 1024 * 1024);
           // Feishu CLI outputs JSON to stderr
           const combined = (waitResult.stderr || '') + (waitResult.stdout || '');
-          console.log('Feishu auth resolved - combined output length:', combined.length);
           const jsonMatch = combined.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             const status = JSON.parse(jsonMatch[0]);
-            console.log('Feishu auth status:', JSON.stringify(status).slice(0, 200));
-            if (status.ok || status.already_granted) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+            if (status.ok || status.already_granted) {
+              const version = await getCLIVersion('lark-cli');
+              return { success: true, userName: status.userName || '', version };
+            }
             if (status.error) return { success: false, error: status.error.message || '授权失败' };
           }
         } catch (err) {
           // execFile rejects on non-zero exit, but stderr may still contain JSON
-          console.log('Feishu auth rejected - err.message:', err.message?.slice(0, 200));
           const combined = (err.stderr || '') + (err.stdout || '');
-          console.log('Feishu auth rejected - combined length:', combined.length);
           const jsonMatch = combined.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
             try {
               const status = JSON.parse(jsonMatch[0]);
-              console.log('Feishu auth status from error:', JSON.stringify(status).slice(0, 200));
-              if (status.ok || status.already_granted) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+              if (status.ok || status.already_granted) {
+                const version = await getCLIVersion('lark-cli');
+                return { success: true, userName: status.userName || '', version };
+              }
               if (status.error) return { success: false, error: status.error.message || '授权失败' };
             } catch {}
           }
@@ -142,7 +154,10 @@ function setupIPCHandlers(mainWindow) {
       const result = await runCLISpawn('dws', ['auth', 'login', '--device', '--format', 'json'], 600000);
       try {
         const auth = JSON.parse(result.stdout);
-        if (auth.success) return { success: true, userName: auth.corp_id || '已认证' };
+        if (auth.success) {
+          const version = await getCLIVersion('dws');
+          return { success: true, userName: auth.corp_id || '已认证', version };
+        }
         if (auth.error) return { success: false, error: auth.error.message || '授权失败' };
       } catch {}
       // Try to extract URL from stderr if not already opened
@@ -156,12 +171,13 @@ function setupIPCHandlers(mainWindow) {
 
   ipcMain.handle('check-auth-status', async () => {
     const status = { feishu: { authed: false, userName: '', version: '' }, dingtalk: { authed: false, userName: '', version: '' } };
+    const [larkVersion, dwsVersion] = await Promise.all([getCLIVersion('lark-cli'), getCLIVersion('dws')]);
     try {
       const r = await runCLI('lark-cli', ['auth', 'status'], 5000);
       const data = JSON.parse(r.stdout);
       // Accept both 'valid' and 'needs_refresh' as authenticated
       if (data.tokenStatus === 'valid' || data.tokenStatus === 'needs_refresh') {
-        status.feishu = { authed: true, userName: data.userName || '', version: data.cliVersion || '' };
+        status.feishu = { authed: true, userName: data.userName || '', version: larkVersion };
       }
     } catch (e) { /* not authed */ }
     try {
@@ -169,7 +185,7 @@ function setupIPCHandlers(mainWindow) {
       const data = JSON.parse(r.stdout);
       if (data.success || data.authenticated) {
         // DingTalk CLI doesn't return userName, use corp_id as identifier
-        status.dingtalk = { authed: true, userName: data.corp_id || '已认证', version: data.version || '' };
+        status.dingtalk = { authed: true, userName: data.corp_id || '已认证', version: dwsVersion };
       }
     } catch (e) { /* not authed */ }
     return status;
