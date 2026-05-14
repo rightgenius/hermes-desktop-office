@@ -1139,6 +1139,11 @@ async function sendMessage() {
     return;
   }
 
+  // Create new session if this is the first message
+  if (!currentSessionId) {
+    currentSessionId = createNewSession();
+  }
+
   addMessage(text, 'user');
   addMessageToSession(text, 'user');
   chatInput.value = '';
@@ -1191,22 +1196,24 @@ if (chatInput) {
 }
 
 // Track if chat has messages (for centered input)
-let hasMessages = false;
-
 function updateChatLayout() {
   const chatArea = document.querySelector('.chat-area');
   const emptyState = document.getElementById('chat-empty-state');
   if (!chatArea) return;
   
-  if (!hasMessages || chatMessages.children.length === 0 || (chatMessages.children.length === 1 && chatMessages.children[0].id === 'chat-empty-state')) {
-    chatArea.classList.add('has-no-messages');
-    if (emptyState) emptyState.style.display = 'flex';
-  } else {
+  const hasMessages = chatMessages.children.length > 0 && 
+    !(chatMessages.children.length === 1 && chatMessages.children[0].id === 'chat-empty-state');
+  
+  if (hasMessages) {
     chatArea.classList.remove('has-no-messages');
     if (emptyState) emptyState.style.display = 'none';
+  } else {
+    chatArea.classList.add('has-no-messages');
+    if (emptyState) emptyState.style.display = 'flex';
   }
 }
 
+// Initial render
 renderSessionList();
 updateChatLayout();
 
