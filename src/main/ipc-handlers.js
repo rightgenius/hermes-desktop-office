@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const ConfigStore = require('./config-store');
 const { AgentManager } = require('./agent-manager');
 
@@ -33,6 +33,43 @@ function runCLI(cliName, args, timeout = 30000) {
   });
 }
 
+function runCLISpawn(cliName, args, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const binaryPath = getCLIBinaryPath(cliName);
+    const proc = spawn(binaryPath, args);
+    let stdout = '';
+    let stderr = '';
+    let urlOpened = false;
+
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+      if (!urlOpened) {
+        const urlMatch = stderr.match(/https:\/\/[^\s]+/);
+        if (urlMatch) {
+          shell.openExternal(urlMatch[0]);
+          urlOpened = true;
+        }
+      }
+    });
+
+    const timer = setTimeout(() => {
+      proc.kill();
+      resolve({ stdout, stderr, timedOut: true });
+    }, timeout);
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ stdout, stderr, exitCode: code });
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+}
+
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
 
@@ -58,16 +95,13 @@ function setupIPCHandlers(mainWindow) {
       const auth = JSON.parse(result.stdout);
       if (auth.device_code && auth.verification_url) {
         shell.openExternal(auth.verification_url);
-        return new Promise((resolve) => {
-          const poll = setInterval(async () => {
-            try {
-              const s = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code]);
-              const status = JSON.parse(s.stdout);
-              if (status.ok) { clearInterval(poll); resolve({ success: true, userName: status.userName || '', version: status.cliVersion || '' }); }
-            } catch (e) { /* waiting */ }
-          }, 3000);
-          setTimeout(() => { clearInterval(poll); resolve({ success: false, error: '授权超时' }); }, 600000);
-        });
+        // Must run --device-code in a single process (restart invalidates device code)
+        const waitResult = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code], 600000);
+        try {
+          const status = JSON.parse(waitResult.stdout);
+          if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+        } catch {}
+        return { success: false, error: '授权未完成' };
       }
       return { success: false, error: '未获取到授权码' };
     } catch (err) { return { success: false, error: err.message }; }
@@ -75,10 +109,19 @@ function setupIPCHandlers(mainWindow) {
 
   ipcMain.handle('auth-dingtalk', async () => {
     try {
-      const result = await runCLI('dws', ['auth', 'login', '--format', 'json']);
-      const auth = JSON.parse(result.stdout);
-      if (auth.success) return { success: true, userName: auth.userName || '' };
-      return { success: false, error: '授权失败' };
+      // DingTalk CLI uses device flow: outputs URL to stderr, then waits for auth
+      const result = await runCLISpawn('dws', ['auth', 'login', '--device', '--format', 'json'], 600000);
+      try {
+        const auth = JSON.parse(result.stdout);
+        if (auth.success) return { success: true, userName: auth.userName || '' };
+        if (auth.error) return { success: false, error: auth.error.message || '授权失败' };
+      } catch {}
+      // Try to extract URL from stderr if not already opened
+      const urlMatch = result.stderr?.match(/https:\/\/login\.dingtalk\.com\/oauth2\/device\/verify\.htm[^ \n]*/);
+      if (urlMatch && !result.stderr?.includes('Please open')) {
+        shell.openExternal(urlMatch[0]);
+      }
+      return { success: false, error: '授权未完成' };
     } catch (err) { return { success: false, error: err.message }; }
   });
 
@@ -120,6 +163,12 @@ function setupIPCHandlers(mainWindow) {
         permissions = data.permissions;
       } else if (data.scopes && Array.isArray(data.scopes)) {
         permissions = data.scopes.map(s => ({ name: s, scope: s, status: 'granted' }));
+      } else if (data.scope && typeof data.scope === 'string') {
+        // Feishu uses space-separated scope string
+        permissions = data.scope.split(' ').filter(s => s).map(s => ({ name: s, scope: s, status: 'granted' }));
+      } else if (cli === 'dingtalk') {
+        // DingTalk doesn't expose individual scopes, show auth status as single permission
+        permissions = [{ name: '认证访问', scope: 'authenticated', status: data.authenticated ? 'granted' : 'denied' }];
       } else {
         return { success: false, error: 'No permissions or scopes found in CLI response' };
       }

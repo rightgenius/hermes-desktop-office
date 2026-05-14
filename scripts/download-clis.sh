@@ -56,19 +56,34 @@ download_bin() {
         }
     fi
 
+    # Extract to temp dir first, then find the actual binary
+    local tmp_dir="/tmp/cli-extract-$$-$platform"
+    mkdir -p "$tmp_dir"
+
     if [[ "$ext" == "zip" ]]; then
-        unzip -o "$tmp_file" -d "$out_path"
+        unzip -o "$tmp_file" -d "$tmp_dir"
     else
-        tar -xzf "$tmp_file" -C "$out_path"
+        tar -xzf "$tmp_file" -C "$tmp_dir"
     fi
     rm -f "$tmp_file"
 
-    # Rename if needed
-    local extracted
-    extracted=$(ls "$out_path" | head -1)
-    if [[ "$extracted" != "$bin_name" ]]; then
-        mv "$out_path/$extracted" "$final_bin"
+    # Find the actual binary (skip .md, .txt, LICENSE files)
+    local extracted_bin
+    if [[ "$platform" == windows-* ]]; then
+        extracted_bin=$(find "$tmp_dir" -name "*.exe" -type f | head -1)
+    else
+        extracted_bin=$(find "$tmp_dir" -type f ! -name "*.md" ! -name "LICENSE" ! -name "*.txt" | head -1)
     fi
+
+    if [[ -n "$extracted_bin" ]]; then
+        cp "$extracted_bin" "$final_bin"
+    else
+        echo "  ✗ No binary found in archive for $platform"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    rm -rf "$tmp_dir"
 
     if [[ "$platform" != windows-* ]]; then
         chmod +x "$final_bin"
