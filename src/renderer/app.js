@@ -792,8 +792,15 @@ function addToolCall(toolId, name, args) {
 }
 
 function updateToolCall(toolId, result) {
-  if (!currentAgentMessageEl) return;
-  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  let targetEl = currentAgentMessageEl;
+  // If current message is null (streaming finished), find the last agent message
+  if (!targetEl) {
+    const agentMessages = chatMessages.querySelectorAll('.message.agent');
+    targetEl = agentMessages[agentMessages.length - 1];
+  }
+  if (!targetEl) return;
+  const bubble = targetEl.querySelector('.message-bubble');
+  if (!bubble) return;
   const toolCalls = bubble._toolCalls || {};
   if (toolCalls[toolId]) {
     toolCalls[toolId].result = result;
@@ -819,8 +826,7 @@ function renderToolCalls(bubble) {
     const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
     const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
     const statusText = tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成');
-    const isExpanded = tc.status === 'done';
-    return `<div class="message-tool-call ${isExpanded ? 'expanded' : ''}" data-tool-id="${toolId}">
+    return `<div class="message-tool-call" data-tool-id="${toolId}">
       <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
         <span class="message-tool-call-name">${escapeHtml(tc.name)}</span>
         <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${statusText}</span>
