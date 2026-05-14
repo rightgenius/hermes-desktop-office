@@ -58,14 +58,23 @@ hermes-desktop-office/
 
 ### Layout
 - Top titlebar: logo + status dots
-- Left rail: 4 SVG icon buttons (chat/settings/auth/logs)
+- Left rail: 3 SVG icon buttons (chat/settings/logs) — auth merged into settings page
 - Middle sidebar: page-specific panels (session list + workspace tree)
 - Main area: page content
+- Settings page: card-stacked layout with workspace config + Feishu/DingTalk auth cards
+
+### CLI Auth & Permissions
+- **Feishu (lark-cli)**: Device flow auth. `--no-wait` gets device_code, `--device-code` polls (single process, restart invalidates code). JSON output goes to **stderr**. Token stored in `~/.lark-cli/`. Auth status uses `scope` (space-separated string).
+- **DingTalk (dws)**: Device flow auth via `--device` flag. URL output to stderr. Token stored in `~/.lark-cli/` (shared config dir). No granular permissions — only `authenticated` status with `corp_id`.
+- **Permissions table**: 3 columns (name/description/status). Feishu has 100+ scoped permissions with Chinese descriptions mapped in `app.js`. DingTalk shows single "认证访问" entry.
+- **CLI versions**: Displayed via `--version` flag (e.g., `v1.0.26`). Fetched at startup and after auth.
+- **download-clis.sh bug**: Archive extraction must use `find` to locate binary, NOT `ls | head -1` (picks up CHANGELOG.md alphabetically).
 
 ### Build
 - `npm run dev` — development with DevTools
 - `npm run build:mac` — prebuild installs venv, then electron-builder
 - venv bundled in `extraResources`, unpacked to `Resources/hermes-agent/venv/`
+- CLI binaries in `assets/` are gitignored, downloaded during build
 
 ## Rules
 
