@@ -38,3 +38,15 @@ workspaces/
 # Hermes Agent venv (created by scripts/setup-agent.sh, bundled in build)
 src/hermes-agent/venv/
 src/hermes-agent/.venv/
+
+# Python cache
+src/main/__pycache__/
+
+# Superpowers skill cache
+.superpowers/
+
+# Opencode config
+opencode.json
+
+# Old plan files
+docs/superpowers/plans/*-plan.md
