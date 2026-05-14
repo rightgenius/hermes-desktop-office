@@ -85,11 +85,12 @@
         <div class="page active" id="page-chat">
           <div class="chat-area">
             <div id="chat-messages" class="chat-messages">
-              <div class="message agent">
-                <div class="message-bubble">你好！我是 Hermes，有什么可以帮你？</div>
+              <div class="chat-empty-state" id="chat-empty-state">
+                <div class="chat-empty-icon">⚡</div>
+                <h2 class="chat-empty-title">使用 Hermes 开始对话</h2>
               </div>
             </div>
-            <div class="chat-input-area">
+            <div class="chat-input-area" id="chat-input-area">
               <textarea id="chat-input" placeholder="输入消息，Shift+Enter 换行..." rows="1"></textarea>
               <button id="send-message" class="send-btn">发送</button>
               <button id="stop-generation" class="stop-btn" style="display:none">停止</button>

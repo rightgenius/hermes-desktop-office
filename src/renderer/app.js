@@ -719,8 +719,11 @@ function loadSession(sessionId) {
   currentSessionId = sessionId;
   const sessions = loadSessions();
   const session = sessions[sessionId];
-  if (!session) return;
   chatMessages.innerHTML = '';
+  if (!session) {
+    updateChatLayout();
+    return;
+  }
   session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
   renderSessionList();
 }
@@ -788,6 +791,10 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   if (sender === 'agent' && isStreaming) {
     currentAgentMessageEl = msg;
   }
+  
+  // Update chat layout (hide empty state, center input)
+  updateChatLayout();
+  
   return msg;
 }
 
@@ -1136,6 +1143,7 @@ async function sendMessage() {
   addMessageToSession(text, 'user');
   chatInput.value = '';
   chatInput.style.height = 'auto';
+  updateChatLayout();
 
   sendBtn.disabled = true;
   sendBtn.textContent = '发送中...';
@@ -1182,9 +1190,25 @@ if (chatInput) {
   });
 }
 
+// Track if chat has messages (for centered input)
+let hasMessages = false;
+
+function updateChatLayout() {
+  const chatArea = document.querySelector('.chat-area');
+  const emptyState = document.getElementById('chat-empty-state');
+  if (!chatArea) return;
+  
+  if (!hasMessages || chatMessages.children.length === 0 || (chatMessages.children.length === 1 && chatMessages.children[0].id === 'chat-empty-state')) {
+    chatArea.classList.add('has-no-messages');
+    if (emptyState) emptyState.style.display = 'flex';
+  } else {
+    chatArea.classList.remove('has-no-messages');
+    if (emptyState) emptyState.style.display = 'none';
+  }
+}
+
 renderSessionList();
-currentSessionId = createNewSession();
-addMessage('你好！我是 Hermes，有什么可以帮你？', 'agent');
+updateChatLayout();
 
 // ============================
 // Logs Page
