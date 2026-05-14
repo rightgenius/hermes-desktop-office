@@ -716,11 +716,6 @@ function renderSessionList() {
 }
 
 function loadSession(sessionId) {
-  // Finalize any in-progress streaming message before switching
-  if (currentAgentMessageEl) {
-    finalizeStreamingMessage();
-  }
-  
   currentSessionId = sessionId;
   const sessions = loadSessions();
   const session = sessions[sessionId];
@@ -730,6 +725,13 @@ function loadSession(sessionId) {
     return;
   }
   session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
+  
+  // Find the last streaming message (in case agent is still responding)
+  const streamingMsg = chatMessages.querySelector('.message.agent.streaming:last-of-type');
+  if (streamingMsg) {
+    currentAgentMessageEl = streamingMsg;
+  }
+  
   renderSessionList();
 }
 
@@ -1457,10 +1459,8 @@ function showWizard() {
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
-  // Finalize any in-progress streaming message before creating new chat
-  if (currentAgentMessageEl) {
-    finalizeStreamingMessage();
-  }
+  // Don't finalize streaming message here - let it continue updating
+  // Finalize only happens on complete/error/stopped events
   
   currentSessionId = null;
   chatMessages.innerHTML = '';
