@@ -96,11 +96,19 @@ function setupIPCHandlers(mainWindow) {
       if (auth.device_code && auth.verification_url) {
         shell.openExternal(auth.verification_url);
         // Must run --device-code in a single process (restart invalidates device code)
-        const waitResult = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code], 600000);
-        try {
-          const status = JSON.parse(waitResult.stdout);
-          if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
-        } catch {}
+        // Use spawn to avoid execFile buffer overflow during long wait
+        // Add --json flag to ensure structured JSON output
+        const waitResult = await runCLISpawn('lark-cli', ['auth', 'login', '--device-code', auth.device_code, '--json'], 600000);
+        // Feishu CLI outputs JSON to stderr, not stdout
+        const combined = waitResult.stderr + waitResult.stdout;
+        const jsonMatch = combined.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const status = JSON.parse(jsonMatch[0]);
+            if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+            if (status.error) return { success: false, error: status.error.message || '授权失败' };
+          } catch {}
+        }
         return { success: false, error: '授权未完成' };
       }
       return { success: false, error: '未获取到授权码' };
@@ -149,8 +157,10 @@ function setupIPCHandlers(mainWindow) {
     pageSize = Math.max(1, Math.min(50, pageSize));
 
     const cliName = cli === 'feishu' ? 'lark-cli' : 'dws';
+    // Feishu CLI outputs JSON by default, doesn't support --format flag
+    const statusArgs = cli === 'feishu' ? ['auth', 'status'] : ['auth', 'status', '--format', 'json'];
     try {
-      const result = await runCLI(cliName, ['auth', 'status', '--format', 'json'], 10000);
+      const result = await runCLI(cliName, statusArgs, 10000);
       let data;
       try {
         data = JSON.parse(result.stdout);
