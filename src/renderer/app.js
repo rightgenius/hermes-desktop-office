@@ -42,7 +42,7 @@ function showPage(pageName) {
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && e.key >= '1' && e.key <= '4') {
+  if (e.metaKey && e.key >= '1' && e.key <= '3') {
     e.preventDefault();
     const pages = ['chat', 'settings', 'logs'];
     showPage(pages[parseInt(e.key) - 1]);
@@ -382,14 +382,19 @@ function renderPermissions(cli) {
     html += `<button class="pagination-btn" data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''}>›</button>`;
     buttonsEl.innerHTML = html;
 
-    buttonsEl.querySelectorAll('.pagination-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+    if (!buttonsEl._delegateSet) {
+      buttonsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('.pagination-btn');
+        if (!btn || btn.disabled) return;
         const p = parseInt(btn.dataset.page);
+        const state = permissionsState[cli];
+        const totalPages = Math.ceil(state.total / state.pageSize) || 1;
         if (p >= 1 && p <= totalPages) {
           loadPermissions(cli, p, state.search);
         }
       });
-    });
+      buttonsEl._delegateSet = true;
+    }
   }
 }
 
