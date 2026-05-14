@@ -1243,7 +1243,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-sm) var(--space-md);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   transition: background var(--transition);
 }
@@ -1305,14 +1305,11 @@ body {
   height: 14px;
   transition: transform var(--transition);
   color: var(--text-muted);
-}
-
-.message-tool-call.expanded .message-tool-call-chevron {
-  transform: rotate(90deg);
+  display: none;
 }
 
 .message-tool-call-body {
-  display: none;
+  display: block;
   border-top: 1px solid var(--border-color);
 }
 

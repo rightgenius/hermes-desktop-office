@@ -766,6 +766,16 @@ function updateReasoning(text) {
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+function hideReasoning() {
+  if (!currentAgentMessageEl) return;
+  const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
+  if (reasoningEl) {
+    reasoningEl.style.opacity = '0.6';
+    const label = reasoningEl.querySelector('.message-reasoning-label');
+    if (label) label.textContent = '思考完成';
+  }
+}
+
 function addToolCall(toolId, name, args) {
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
@@ -795,19 +805,18 @@ function renderToolCalls(bubble) {
   if (!existingContainer) {
     existingContainer = document.createElement('div');
     existingContainer.className = 'message-tool-calls';
-    bubble.appendChild(existingContainer);
+    bubble.insertBefore(existingContainer, bubble.firstChild);
   }
 
   existingContainer.innerHTML = entries.map(([toolId, tc]) => {
     const statusClass = tc.status === 'running' ? 'running' : (tc.result && tc.result.startsWith('ERROR') ? 'error' : 'done');
     const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
     const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
-    const isExpanded = tc.status === 'done';
-    return `<div class="message-tool-call ${isExpanded ? 'expanded' : ''}" data-tool-id="${toolId}">
-      <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
+    const statusText = tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成');
+    return `<div class="message-tool-call expanded" data-tool-id="${toolId}">
+      <div class="message-tool-call-header">
         <span class="message-tool-call-name">${escapeHtml(tc.name)}</span>
-        <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成')}</span>
-        <svg class="message-tool-call-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${statusText}</span>
       </div>
       <div class="message-tool-call-body">
         <div class="message-tool-call-body-inner">
@@ -938,6 +947,7 @@ async function submitPrompt(answer) {
 function finalizeStreamingMessage() {
   if (!currentAgentMessageEl) return;
   currentAgentMessageEl.classList.remove('streaming');
+  hideReasoning();
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
   const text = bubble._rawText || bubble.textContent;
   addMessageToSession(text, 'agent');
@@ -1154,6 +1164,9 @@ if (window.api) {
           const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning-label');
           if (reasoningEl && data.data) {
             reasoningEl.textContent = data.data;
+          } else if (reasoningEl && !data.data) {
+            // Empty thinking text means agent finished thinking
+            hideReasoning();
           }
         }
         break;
