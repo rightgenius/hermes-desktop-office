@@ -821,9 +821,9 @@ body {
 
 /* Toggle Switch */
 .toggle-label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-md);
   cursor: pointer;
   font-size: 14px;
   color: var(--text-primary);
@@ -837,6 +837,7 @@ body {
   background: var(--border-color);
   border-radius: 11px;
   position: relative;
+  flex-shrink: 0;
   transition: background var(--transition);
 }
 

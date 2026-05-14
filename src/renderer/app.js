@@ -190,7 +190,7 @@ async function loadConfig() {
     els.baseUrl.value = config.baseUrl || '';
     els.model.value = config.model || '';
     els.workspacePath.value = config.workspacePath || '';
-    els.autoStart.checked = !!config.autoStart;
+    els.autoStart.checked = config.autoStart !== false;
     updateProviderUI();
   } catch (err) { console.error('Load config failed:', err); }
 }
@@ -935,3 +935,23 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
 loadConfig();
 checkFirstRun();
 updateStatus('status-agent', 'error');
+
+// Auto-start Agent on launch (only if configured)
+async function autoStartAgent() {
+  try {
+    const config = await window.api.configGet();
+    if (!config.autoStart) return;
+    // Only auto-start if a provider or API key is configured
+    const hasConfig = config.provider && config.provider !== 'auto' || config.apiKey;
+    if (!hasConfig) return;
+    const result = await window.api.agentStart(config);
+    if (result && result.success) {
+      updateStatus('status-agent', 'success');
+      agentRunning = true;
+    }
+  } catch (err) {
+    // Silently ignore auto-start failures (Agent not configured yet)
+    console.warn('Auto-start Agent skipped:', err.message);
+  }
+}
+autoStartAgent();
