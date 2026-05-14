@@ -823,10 +823,13 @@ body {
 .toggle-label {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
   cursor: pointer;
   font-size: 14px;
   color: var(--text-primary);
+}
+
+.toggle-text {
+  padding-left: 50px;
 }
 
 .toggle-label input[type="checkbox"] { display: none; }
