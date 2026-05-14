@@ -10,7 +10,7 @@ const DEFAULT_CONFIG = {
   baseUrl: '',
   model: '',
   workspacePath: '',
-  autoStart: false,
+  autoStart: true,
 };
 
 class ConfigStore {
