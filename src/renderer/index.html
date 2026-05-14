@@ -31,11 +31,8 @@
         <button class="rail-btn active" data-page="chat" title="对话">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         </button>
-        <button class="rail-btn" data-page="settings" title="配置">
+        <button class="rail-btn" data-page="settings" title="设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-        <button class="rail-btn" data-page="auth" title="授权">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
         </button>
         <button class="rail-btn" data-page="logs" title="日志">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
@@ -100,12 +97,13 @@
           </div>
         </div>
 
-        <!-- Settings Page -->
+        <!-- Settings Page (merged with Auth) -->
         <div class="page" id="page-settings">
           <div class="page-header">
-            <h2>配置</h2>
+            <h2>设置</h2>
           </div>
           <div class="content-scroll">
+            <!-- AI Model Config -->
             <div class="card">
               <h3>AI 模型配置</h3>
               <div class="form-group">
@@ -142,10 +140,12 @@
                 <small class="form-hint">例如: anthropic/claude-sonnet-4, openrouter/anthropic/claude-3.5-sonnet</small>
               </div>
               <div class="form-actions">
-              <button id="try-start-agent" class="btn btn-secondary">尝试启动 Agent</button>
-              <button id="save-config" class="btn btn-primary">保存配置</button>
+                <button id="try-start-agent" class="btn btn-secondary">尝试启动 Agent</button>
+                <button id="save-config" class="btn btn-primary">保存配置</button>
               </div>
             </div>
+
+            <!-- Workspace Settings -->
             <div class="card">
               <h3>工作区设置</h3>
               <div class="form-group">
@@ -164,6 +164,8 @@
                 <button id="check-config" class="btn btn-secondary" style="margin-top: 8px;">检查配置</button>
               </div>
             </div>
+
+            <!-- General Settings -->
             <div class="card">
               <h3>通用设置</h3>
               <div class="form-group">
@@ -174,39 +176,74 @@
                 </label>
               </div>
             </div>
-          </div>
-        </div>
 
-        <!-- Auth Page -->
-        <div class="page" id="page-auth">
-          <div class="page-header">
-            <h2>CLI 授权</h2>
-          </div>
-          <div class="content-scroll">
-            <div class="card">
-              <h3>飞书授权</h3>
-              <div class="auth-info">
-                <div class="auth-meta"><span class="auth-label">版本:</span><span class="auth-value" id="feishu-version">-</span></div>
-                <div class="auth-meta"><span class="auth-label">状态:</span><span id="feishu-status"><span class="status-badge unauth">未授权</span></span></div>
-                <div class="auth-meta" id="feishu-user-row" style="display:none"><span class="auth-label">用户:</span><span class="auth-value" id="feishu-user">-</span></div>
+            <!-- Feishu Auth Card -->
+            <div class="card auth-card" id="auth-card-feishu">
+              <div class="auth-card-header">
+                <h3>🔗 飞书授权</h3>
+                <span class="status-badge unauth" id="feishu-status-badge">未授权</span>
+              </div>
+              <div class="auth-meta-row">
+                <span class="auth-tag" id="feishu-version">v-</span>
+                <span class="auth-tag" id="feishu-user">未登录</span>
+                <span class="auth-tag auth-tag-count" id="feishu-perm-count">0 项权限</span>
+                <input type="text" class="auth-search-input" id="feishu-perm-search" placeholder="🔍 搜索权限...">
+              </div>
+              <div class="permissions-table" id="feishu-permissions-table">
+                <div class="permissions-table-header">
+                  <span class="perm-col-name">权限名称</span>
+                  <span class="perm-col-scope">类型</span>
+                  <span class="perm-col-status">状态</span>
+                </div>
+                <div class="permissions-table-body" id="feishu-perm-body">
+                  <div class="permissions-empty">点击授权后显示权限列表</div>
+                </div>
+              </div>
+              <div class="permissions-pagination" id="feishu-perm-pagination">
+                <span class="pagination-info" id="feishu-perm-info"></span>
+                <div class="pagination-buttons" id="feishu-perm-buttons"></div>
               </div>
               <div class="form-actions">
                 <button id="auth-feishu" class="btn btn-primary">开始授权</button>
                 <button id="reauth-feishu" class="btn btn-secondary" style="display:none">重新授权</button>
+                <button id="refresh-feishu-perms" class="btn btn-secondary" style="display:none;margin-left:auto">刷新权限</button>
               </div>
             </div>
-            <div class="card">
-              <h3>钉钉授权</h3>
-              <div class="auth-info">
-                <div class="auth-meta"><span class="auth-label">版本:</span><span class="auth-value" id="dingtalk-version">-</span></div>
-                <div class="auth-meta"><span class="auth-label">状态:</span><span id="dingtalk-status"><span class="status-badge unauth">未授权</span></span></div>
-                <div class="auth-meta" id="dingtalk-user-row" style="display:none"><span class="auth-label">用户:</span><span class="auth-value" id="dingtalk-user">-</span></div>
+
+            <!-- DingTalk Auth Card -->
+            <div class="card auth-card" id="auth-card-dingtalk">
+              <div class="auth-card-header">
+                <h3>🔗 钉钉授权</h3>
+                <span class="status-badge unauth" id="dingtalk-status-badge">未授权</span>
+              </div>
+              <div class="auth-meta-row">
+                <span class="auth-tag" id="dingtalk-version">v-</span>
+                <span class="auth-tag" id="dingtalk-user">未登录</span>
+                <span class="auth-tag auth-tag-count" id="dingtalk-perm-count">0 项权限</span>
+                <input type="text" class="auth-search-input" id="dingtalk-perm-search" placeholder="🔍 搜索权限...">
+              </div>
+              <div class="permissions-table" id="dingtalk-permissions-table">
+                <div class="permissions-table-header">
+                  <span class="perm-col-name">权限名称</span>
+                  <span class="perm-col-scope">类型</span>
+                  <span class="perm-col-status">状态</span>
+                </div>
+                <div class="permissions-table-body" id="dingtalk-perm-body">
+                  <div class="permissions-empty">点击授权后显示权限列表</div>
+                </div>
+              </div>
+              <div class="permissions-pagination" id="dingtalk-perm-pagination">
+                <span class="pagination-info" id="dingtalk-perm-info"></span>
+                <div class="pagination-buttons" id="dingtalk-perm-buttons"></div>
               </div>
               <div class="form-actions">
                 <button id="auth-dingtalk" class="btn btn-primary">开始授权</button>
                 <button id="reauth-dingtalk" class="btn btn-secondary" style="display:none">重新授权</button>
+                <button id="refresh-dingtalk-perms" class="btn btn-secondary" style="display:none;margin-left:auto">刷新权限</button>
               </div>
             </div>
+
+            <!-- Diagnostic -->
             <div class="card">
               <h3>一键诊断</h3>
               <button id="run-diagnostic" class="btn btn-secondary">运行诊断</button>
