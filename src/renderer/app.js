@@ -1105,6 +1105,7 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
 loadConfig();
 checkFirstRun();
 updateStatus('status-agent', 'error');
+checkAuthStatus();
 
 // Auto-start Agent on launch (only if configured)
 async function autoStartAgent() {
