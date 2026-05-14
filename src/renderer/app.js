@@ -44,7 +44,7 @@ function showPage(pageName) {
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && e.key >= '1' && e.key <= '4') {
     e.preventDefault();
-    const pages = ['chat', 'settings', 'auth', 'logs'];
+    const pages = ['chat', 'settings', 'logs'];
     showPage(pages[parseInt(e.key) - 1]);
   }
 });
@@ -271,35 +271,153 @@ document.getElementById('try-start-agent')?.addEventListener('click', () => tryS
 // Auth Page
 // ============================
 function setAuthState(prefix, authed, userName, version) {
-  const statusEl = document.getElementById(`${prefix}-status`);
+  const statusBadge = document.getElementById(`${prefix}-status-badge`);
   const userEl = document.getElementById(`${prefix}-user`);
-  const userRowEl = document.getElementById(`${prefix}-user-row`);
+  const versionEl = document.getElementById(`${prefix}-version`);
   const btnEl = document.getElementById(`auth-${prefix}`);
   const reauthEl = document.getElementById(`reauth-${prefix}`);
-  const versionEl = document.getElementById(`${prefix}-version`);
+  const refreshEl = document.getElementById(`refresh-${prefix}-perms`);
+  const permCountEl = document.getElementById(`${prefix}-perm-count`);
 
-  if (versionEl) versionEl.textContent = version || '-';
+  if (versionEl) versionEl.textContent = version ? `v${version}` : 'v-';
+  if (userEl) userEl.textContent = userName || '未登录';
+
   if (authed) {
-    statusEl.innerHTML = '<span class="status-badge auth">已授权</span>';
-    if (userEl) userEl.textContent = userName || '';
-    if (userRowEl) userRowEl.style.display = 'flex';
+    if (statusBadge) {
+      statusBadge.className = 'status-badge auth';
+      statusBadge.textContent = '已授权';
+    }
     if (btnEl) btnEl.style.display = 'none';
     if (reauthEl) reauthEl.style.display = '';
+    if (refreshEl) refreshEl.style.display = '';
     updateStatus(`status-${prefix}`, 'success');
   } else {
-    statusEl.innerHTML = '<span class="status-badge unauth">未授权</span>';
-    if (userRowEl) userRowEl.style.display = 'none';
+    if (statusBadge) {
+      statusBadge.className = 'status-badge unauth';
+      statusBadge.textContent = '未授权';
+    }
     if (btnEl) btnEl.style.display = '';
     if (reauthEl) reauthEl.style.display = 'none';
+    if (refreshEl) refreshEl.style.display = 'none';
+    if (permCountEl) permCountEl.textContent = '0 项权限';
   }
+}
+
+// Permissions state per CLI
+const permissionsState = {
+  feishu: { permissions: [], total: 0, page: 1, pageSize: 5, search: '' },
+  dingtalk: { permissions: [], total: 0, page: 1, pageSize: 5, search: '' },
+};
+
+async function loadPermissions(cli, page = 1, search = '') {
+  const state = permissionsState[cli];
+  state.page = page;
+  state.search = search;
+
+  try {
+    const result = await window.api.getAuthPermissions({ cli, page, pageSize: state.pageSize, search });
+    if (result.success) {
+      state.permissions = result.permissions;
+      state.total = result.total;
+      renderPermissions(cli);
+      const countEl = document.getElementById(`${cli}-perm-count`);
+      if (countEl) countEl.textContent = `${result.total} 项权限`;
+    } else {
+      const bodyEl = document.getElementById(`${cli}-perm-body`);
+      if (bodyEl) bodyEl.innerHTML = `<div class="permissions-empty">加载失败: ${result.error}</div>`;
+    }
+  } catch (err) {
+    const bodyEl = document.getElementById(`${cli}-perm-body`);
+    if (bodyEl) bodyEl.innerHTML = `<div class="permissions-empty">加载异常: ${err.message}</div>`;
+  }
+}
+
+function renderPermissions(cli) {
+  const state = permissionsState[cli];
+  const bodyEl = document.getElementById(`${cli}-perm-body`);
+  const infoEl = document.getElementById(`${cli}-perm-info`);
+  const buttonsEl = document.getElementById(`${cli}-perm-buttons`);
+
+  if (!bodyEl) return;
+
+  if (state.permissions.length === 0) {
+    bodyEl.innerHTML = `<div class="permissions-empty">${state.search ? '未找到匹配的权限' : '暂无权限数据'}</div>`;
+  } else {
+    bodyEl.innerHTML = state.permissions.map(p => {
+      const statusClass = p.status === 'granted' ? 'permission-granted' : 'permission-revoked';
+      const statusText = p.status === 'granted' ? '✓ 已授权' : '✗ 未授权';
+      return `<div class="permissions-table-row">
+        <span class="perm-col-name">${escapeHtml(p.name || '')}</span>
+        <span class="perm-col-scope">${escapeHtml(p.scope || '-')}</span>
+        <span class="perm-col-status ${statusClass}">${statusText}</span>
+      </div>`;
+    }).join('');
+  }
+
+  if (infoEl) {
+    const totalPages = Math.ceil(state.total / state.pageSize) || 1;
+    const start = (state.page - 1) * state.pageSize + 1;
+    const end = Math.min(state.page * state.pageSize, state.total);
+    infoEl.textContent = state.total > 0 ? `显示 ${start}-${end} / 共 ${state.total} 项` : '';
+  }
+
+  if (buttonsEl) {
+    const totalPages = Math.ceil(state.total / state.pageSize) || 1;
+    if (totalPages <= 1) {
+      buttonsEl.innerHTML = '';
+      return;
+    }
+
+    let html = '';
+    html += `<button class="pagination-btn" data-page="${state.page - 1}" ${state.page <= 1 ? 'disabled' : ''}>‹</button>`;
+
+    let startPage = Math.max(1, state.page - 2);
+    let endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+
+    for (let i = startPage; i <= endPage; i++) {
+      html += `<button class="pagination-btn ${i === state.page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+    }
+
+    html += `<button class="pagination-btn" data-page="${state.page + 1}" ${state.page >= totalPages ? 'disabled' : ''}>›</button>`;
+    buttonsEl.innerHTML = html;
+
+    buttonsEl.querySelectorAll('.pagination-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page);
+        if (p >= 1 && p <= totalPages) {
+          loadPermissions(cli, p, state.search);
+        }
+      });
+    });
+  }
+}
+
+function setupPermissionsSearch(cli) {
+  const searchInput = document.getElementById(`${cli}-perm-search`);
+  if (!searchInput) return;
+
+  let debounceTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      loadPermissions(cli, 1, searchInput.value.trim());
+    }, 300);
+  });
 }
 
 async function checkAuthStatus() {
   try {
     const result = await window.api.checkAuthStatus();
-    if (result.feishu.authed) setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
-    if (result.dingtalk.authed) setAuthState('dingtalk', true, result.dingtalk.userName, result.dingtalk.version);
-  } catch (err) { console.error('Check auth failed:', err); }
+    if (result.feishu.authed) {
+      setAuthState('feishu', true, result.feishu.userName, result.feishu.version);
+      loadPermissions('feishu');
+    }
+    if (result.dingtalk.authed) {
+      setAuthState('dingtalk', true, result.dingtalk.userName, result.dingtalk.version);
+      loadPermissions('dingtalk');
+    }
+  } catch (err) { console.error('Check auth status failed:', err); }
 }
 
 async function doAuth(cli, btnEl) {
@@ -307,8 +425,12 @@ async function doAuth(cli, btnEl) {
   btnEl.textContent = '授权中...';
   try {
     const result = await (cli === 'feishu' ? window.api.authFeishu() : window.api.authDingtalk());
-    if (result.success) setAuthState(cli, true, result.userName, result.version);
-    else alert(`授权失败: ${result.error}`);
+    if (result.success) {
+      setAuthState(cli, true, result.userName, result.version);
+      loadPermissions(cli);
+    } else {
+      alert(`授权失败: ${result.error}`);
+    }
   } catch (err) { alert(`授权异常: ${err.message}`); }
   btnEl.disabled = false;
   btnEl.textContent = '开始授权';
@@ -318,6 +440,12 @@ document.getElementById('auth-feishu')?.addEventListener('click', () => doAuth('
 document.getElementById('reauth-feishu')?.addEventListener('click', () => doAuth('feishu', document.getElementById('reauth-feishu')));
 document.getElementById('auth-dingtalk')?.addEventListener('click', () => doAuth('dingtalk', document.getElementById('auth-dingtalk')));
 document.getElementById('reauth-dingtalk')?.addEventListener('click', () => doAuth('dingtalk', document.getElementById('reauth-dingtalk')));
+
+document.getElementById('refresh-feishu-perms')?.addEventListener('click', () => loadPermissions('feishu', 1, permissionsState.feishu.search));
+document.getElementById('refresh-dingtalk-perms')?.addEventListener('click', () => loadPermissions('dingtalk', 1, permissionsState.dingtalk.search));
+
+setupPermissionsSearch('feishu');
+setupPermissionsSearch('dingtalk');
 
 document.getElementById('run-diagnostic')?.addEventListener('click', async () => {
   const btn = document.getElementById('run-diagnostic');
