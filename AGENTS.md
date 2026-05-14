@@ -45,7 +45,16 @@ hermes-desktop-office/
 ### Agent Communication
 - `agent-bridge.py` runs as subprocess, reads JSON from stdin, writes JSON to stdout
 - Protocol: `{type: "ready"|"start"|"chunk"|"done"|"error"|"stopped"}`
+- Input message format: `{type: "message", content: "user text", history: [{role: "user|assistant", content: "..."}]}`
+- Bridge converts `history` to context text and passes to `agent.chat()` with streaming callback
 - Never modify `src/hermes-agent/` — it's a git submodule from NousResearch
+
+### Chat Rendering
+- `app.js` has a lightweight `renderMarkdown()` function for agent messages (no external deps)
+- Supports: code blocks, inline code, tables, headers (h1-h3), bold/italic, links, lists, blockquotes, horizontal rules
+- User messages use `escapeHtml()` (plain text); agent messages use `renderMarkdown()` (HTML)
+- Streaming messages accumulate raw text in `bubble._rawText` and re-render on each chunk
+- Markdown CSS uses semantic variables (`--bg-primary`, `--accent`, `--border-color`)
 
 ### Layout
 - Top titlebar: logo + status dots
