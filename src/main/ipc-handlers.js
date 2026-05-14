@@ -97,6 +97,37 @@ function setupIPCHandlers(mainWindow) {
     return status;
   });
 
+  ipcMain.handle('get-auth-permissions', async (_, { cli, page = 1, pageSize = 5, search = '' }) => {
+    const cliName = cli === 'feishu' ? 'lark-cli' : 'dws';
+    try {
+      const result = await runCLI(cliName, ['auth', 'status', '--format', 'json'], 10000);
+      const data = JSON.parse(result.stdout);
+
+      let permissions = [];
+      if (data.permissions && Array.isArray(data.permissions)) {
+        permissions = data.permissions;
+      } else if (data.scopes && Array.isArray(data.scopes)) {
+        permissions = data.scopes.map(s => ({ name: s, scope: s, status: 'granted' }));
+      }
+
+      if (search) {
+        const lower = search.toLowerCase();
+        permissions = permissions.filter(p =>
+          (p.name || '').toLowerCase().includes(lower) ||
+          (p.scope || '').toLowerCase().includes(lower)
+        );
+      }
+
+      const total = permissions.length;
+      const start = (page - 1) * pageSize;
+      const paged = permissions.slice(start, start + pageSize);
+
+      return { success: true, permissions: paged, total, page, pageSize };
+    } catch (err) {
+      return { success: false, error: err.message, permissions: [], total: 0, page, pageSize };
+    }
+  });
+
   ipcMain.handle('run-diagnostic', async () => {
     const [lark, dws] = await Promise.allSettled([runCLI('lark-cli', ['doctor']), runCLI('dws', ['doctor'])]);
     let output = '=== 诊断结果 ===\n\n--- 飞书 CLI (lark-cli) ---\n';

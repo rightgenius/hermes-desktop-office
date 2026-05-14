@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   authFeishu: () => ipcRenderer.invoke('auth-feishu'),
   authDingtalk: () => ipcRenderer.invoke('auth-dingtalk'),
   checkAuthStatus: () => ipcRenderer.invoke('check-auth-status'),
+  getAuthPermissions: (params) => ipcRenderer.invoke('get-auth-permissions', params),
   runDiagnostic: () => ipcRenderer.invoke('run-diagnostic'),
 
   // Agent
