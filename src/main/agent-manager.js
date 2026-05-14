@@ -152,6 +152,19 @@ class AgentManager {
     }
   }
 
+  respondToPrompt(requestId, answer) {
+    if (!this.running || !this.process) {
+      return { success: false, error: 'Agent 未运行' };
+    }
+    try {
+      const message = JSON.stringify({ type: 'respond', request_id: requestId, answer }) + '\n';
+      this.process.stdin.write(message);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
   _handleBridgeMessage(msg) {
     switch (msg.type) {
       case 'ready':
@@ -175,6 +188,49 @@ class AgentManager {
       case 'stopped':
         this.isGenerating = false;
         this.emitResponse('stopped', '');
+        break;
+      case 'reasoning':
+        this.emitResponse('reasoning', msg.text || '');
+        break;
+      case 'thinking':
+        this.emitResponse('thinking', msg.text || '');
+        break;
+      case 'tool_gen':
+        this.emitResponse('tool_gen', { name: msg.name });
+        break;
+      case 'tool_progress':
+        this.emitResponse('tool_progress', {
+          event: msg.event,
+          name: msg.name,
+          preview: msg.preview,
+          duration: msg.duration,
+          is_error: msg.is_error,
+        });
+        break;
+      case 'tool_start':
+        this.emitResponse('tool_start', {
+          tool_id: msg.tool_id,
+          name: msg.name,
+          args: msg.args,
+        });
+        break;
+      case 'tool_complete':
+        this.emitResponse('tool_complete', {
+          tool_id: msg.tool_id,
+          name: msg.name,
+          args: msg.args,
+          result: msg.result,
+        });
+        break;
+      case 'clarify_request':
+        this.emitResponse('clarify_request', {
+          request_id: msg.request_id,
+          question: msg.question,
+          choices: msg.choices ? JSON.parse(msg.choices) : null,
+        });
+        break;
+      case 'status':
+        this.emitResponse('status', { kind: msg.kind, text: msg.text });
         break;
       default:
         this.emitLog('info', `[bridge] ${JSON.stringify(msg)}`);
