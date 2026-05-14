@@ -412,11 +412,12 @@ body {
 }
 
 .message {
-  display: flex;
+  display: block;
   margin-bottom: var(--space-lg);
 }
 
 .message.user {
+  display: flex;
   justify-content: flex-end;
 }
 
@@ -1193,6 +1194,7 @@ body {
   border-left: 3px solid var(--warning);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-sm);
+  max-width: 70%;
   overflow: hidden;
 }
 
@@ -1277,6 +1279,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   margin: var(--space-sm) 0;
+  max-width: 70%;
   overflow: hidden;
 }
 
