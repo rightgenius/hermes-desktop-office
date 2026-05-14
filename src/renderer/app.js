@@ -919,7 +919,6 @@ function addToolCall(toolId, name, args) {
   }
   saveStreamingState();
 }
-}
 
 function updateToolCall(toolId, result) {
   let targetEl = getCurrentStreamingMessage();
