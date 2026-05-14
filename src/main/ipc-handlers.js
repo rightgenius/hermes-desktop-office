@@ -23,12 +23,18 @@ function getCLIBinaryPath(cliName) {
   }
 }
 
-function runCLI(cliName, args, timeout = 30000) {
+function runCLI(cliName, args, timeout = 30000, maxBuffer = 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const binaryPath = getCLIBinaryPath(cliName);
-    execFile(binaryPath, args, { timeout }, (error, stdout, stderr) => {
-      if (error) reject(new Error(stderr || error.message));
-      else resolve({ stdout, stderr });
+    execFile(binaryPath, args, { timeout, maxBuffer }, (error, stdout, stderr) => {
+      if (error) {
+        const err = new Error(stderr || error.message);
+        err.stderr = stderr;
+        err.stdout = stdout;
+        reject(err);
+      } else {
+        resolve({ stdout, stderr });
+      }
     });
   });
 }
@@ -96,18 +102,33 @@ function setupIPCHandlers(mainWindow) {
       if (auth.device_code && auth.verification_url) {
         shell.openExternal(auth.verification_url);
         // Must run --device-code in a single process (restart invalidates device code)
-        // Use spawn to avoid execFile buffer overflow during long wait
-        // Add --json flag to ensure structured JSON output
-        const waitResult = await runCLISpawn('lark-cli', ['auth', 'login', '--device-code', auth.device_code, '--json'], 600000);
-        // Feishu CLI outputs JSON to stderr, not stdout
-        const combined = waitResult.stderr + waitResult.stdout;
-        const jsonMatch = combined.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
+        // CLI buffers output until exit, so execFile works fine with large buffer
+        try {
+          const waitResult = await runCLI('lark-cli', ['auth', 'login', '--device-code', auth.device_code, '--json'], 600000, 10 * 1024 * 1024);
+          // Feishu CLI outputs JSON to stderr
+          const combined = (waitResult.stderr || '') + (waitResult.stdout || '');
+          console.log('Feishu auth resolved - combined output length:', combined.length);
+          const jsonMatch = combined.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
             const status = JSON.parse(jsonMatch[0]);
+            console.log('Feishu auth status:', JSON.stringify(status).slice(0, 200));
             if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
             if (status.error) return { success: false, error: status.error.message || '授权失败' };
-          } catch {}
+          }
+        } catch (err) {
+          // execFile rejects on non-zero exit, but stderr may still contain JSON
+          console.log('Feishu auth rejected - err.message:', err.message?.slice(0, 200));
+          const combined = (err.stderr || '') + (err.stdout || '');
+          console.log('Feishu auth rejected - combined length:', combined.length);
+          const jsonMatch = combined.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const status = JSON.parse(jsonMatch[0]);
+              console.log('Feishu auth status from error:', JSON.stringify(status).slice(0, 200));
+              if (status.ok) return { success: true, userName: status.userName || '', version: status.cliVersion || '' };
+              if (status.error) return { success: false, error: status.error.message || '授权失败' };
+            } catch {}
+          }
         }
         return { success: false, error: '授权未完成' };
       }
