@@ -649,6 +649,7 @@ const sessionList = document.querySelector('.session-list');
 let currentSessionId = null;
 let currentAgentMessageEl = null;
 let agentRunning = false;
+let pendingPrompt = null;
 
 const SESSIONS_KEY = 'hermes-chat-sessions';
 
@@ -718,12 +719,22 @@ function addMessage(text, sender = 'user', isStreaming = false) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   if (isStreaming) msg.classList.add('streaming');
-  // Agent messages render markdown, user messages use plain text
-  const content = sender === 'agent' ? renderMarkdown(text) : escapeHtml(text);
-  msg.innerHTML = `<div class="message-bubble">${content}</div>`;
-  // Store raw text for streaming updates
+
+  let innerHTML = '';
+  if (sender === 'agent') {
+    if (text) {
+      innerHTML += `<div class="message-bubble">${renderMarkdown(text)}</div>`;
+    } else {
+      innerHTML += `<div class="message-bubble"></div>`;
+    }
+  } else {
+    innerHTML += `<div class="message-bubble">${escapeHtml(text)}</div>`;
+  }
+  msg.innerHTML = innerHTML;
   const bubble = msg.querySelector('.message-bubble');
-  bubble._rawText = text;
+  bubble._rawText = text || '';
+  bubble._rawReasoning = '';
+  bubble._toolCalls = {};
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
   if (sender === 'agent' && isStreaming) {
@@ -735,10 +746,193 @@ function addMessage(text, sender = 'user', isStreaming = false) {
 function updateStreamingMessage(chunk) {
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-  // Append chunk and re-render markdown
   bubble._rawText = (bubble._rawText || '') + chunk;
   bubble.innerHTML = renderMarkdown(bubble._rawText);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function updateReasoning(text) {
+  if (!currentAgentMessageEl) return;
+  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  bubble._rawReasoning = (bubble._rawReasoning || '') + text;
+  let reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
+  if (!reasoningEl) {
+    reasoningEl = document.createElement('div');
+    reasoningEl.className = 'message-reasoning';
+    reasoningEl.innerHTML = `<div class="message-reasoning-label">思考中</div><div class="message-reasoning-text"></div>`;
+    currentAgentMessageEl.insertBefore(reasoningEl, currentAgentMessageEl.firstChild);
+  }
+  reasoningEl.querySelector('.message-reasoning-text').textContent = bubble._rawReasoning;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addToolCall(toolId, name, args) {
+  if (!currentAgentMessageEl) return;
+  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  const toolCalls = bubble._toolCalls || {};
+  toolCalls[toolId] = { name, args, result: null, status: 'running' };
+  bubble._toolCalls = toolCalls;
+  renderToolCalls(bubble);
+}
+
+function updateToolCall(toolId, result) {
+  if (!currentAgentMessageEl) return;
+  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
+  const toolCalls = bubble._toolCalls || {};
+  if (toolCalls[toolId]) {
+    toolCalls[toolId].result = result;
+    toolCalls[toolId].status = 'done';
+  }
+  renderToolCalls(bubble);
+}
+
+function renderToolCalls(bubble) {
+  const toolCalls = bubble._toolCalls || {};
+  const entries = Object.entries(toolCalls);
+  if (entries.length === 0) return;
+
+  let existingContainer = bubble.querySelector('.message-tool-calls');
+  if (!existingContainer) {
+    existingContainer = document.createElement('div');
+    existingContainer.className = 'message-tool-calls';
+    bubble.appendChild(existingContainer);
+  }
+
+  existingContainer.innerHTML = entries.map(([toolId, tc]) => {
+    const statusClass = tc.status === 'running' ? 'running' : (tc.result && tc.result.startsWith('ERROR') ? 'error' : 'done');
+    const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
+    const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
+    const isExpanded = tc.status === 'done';
+    return `<div class="message-tool-call ${isExpanded ? 'expanded' : ''}" data-tool-id="${toolId}">
+      <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <span class="message-tool-call-name">${escapeHtml(tc.name)}</span>
+        <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成')}</span>
+        <svg class="message-tool-call-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </div>
+      <div class="message-tool-call-body">
+        <div class="message-tool-call-body-inner">
+          <div class="message-tool-call-args">
+            <div class="message-tool-call-args-label">参数</div>
+            <pre>${escapeHtml(tc.args || '{}')}</pre>
+          </div>
+          ${tc.result !== null ? `<div class="message-tool-call-result">
+            <div class="message-tool-call-result-label">结果</div>
+            <pre class="${resultClass}">${escapeHtml(tc.result)}</pre>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showPromptOverlay(type, data) {
+  pendingPrompt = { type, ...data };
+  const chatInputArea = document.querySelector('.chat-input-area');
+  if (chatInputArea) chatInputArea.classList.add('disabled');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'prompt-overlay';
+  overlay.id = 'prompt-overlay';
+
+  let content = '';
+  if (type === 'clarify_request') {
+    const choices = data.choices || [];
+    content = `<div class="prompt-modal">
+      <h3><span class="prompt-icon">❓</span>需要你的选择</h3>
+      <div class="prompt-question">${escapeHtml(data.question)}</div>
+      <div class="prompt-choices">
+        ${choices.map((c, i) => `<button class="prompt-choice-btn ${i === 0 ? 'primary' : ''}" data-answer="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+      </div>
+    </div>`;
+  } else if (type === 'approval_request') {
+    content = `<div class="prompt-modal">
+      <h3><span class="prompt-icon">🔐</span>需要权限审批</h3>
+      <div class="prompt-description">${escapeHtml(data.description || '以下命令需要你的批准才能执行')}</div>
+      <div class="prompt-command">${escapeHtml(data.command || '')}</div>
+      <div class="prompt-actions">
+        <button class="btn btn-secondary prompt-approve" data-choice="once">批准一次</button>
+        <button class="btn btn-secondary prompt-approve" data-choice="session">本次会话批准</button>
+        <button class="btn btn-danger prompt-deny" data-choice="deny">拒绝</button>
+      </div>
+    </div>`;
+  } else if (type === 'sudo_request') {
+    content = `<div class="prompt-modal">
+      <h3><span class="prompt-icon">🔑</span>需要 sudo 密码</h3>
+      <div class="prompt-input-group">
+        <label for="prompt-sudo-password">请输入 sudo 密码</label>
+        <input type="password" id="prompt-sudo-password" placeholder="密码" autofocus>
+      </div>
+      <div class="prompt-actions">
+        <button class="btn btn-secondary prompt-sudo-cancel">取消</button>
+        <button class="btn btn-primary prompt-sudo-submit">提交</button>
+      </div>
+    </div>`;
+  } else if (type === 'secret_request') {
+    content = `<div class="prompt-modal">
+      <h3><span class="prompt-icon">🔒</span>需要密钥</h3>
+      <div class="prompt-description">${escapeHtml(data.prompt || `请输入 ${data.env_var} 的值`)}</div>
+      <div class="prompt-input-group">
+        <label for="prompt-secret-value">${escapeHtml(data.env_var || 'Value')}</label>
+        <input type="password" id="prompt-secret-value" placeholder="输入密钥" autofocus>
+        ${data.metadata ? `<div class="input-hint">${escapeHtml(JSON.stringify(data.metadata))}</div>` : ''}
+      </div>
+      <div class="prompt-actions">
+        <button class="btn btn-secondary prompt-secret-skip">跳过</button>
+        <button class="btn btn-primary prompt-secret-submit">提交</button>
+      </div>
+    </div>`;
+  }
+
+  overlay.innerHTML = content;
+  document.body.appendChild(overlay);
+
+  if (type === 'clarify_request') {
+    overlay.querySelectorAll('.prompt-choice-btn').forEach(btn => {
+      btn.addEventListener('click', () => submitPrompt(btn.dataset.answer));
+    });
+  } else if (type === 'approval_request') {
+    overlay.querySelectorAll('.prompt-approve').forEach(btn => {
+      btn.addEventListener('click', () => submitPrompt(btn.dataset.choice));
+    });
+    overlay.querySelectorAll('.prompt-deny').forEach(btn => {
+      btn.addEventListener('click', () => submitPrompt('deny'));
+    });
+  } else if (type === 'sudo_request') {
+    overlay.querySelector('.prompt-sudo-submit')?.addEventListener('click', () => {
+      const pw = document.getElementById('prompt-sudo-password')?.value || '';
+      submitPrompt(pw);
+    });
+    overlay.querySelector('.prompt-sudo-cancel')?.addEventListener('click', () => submitPrompt(''));
+    const pwInput = document.getElementById('prompt-sudo-password');
+    if (pwInput) pwInput.focus();
+  } else if (type === 'secret_request') {
+    overlay.querySelector('.prompt-secret-submit')?.addEventListener('click', () => {
+      const val = document.getElementById('prompt-secret-value')?.value || '';
+      submitPrompt(val);
+    });
+    overlay.querySelector('.prompt-secret-skip')?.addEventListener('click', () => submitPrompt(''));
+    const secretInput = document.getElementById('prompt-secret-value');
+    if (secretInput) secretInput.focus();
+  }
+}
+
+function removePromptOverlay() {
+  const overlay = document.getElementById('prompt-overlay');
+  if (overlay) overlay.remove();
+  pendingPrompt = null;
+  const chatInputArea = document.querySelector('.chat-input-area');
+  if (chatInputArea) chatInputArea.classList.remove('disabled');
+}
+
+async function submitPrompt(answer) {
+  if (!pendingPrompt) return;
+  const requestId = pendingPrompt.request_id;
+  removePromptOverlay();
+  try {
+    await window.api.agentRespondToPrompt(requestId, answer);
+  } catch (err) {
+    console.error('Respond to prompt failed:', err);
+  }
 }
 
 function finalizeStreamingMessage() {
@@ -951,6 +1145,54 @@ if (window.api) {
         break;
       case 'chunk':
         updateStreamingMessage(data.data);
+        break;
+      case 'reasoning':
+        updateReasoning(data.data);
+        break;
+      case 'thinking':
+        if (currentAgentMessageEl) {
+          const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning-label');
+          if (reasoningEl && data.data) {
+            reasoningEl.textContent = data.data;
+          }
+        }
+        break;
+      case 'tool_start':
+        addToolCall(data.data.tool_id, data.data.name, data.data.args);
+        break;
+      case 'tool_complete':
+        updateToolCall(data.data.tool_id, data.data.result);
+        break;
+      case 'tool_progress':
+        break;
+      case 'tool_gen':
+        break;
+      case 'clarify_request':
+        showPromptOverlay('clarify_request', {
+          request_id: data.data.request_id,
+          question: data.data.question,
+          choices: data.data.choices,
+        });
+        break;
+      case 'approval_request':
+        showPromptOverlay('approval_request', {
+          request_id: data.data.request_id,
+          command: data.data.command,
+          description: data.data.description,
+        });
+        break;
+      case 'sudo_request':
+        showPromptOverlay('sudo_request', {
+          request_id: data.data.request_id,
+        });
+        break;
+      case 'secret_request':
+        showPromptOverlay('secret_request', {
+          request_id: data.data.request_id,
+          env_var: data.data.env_var,
+          prompt: data.data.prompt,
+          metadata: data.data.metadata,
+        });
         break;
       case 'complete':
         finalizeStreamingMessage();
