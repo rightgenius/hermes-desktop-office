@@ -1452,10 +1452,13 @@ function showWizard() {
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
-  currentSessionId = createNewSession();
+  currentSessionId = null;
   chatMessages.innerHTML = '';
-  addMessage('你好！我是 Hermes，有什么可以帮你？', 'agent');
-  addMessageToSession('你好！我是 Hermes，有什么可以帮你？', 'agent');
+  const emptyState = document.getElementById('chat-empty-state');
+  if (emptyState) {
+    chatMessages.appendChild(emptyState);
+  }
+  updateChatLayout();
   renderSessionList();
 });
 
