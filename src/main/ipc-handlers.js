@@ -45,7 +45,7 @@ function getCLIVersion(cliName) {
       // lark-cli: "lark-cli version 1.0.26"
       // dws: "dws version v1.0.26 (2ba1dcd, ...)"
       const match = r.stdout.match(/version\s+([v\d.]+)/i);
-      resolve(match ? match[1] : '');
+      resolve(match ? match[1].replace(/^v/, '') : '');
     }).catch(() => resolve(''));
   });
 }
