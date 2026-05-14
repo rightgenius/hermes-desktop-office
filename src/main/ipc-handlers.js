@@ -98,16 +98,30 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('get-auth-permissions', async (_, { cli, page = 1, pageSize = 5, search = '' }) => {
+    if (!['feishu', 'dingtalk'].includes(cli)) {
+      return { success: false, error: 'Invalid CLI type' };
+    }
+
+    page = Math.max(1, page);
+    pageSize = Math.max(1, Math.min(50, pageSize));
+
     const cliName = cli === 'feishu' ? 'lark-cli' : 'dws';
     try {
       const result = await runCLI(cliName, ['auth', 'status', '--format', 'json'], 10000);
-      const data = JSON.parse(result.stdout);
+      let data;
+      try {
+        data = JSON.parse(result.stdout);
+      } catch {
+        return { success: false, error: 'CLI returned invalid JSON response' };
+      }
 
       let permissions = [];
       if (data.permissions && Array.isArray(data.permissions)) {
         permissions = data.permissions;
       } else if (data.scopes && Array.isArray(data.scopes)) {
         permissions = data.scopes.map(s => ({ name: s, scope: s, status: 'granted' }));
+      } else {
+        return { success: false, error: 'No permissions or scopes found in CLI response' };
       }
 
       if (search) {
