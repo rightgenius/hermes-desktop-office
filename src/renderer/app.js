@@ -672,11 +672,20 @@ function createNewSession() {
   return id;
 }
 
-function addMessageToSession(text, sender) {
+function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
   if (!currentSessionId) return;
   const sessions = loadSessions();
   if (sessions[currentSessionId]) {
-    sessions[currentSessionId].messages.push({ text, sender, timestamp: Date.now() });
+    sessions[currentSessionId].messages.push({ 
+      text, 
+      sender, 
+      timestamp: Date.now(),
+      reasoning,
+      toolCalls: Object.entries(toolCalls).map(([id, tc]) => ({
+        toolId: id,
+        ...tc
+      }))
+    });
     if (sender === 'user' && sessions[currentSessionId].messages.length <= 2) {
       sessions[currentSessionId].title = text.slice(0, 30);
     }
@@ -706,7 +715,7 @@ function loadSession(sessionId) {
   const session = sessions[sessionId];
   if (!session) return;
   chatMessages.innerHTML = '';
-  session.messages.forEach(m => addMessage(m.text, m.sender));
+  session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
   renderSessionList();
 }
 
@@ -715,7 +724,7 @@ function formatTime(timestamp) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function addMessage(text, sender = 'user', isStreaming = false) {
+function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', toolCalls = []) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   if (isStreaming) msg.classList.add('streaming');
@@ -733,10 +742,43 @@ function addMessage(text, sender = 'user', isStreaming = false) {
   msg.innerHTML = innerHTML;
   const bubble = msg.querySelector('.message-bubble');
   bubble._rawText = text || '';
-  bubble._rawReasoning = '';
+  bubble._rawReasoning = reasoning || '';
   bubble._toolCalls = {};
+  
+  // Restore tool calls
+  if (toolCalls && toolCalls.length > 0) {
+    toolCalls.forEach(tc => {
+      bubble._toolCalls[tc.toolId] = {
+        name: tc.name,
+        args: tc.args,
+        result: tc.result,
+        status: tc.status || 'done'
+      };
+    });
+  }
+  
   chatMessages.appendChild(msg);
   chatMessages.scrollTop = chatMessages.scrollHeight;
+  
+  // Restore reasoning block if present
+  if (reasoning) {
+    const reasoningEl = document.createElement('div');
+    reasoningEl.className = 'message-reasoning finished';
+    reasoningEl.innerHTML = `
+      <div class="message-reasoning-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <span class="message-reasoning-label">思考完成</span>
+        <svg class="message-reasoning-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="message-reasoning-content">${escapeHtml(reasoning)}</div>
+    `;
+    msg.insertBefore(reasoningEl, msg.firstChild);
+  }
+  
+  // Render tool calls if present
+  if (toolCalls && toolCalls.length > 0) {
+    renderToolCalls(bubble);
+  }
+  
   if (sender === 'agent' && isStreaming) {
     currentAgentMessageEl = msg;
   }
@@ -964,7 +1006,9 @@ function finalizeStreamingMessage() {
   hideReasoning();
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
   const text = bubble._rawText || bubble.textContent;
-  addMessageToSession(text, 'agent');
+  const reasoning = bubble._rawReasoning || '';
+  const toolCalls = bubble._toolCalls || {};
+  addMessageToSession(text, 'agent', reasoning, toolCalls);
   currentAgentMessageEl = null;
 }
 
