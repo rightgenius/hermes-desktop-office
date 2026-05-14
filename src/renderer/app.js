@@ -805,7 +805,14 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   return msg;
 }
 
+// Helper to get current streaming message (works even if user switched away)
+function getCurrentStreamingMessage() {
+  if (currentAgentMessageEl) return currentAgentMessageEl;
+  return chatMessages.querySelector('.message.agent.streaming:last-of-type');
+}
+
 function updateStreamingMessage(chunk) {
+  currentAgentMessageEl = getCurrentStreamingMessage();
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
   
@@ -824,6 +831,7 @@ function updateStreamingMessage(chunk) {
 }
 
 function updateReasoning(text) {
+  currentAgentMessageEl = getCurrentStreamingMessage();
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
   bubble._rawReasoning = (bubble._rawReasoning || '') + text;
@@ -845,6 +853,7 @@ function updateReasoning(text) {
 }
 
 function hideReasoning() {
+  currentAgentMessageEl = getCurrentStreamingMessage();
   if (!currentAgentMessageEl) return;
   const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
   if (reasoningEl) {
@@ -855,6 +864,7 @@ function hideReasoning() {
 }
 
 function addToolCall(toolId, name, args) {
+  currentAgentMessageEl = getCurrentStreamingMessage();
   if (!currentAgentMessageEl) return;
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
   const toolCalls = bubble._toolCalls || {};
@@ -864,12 +874,7 @@ function addToolCall(toolId, name, args) {
 }
 
 function updateToolCall(toolId, result) {
-  let targetEl = currentAgentMessageEl;
-  // If current message is null (streaming finished), find the last agent message
-  if (!targetEl) {
-    const agentMessages = chatMessages.querySelectorAll('.message.agent');
-    targetEl = agentMessages[agentMessages.length - 1];
-  }
+  let targetEl = getCurrentStreamingMessage();
   if (!targetEl) return;
   const bubble = targetEl.querySelector('.message-bubble');
   if (!bubble) return;
@@ -1031,7 +1036,12 @@ async function submitPrompt(answer) {
 }
 
 function finalizeStreamingMessage() {
+  // Find streaming message if currentAgentMessageEl is null (user switched away)
+  if (!currentAgentMessageEl) {
+    currentAgentMessageEl = chatMessages.querySelector('.message.agent.streaming:last-of-type');
+  }
   if (!currentAgentMessageEl) return;
+  
   currentAgentMessageEl.classList.remove('streaming');
   hideReasoning();
   const bubble = currentAgentMessageEl.querySelector('.message-bubble');
