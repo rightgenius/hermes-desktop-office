@@ -207,6 +207,12 @@ function showPage(pageName) {
   const nav = document.querySelector(`.rail-btn[data-page="${pageName}"]`);
   if (target) target.classList.add('active');
   if (nav) nav.classList.add('active');
+  
+  // Hide sidebar for settings and logs pages
+  const midPanel = document.querySelector('.mid-panel');
+  if (midPanel) {
+    midPanel.style.display = (pageName === 'settings' || pageName === 'logs') ? 'none' : '';
+  }
 }
 
 // Keyboard shortcuts
@@ -1438,14 +1444,18 @@ async function autoStartAgent() {
     // Only auto-start if a provider or API key is configured
     const hasConfig = config.provider && config.provider !== 'auto' || config.apiKey;
     if (!hasConfig) return;
+    appendLog('[INFO] 自动启动 Agent...');
     const result = await window.api.agentStart(config);
     if (result && result.success) {
       updateStatus('status-agent', 'success');
       agentRunning = true;
+      appendLog('[INFO] Agent 已自动启动');
+    } else {
+      appendLog(`[ERROR] Agent 启动失败: ${result?.error || '未知错误'}`);
     }
   } catch (err) {
-    // Silently ignore auto-start failures (Agent not configured yet)
-    console.warn('Auto-start Agent skipped:', err.message);
+    appendLog(`[ERROR] Agent 自动启动失败: ${err.message}`);
+    console.warn('Auto-start Agent failed:', err.message);
   }
 }
 autoStartAgent();
