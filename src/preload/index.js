@@ -61,4 +61,17 @@ contextBridge.exposeInMainWorld('api', {
   removeListener: (channel, fn) => {
     ipcRenderer.removeListener(channel, fn);
   },
+
+  // Skills management
+  skillsList: () => ipcRenderer.invoke('skills:list'),
+  skillsGetDetail: (skillPath) => ipcRenderer.invoke('skills:get-detail', skillPath),
+  skillsSetEnabled: (skillName, enabled) => ipcRenderer.invoke('skills:set-enabled', skillName, enabled),
+  skillsCreate: (skillData) => ipcRenderer.invoke('skills:create', skillData),
+  skillsUpdate: (skillPath, content) => ipcRenderer.invoke('skills:update', { skillPath, content }),
+  skillsDelete: (skillPath) => ipcRenderer.invoke('skills:delete', skillPath),
+  skillsArchive: (skillPath) => ipcRenderer.invoke('skills:archive', skillPath),
+  skillsUnarchive: (skillPath) => ipcRenderer.invoke('skills:unarchive', skillPath),
+  skillsGetFile: (filePath) => ipcRenderer.invoke('skills:get-file', filePath),
+  skillsWriteFile: (filePath, content) => ipcRenderer.invoke('skills:write-file', { filePath, content }),
+  skillsListFiles: (skillPath) => ipcRenderer.invoke('skills:list-files', skillPath),
 });
