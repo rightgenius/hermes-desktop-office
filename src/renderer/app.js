@@ -883,9 +883,11 @@ function renderSessionList() {
   const sorted = Object.values(sessions).sort((a, b) => b.created - a.created);
   sessionList.innerHTML = sorted.length ? sorted.map(s => `
     <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-session-id="${s.id}">
-      <div class="session-menu-wrapper">
+      <div class="session-content">
         <span class="session-title">${escapeHtml(s.title)}</span>
         <span class="session-time">${formatTime(s.created)}</span>
+      </div>
+      <div class="session-menu-wrapper">
         <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作">⋮</button>
       </div>
     </div>
