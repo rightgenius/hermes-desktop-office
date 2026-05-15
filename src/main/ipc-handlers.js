@@ -399,15 +399,28 @@ function setupIPCHandlers(mainWindow) {
         return { success: false, error: 'Path is not a directory' };
       }
       const entries = await fsWorkspace.readdir(dirPath, { withFileTypes: true });
-      const files = entries
-        .filter(e => !e.name.startsWith('.'))
-        .map(e => ({
-          name: e.name,
-          path: path.join(dirPath, e.name),
-          isDirectory: e.isDirectory(),
-          size: null,
-          modified: null,
-        }));
+      const filtered = entries.filter(e => !e.name.startsWith('.'));
+      const files = await Promise.all(filtered.map(async e => {
+        const fullPath = path.join(dirPath, e.name);
+        try {
+          const stat = await fsWorkspace.stat(fullPath);
+          return {
+            name: e.name,
+            path: fullPath,
+            isDirectory: e.isDirectory(),
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+          };
+        } catch {
+          return {
+            name: e.name,
+            path: fullPath,
+            isDirectory: e.isDirectory(),
+            size: null,
+            modified: null,
+          };
+        }
+      }));
       return { success: true, files, dirPath };
     } catch (err) {
       return { success: false, error: err.message };
@@ -441,7 +454,7 @@ function setupIPCHandlers(mainWindow) {
       if (!filePath || !path.isAbsolute(filePath)) {
         return { success: false, error: 'Invalid file path' };
       }
-      shell.openPath(filePath);
+      await shell.openPath(filePath);
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
