@@ -739,6 +739,19 @@ function renderSessionList() {
   });
 }
 
+function syncInputAreaState(sessionId) {
+  const isStreaming = sessionId && streamingSessions[sessionId];
+  if (isStreaming) {
+    sendBtn.disabled = true;
+    sendBtn.textContent = '发送中...';
+    if (stopBtn) stopBtn.style.display = '';
+  } else {
+    sendBtn.disabled = false;
+    sendBtn.textContent = '发送';
+    if (stopBtn) stopBtn.style.display = 'none';
+  }
+}
+
 function loadSession(sessionId) {
   currentSessionId = sessionId;
   const sessions = loadSessions();
@@ -747,12 +760,16 @@ function loadSession(sessionId) {
   if (!session) {
     updateChatLayout();
     restoreStreamingState();
+    syncInputAreaState(sessionId);
     return;
   }
   session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
   
   // Restore streaming state for this session
   restoreStreamingState();
+  
+  // Sync input area state with session streaming status
+  syncInputAreaState(sessionId);
   
   renderSessionList();
 }
