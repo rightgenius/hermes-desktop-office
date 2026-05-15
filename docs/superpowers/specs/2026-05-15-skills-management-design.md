@@ -319,6 +319,21 @@ ipcMain.handle('skills:set-enabled', async (event, skillName, enabled) => {
 
 ### Skill Scanning Logic (main/skill-scanner.js)
 
+**Path Helper Functions:**
+```javascript
+const { app } = require('electron');
+
+function getHermesHome() {
+  // Read HERMES_HOME env var, fallback to ~/.hermes
+  return process.env.HERMES_HOME || path.join(app.getPath('home'), '.hermes');
+}
+
+function getAgentsHome() {
+  // Read user config or default to home directory
+  return path.join(app.getPath('home'), '.agents');
+}
+```
+
 **Scan Builtin Skills:**
 ```javascript
 function scanBuiltinSkills() {
@@ -465,9 +480,30 @@ function identifyAgentSkills(userSkills) {
   border-collapse: collapse;
 }
 
+/* Tab-specific grid layouts */
+.skills-table-header.builtin {
+  grid-template-columns: 40px 1fr 1.5fr 120px 80px 60px;
+}
+.skills-table-row.builtin {
+  grid-template-columns: 40px 1fr 1.5fr 120px 80px 60px;
+}
+
+.skills-table-header.user {
+  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+}
+.skills-table-row.user {
+  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+}
+
+.skills-table-header.agent {
+  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
+}
+.skills-table-row.agent {
+  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
+}
+
 .skills-table-header {
   display: grid;
-  grid-template-columns: 40px 1fr 1.5fr 120px 80px 100px;
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border-color);
   font-size: 11px;
@@ -478,7 +514,6 @@ function identifyAgentSkills(userSkills) {
 
 .skills-table-row {
   display: grid;
-  grid-template-columns: 40px 1fr 1.5fr 120px 80px 100px;
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border-color);
   cursor: pointer;
@@ -716,10 +751,19 @@ function identifyAgentSkills(userSkills) {
 ## Open Questions
 
 1. **Monaco Editor vs textarea:** Should we use Monaco Editor for SKILL.md editing (syntax highlighting, autocomplete) or keep it simple with textarea?
+   - **Recommendation:** Use textarea for Phase 1. Consider Monaco in future if users request better editing experience.
+   
 2. **Skill templates:** Should templates include CLI-specific commands (like `dws` for DingTalk) or just generic structure?
+   - **Recommendation:** Templates should include minimal CLI-specific examples. Feishu template includes basic lark-cli command structure. DingTalk template includes basic dws command structure. Office template includes generic productivity skill structure.
+   
 3. **Batch operations:** Should "Archive all stale" require individual confirmation or single batch confirm?
+   - **Recommendation:** Single batch confirm with count display ("Archive 5 stale skills?"). Show list of skills to be archived in confirmation dialog.
+   
 4. **Skill icons:** Should we use category-specific icons (GitHub, Productivity, etc.) or generic icons?
+   - **Recommendation:** Use generic skill icon (book/toolbox) for Phase 1. Category-specific icons can be added later based on user feedback.
+   
 5. **Usage stats for user skills:** Should user-created skills show usage statistics (like agent skills)?
+   - **Recommendation:** No. User skills don't have curator tracking. Only agent-generated skills show usage stats from .usage.json.
 
 ## Success Criteria
 
