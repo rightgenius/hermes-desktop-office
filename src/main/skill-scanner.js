@@ -34,6 +34,15 @@ function parseFrontmatter(content) {
   return result;
 }
 
+async function dirExists(p) {
+  try {
+    await fsPromises.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Scan a single skill directory
 async function scanSkillDir(dirPath, source) {
   const skillMdPath = path.join(dirPath, 'SKILL.md');
@@ -43,8 +52,8 @@ async function scanSkillDir(dirPath, source) {
     const meta = parseFrontmatter(content);
     
     const stat = await fsPromises.stat(dirPath);
-    const hasReferences = fs.existsSync(path.join(dirPath, 'references'));
-    const hasScripts = fs.existsSync(path.join(dirPath, 'scripts'));
+    const hasReferences = await dirExists(path.join(dirPath, 'references'));
+    const hasScripts = await dirExists(path.join(dirPath, 'scripts'));
     
     return {
       name: meta.name || path.basename(dirPath),
@@ -84,15 +93,15 @@ async function findSkillMds(baseDir, source) {
           await fsPromises.access(skillMdPath);
           const skill = await scanSkillDir(fullPath, source);
           if (skill) skills.push(skill);
-        } catch {
-          // No SKILL.md, recurse into subdirectory
+        } catch (err) {
+          if (err?.code !== 'ENOENT') throw err;
           const subSkills = await findSkillMds(fullPath, source);
           skills.push(...subSkills);
         }
       }
     }
   } catch (err) {
-    // Directory doesn't exist, return empty
+    if (err?.code !== 'ENOENT') throw err;
   }
   
   return skills;
@@ -114,25 +123,38 @@ function loadHermesConfig() {
   const configPath = path.join(getHermesHome(), 'config.yaml');
   try {
     const content = fs.readFileSync(configPath, 'utf-8');
-    // Simple YAML parser for skills section
     const enabled = [];
     const disabled = [];
     
-    const enabledMatch = content.match(/skills:\s*\n\s+enabled:\s*\n((?:\s+-\s+.+\n)*)/);
-    const disabledMatch = content.match(/skills:\s*\n(?:.*\n)*?\s+disabled:\s*\n((?:\s+-\s+.+\n)*)/);
+    const sections = content.split(/(?=^\w)/m);
     
-    if (enabledMatch) {
-      enabledMatch[1].split('\n').forEach(line => {
-        const match = line.match(/\s+-\s+(.+)/);
-        if (match) enabled.push(match[1].trim().replace(/['"]/g, ''));
-      });
-    }
-    
-    if (disabledMatch) {
-      disabledMatch[1].split('\n').forEach(line => {
-        const match = line.match(/\s+-\s+(.+)/);
-        if (match) disabled.push(match[1].trim().replace(/['"]/g, ''));
-      });
+    for (const section of sections) {
+      const enabledMatch = section.match(/enabled:\s*(?:\n((?:\s+-\s+.+\n)*)|(\[[^\]]*\]))/);
+      const disabledMatch = section.match(/disabled:\s*(?:\n((?:\s+-\s+.+\n)*)|(\[[^\]]*\]))/);
+      
+      if (enabledMatch) {
+        if (enabledMatch[1]) {
+          enabledMatch[1].split('\n').forEach(line => {
+            const m = line.match(/\s+-\s+(.+)/);
+            if (m) enabled.push(m[1].trim().replace(/['"]/g, ''));
+          });
+        } else if (enabledMatch[2]) {
+          const items = enabledMatch[2].match(/'([^']+)'|"([^"]+)"|([^,\]\[\s]+)/g);
+          if (items) items.forEach(item => enabled.push(item.trim().replace(/['"]/g, '')));
+        }
+      }
+      
+      if (disabledMatch) {
+        if (disabledMatch[1]) {
+          disabledMatch[1].split('\n').forEach(line => {
+            const m = line.match(/\s+-\s+(.+)/);
+            if (m) disabled.push(m[1].trim().replace(/['"]/g, ''));
+          });
+        } else if (disabledMatch[2]) {
+          const items = disabledMatch[2].match(/'([^']+)'|"([^"]+)"|([^,\]\[\s]+)/g);
+          if (items) items.forEach(item => disabled.push(item.trim().replace(/['"]/g, '')));
+        }
+      }
     }
     
     return { enabled, disabled };
@@ -154,9 +176,8 @@ function applyStatus(skills, config) {
 
 // Scan builtin skills
 async function scanBuiltinSkills() {
-  const appDir = path.join(__dirname, '..');
-  const skillsDir = path.join(appDir, 'hermes-agent', 'skills');
-  const optionalDir = path.join(appDir, 'hermes-agent', 'optional-skills');
+  const skillsDir = path.join(__dirname, 'hermes-agent', 'skills');
+  const optionalDir = path.join(__dirname, 'hermes-agent', 'optional-skills');
   
   const skills = [];
   skills.push(...await findSkillMds(skillsDir, 'builtin'));
