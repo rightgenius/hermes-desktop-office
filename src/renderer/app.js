@@ -927,7 +927,7 @@ function renderSessionList() {
   sessionList.innerHTML = sorted.length ? sorted.map(s => `
     <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-session-id="${s.id}">
       <div class="session-content">
-        <span class="session-title">${escapeHtml(s.title)}</span>
+        <span class="session-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
         <span class="session-time">${formatTime(s.created)}</span>
       </div>
       <div class="session-menu-wrapper">
