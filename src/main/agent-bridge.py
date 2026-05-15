@@ -21,6 +21,8 @@ Protocol:
 
 import json
 import os
+import signal
+import subprocess
 import sys
 import threading
 import uuid
@@ -134,9 +136,13 @@ def _handle_message(msg):
         return
 
     try:
-        # Set TERMINAL_CWD for this session's workspace
-        if workspace_path:
+        # Set TERMINAL_CWD for this session's workspace and chdir so
+        # os.getcwd() and the terminal tool's default cwd both follow.
+        # Only set if workspace_path is a valid non-empty directory.
+        if workspace_path and workspace_path.strip():
+            workspace_path = workspace_path.strip()
             os.environ["TERMINAL_CWD"] = workspace_path
+            os.chdir(workspace_path)
         elif "TERMINAL_CWD" not in os.environ:
             os.environ["TERMINAL_CWD"] = os.getcwd()
 
@@ -190,11 +196,13 @@ def _handle_stop(msg):
 
 
 def _handle_set_workspace(msg):
-    """Handle a set_workspace message to update TERMINAL_CWD."""
+    """Handle a set_workspace message to update TERMINAL_CWD and chdir."""
     session_id = msg.get("session_id", "")
     workspace_path = msg.get("workspace_path", "")
-    if workspace_path:
+    if workspace_path and workspace_path.strip():
+        workspace_path = workspace_path.strip()
         os.environ["TERMINAL_CWD"] = workspace_path
+        os.chdir(workspace_path)
         _emit({"type": "workspace_set", "session_id": session_id, "workspace_path": workspace_path})
 
 

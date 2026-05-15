@@ -38,8 +38,14 @@ class AgentManager {
       };
     }
 
+    // Use workspacePath from config, fallback to defaultWorkspacePath
+    // Only set TERMINAL_CWD if we have a valid non-empty path
     const workspacePath = config.workspacePath || config.defaultWorkspacePath || '';
-    const env = { ...process.env, TERMINAL_CWD: workspacePath };
+    this._defaultWorkspace = workspacePath;
+    const env = { ...process.env };
+    if (workspacePath && workspacePath.trim()) {
+      env.TERMINAL_CWD = workspacePath.trim();
+    }
     if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
     if (config.baseUrl) env.OPENROUTER_BASE_URL = config.baseUrl;
     if (config.provider && config.provider !== 'auto') env.HERMES_INFERENCE_PROVIDER = config.provider;

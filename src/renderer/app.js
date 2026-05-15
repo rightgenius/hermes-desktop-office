@@ -1252,15 +1252,33 @@ function updatePreviewContent(content, filePath = null, size = null) {
 // ============================
 // Workspace Initialization
 // ============================
-function initWorkspace() {
+async function initWorkspace() {
+  // Load default workspace path from config
+  try {
+    const config = await window.api.configGet();
+    const defaultPath = config.defaultWorkspacePath || config.workspacePath;
+    if (defaultPath) {
+      workspaceState.currentPath = defaultPath;
+      document.getElementById('workspace-path-value').textContent = defaultPath;
+      workspaceState.treeData = {};
+      loadWorkspaceTree(defaultPath);
+      // Update agent workspace path
+      if (window.api.agentSetWorkspace) {
+        window.api.agentSetWorkspace(currentSessionId || 'default', defaultPath);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load default workspace:', err);
+  }
+  
   document.getElementById('workspace-browse-btn')?.addEventListener('click', async () => {
     const dirPath = await window.api.workspaceBrowse();
     if (dirPath) {
       workspaceState.treeData = {};
       loadWorkspaceTree(dirPath);
       // Update agent workspace path
-      if (currentSessionId && window.api.agentSetWorkspace) {
-        window.api.agentSetWorkspace(currentSessionId, dirPath);
+      if (window.api.agentSetWorkspace) {
+        window.api.agentSetWorkspace(currentSessionId || 'default', dirPath);
       }
     }
   });
@@ -1273,6 +1291,16 @@ function initWorkspace() {
   });
   
   document.getElementById('workspace-collapse-btn')?.addEventListener('click', () => {
+    const panel = document.getElementById('workspace-panel');
+    
+    if (panel) {
+      workspaceState.collapsed = !workspaceState.collapsed;
+      panel.classList.toggle('collapsed', workspaceState.collapsed);
+    }
+  });
+  
+  // Titlebar toggle workspace button
+  document.getElementById('toggle-workspace-btn')?.addEventListener('click', () => {
     const panel = document.getElementById('workspace-panel');
     
     if (panel) {
