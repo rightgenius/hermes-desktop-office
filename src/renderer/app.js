@@ -192,14 +192,6 @@ document.querySelectorAll('.sidebar-menu-item').forEach(item => {
   });
 });
 
-// Workspace toggle
-document.getElementById('workspace-toggle')?.addEventListener('click', () => {
-  const header = document.getElementById('workspace-toggle');
-  const tree = document.getElementById('workspace-tree');
-  header.classList.toggle('collapsed');
-  tree.classList.toggle('collapsed');
-});
-
 function showPage(pageName) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.rail-btn').forEach(n => n.classList.remove('active'));
