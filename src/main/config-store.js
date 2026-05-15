@@ -10,6 +10,7 @@ const DEFAULT_CONFIG = {
   baseUrl: '',
   model: '',
   workspacePath: '',
+  defaultWorkspacePath: '',
   autoStart: true,
 };
 

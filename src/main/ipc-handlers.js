@@ -367,6 +367,95 @@ function setupIPCHandlers(mainWindow) {
     await fs.writeFile(result.filePath, content, 'utf-8');
     return { success: true, filePath: result.filePath };
   });
+
+  const fsWorkspace = require('fs').promises;
+
+  const TEXT_EXTENSIONS = new Set([
+    'txt', 'md', 'json', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'jsx',
+    'html', 'css', 'scss', 'xml', 'sql', 'sh', 'bash', 'zsh', 'gitignore',
+    'dockerfile', 'makefile', 'cfg', 'ini', 'toml', 'env', 'log', 'csv',
+    'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'swift', 'kt',
+    'php', 'pl', 'lua', 'r', 'm', 'mm', 'vue', 'svelte', 'astro',
+  ]);
+
+  function isTextFile(filePath) {
+    const ext = filePath.split('.').pop().toLowerCase();
+    const basename = path.basename(filePath).toLowerCase();
+    return TEXT_EXTENSIONS.has(ext) ||
+           TEXT_EXTENSIONS.has(basename) ||
+           basename === 'dockerfile' ||
+           basename === 'makefile' ||
+           basename === 'gitignore' ||
+           basename === 'env';
+  }
+
+  ipcMain.handle('workspace-list', async (_, { dirPath, recursive = false }) => {
+    try {
+      if (!dirPath || !path.isAbsolute(dirPath)) {
+        return { success: false, error: 'Invalid directory path' };
+      }
+      const stat = await fsWorkspace.stat(dirPath);
+      if (!stat.isDirectory()) {
+        return { success: false, error: 'Path is not a directory' };
+      }
+      const entries = await fsWorkspace.readdir(dirPath, { withFileTypes: true });
+      const files = entries
+        .filter(e => !e.name.startsWith('.'))
+        .map(e => ({
+          name: e.name,
+          path: path.join(dirPath, e.name),
+          isDirectory: e.isDirectory(),
+          size: null,
+          modified: null,
+        }));
+      return { success: true, files, dirPath };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('workspace-read', async (_, { filePath }) => {
+    try {
+      if (!filePath || !path.isAbsolute(filePath)) {
+        return { success: false, error: 'Invalid file path' };
+      }
+      if (!isTextFile(filePath)) {
+        return { success: false, error: 'File is not a text file' };
+      }
+      const stat = await fsWorkspace.stat(filePath);
+      if (stat.isDirectory()) {
+        return { success: false, error: 'Path is a directory, not a file' };
+      }
+      if (stat.size > 1024 * 1024) {
+        return { success: false, error: 'File too large (max 1MB)' };
+      }
+      const content = await fsWorkspace.readFile(filePath, 'utf-8');
+      return { success: true, content, filePath, size: stat.size };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('workspace-open', async (_, { filePath }) => {
+    try {
+      if (!filePath || !path.isAbsolute(filePath)) {
+        return { success: false, error: 'Invalid file path' };
+      }
+      shell.openPath(filePath);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('workspace-browse', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: '选择 Workspace 目录'
+    });
+    if (!result.canceled && result.filePaths.length > 0) return result.filePaths[0];
+    return null;
+  });
 }
 
 // Expose agentManager for graceful shutdown on app quit
