@@ -200,18 +200,18 @@ function showPage(pageName) {
   if (target) target.classList.add('active');
   if (nav) nav.classList.add('active');
   
-  // Hide sidebar for settings and logs pages
+  // Hide sidebar for settings, logs, and skills pages
   const midPanel = document.querySelector('.mid-panel');
   if (midPanel) {
-    midPanel.style.display = (pageName === 'settings' || pageName === 'logs') ? 'none' : '';
+    midPanel.style.display = (pageName === 'settings' || pageName === 'logs' || pageName === 'skills') ? 'none' : '';
   }
 }
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {
-  if (e.metaKey && e.key >= '1' && e.key <= '3') {
+  if (e.metaKey && e.key >= '1' && e.key <= '4') {
     e.preventDefault();
-    const pages = ['chat', 'settings', 'logs'];
+    const pages = ['chat', 'settings', 'skills', 'logs'];
     showPage(pages[parseInt(e.key) - 1]);
   }
 });
