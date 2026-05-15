@@ -1,8 +1,11 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const ConfigStore = require('./config-store');
 const { AgentManager } = require('./agent-manager');
+
+const fsPromises = fs.promises;
 
 const configStore = new ConfigStore();
 let agentManager = null;
@@ -356,7 +359,6 @@ function setupIPCHandlers(mainWindow) {
   ipcMain.handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
 
   ipcMain.handle('session-export', async (event, { filename, content }) => {
-    const fs = require('fs').promises;
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showSaveDialog(win, {
       title: '保存会话',
@@ -364,11 +366,9 @@ function setupIPCHandlers(mainWindow) {
       filters: [{ name: 'Markdown', extensions: ['md'] }]
     });
     if (result.canceled) return { success: false, cancelled: true };
-    await fs.writeFile(result.filePath, content, 'utf-8');
+    await fsPromises.writeFile(result.filePath, content, 'utf-8');
     return { success: true, filePath: result.filePath };
   });
-
-  const fsWorkspace = require('fs').promises;
 
   const TEXT_EXTENSIONS = new Set([
     'txt', 'md', 'json', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'jsx',
@@ -381,29 +381,24 @@ function setupIPCHandlers(mainWindow) {
   function isTextFile(filePath) {
     const ext = filePath.split('.').pop().toLowerCase();
     const basename = path.basename(filePath).toLowerCase();
-    return TEXT_EXTENSIONS.has(ext) ||
-           TEXT_EXTENSIONS.has(basename) ||
-           basename === 'dockerfile' ||
-           basename === 'makefile' ||
-           basename === 'gitignore' ||
-           basename === 'env';
+    return TEXT_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(basename);
   }
 
-  ipcMain.handle('workspace-list', async (_, { dirPath, recursive = false }) => {
+  ipcMain.handle('workspace-list', async (_, { dirPath }) => {
     try {
       if (!dirPath || !path.isAbsolute(dirPath)) {
         return { success: false, error: 'Invalid directory path' };
       }
-      const stat = await fsWorkspace.stat(dirPath);
+      const stat = await fsPromises.stat(dirPath);
       if (!stat.isDirectory()) {
         return { success: false, error: 'Path is not a directory' };
       }
-      const entries = await fsWorkspace.readdir(dirPath, { withFileTypes: true });
+      const entries = await fsPromises.readdir(dirPath, { withFileTypes: true });
       const filtered = entries.filter(e => !e.name.startsWith('.'));
       const files = await Promise.all(filtered.map(async e => {
         const fullPath = path.join(dirPath, e.name);
         try {
-          const stat = await fsWorkspace.stat(fullPath);
+          const stat = await fsPromises.stat(fullPath);
           return {
             name: e.name,
             path: fullPath,
@@ -435,14 +430,14 @@ function setupIPCHandlers(mainWindow) {
       if (!isTextFile(filePath)) {
         return { success: false, error: 'File is not a text file' };
       }
-      const stat = await fsWorkspace.stat(filePath);
+      const stat = await fsPromises.stat(filePath);
       if (stat.isDirectory()) {
         return { success: false, error: 'Path is a directory, not a file' };
       }
       if (stat.size > 1024 * 1024) {
         return { success: false, error: 'File too large (max 1MB)' };
       }
-      const content = await fsWorkspace.readFile(filePath, 'utf-8');
+      const content = await fsPromises.readFile(filePath, 'utf-8');
       return { success: true, content, filePath, size: stat.size };
     } catch (err) {
       return { success: false, error: err.message };
