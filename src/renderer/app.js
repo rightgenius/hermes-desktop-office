@@ -762,18 +762,61 @@ function renameSession(sessionId) {
   const session = sessions[sessionId];
   if (!session) return;
   
-  const newName = prompt('请输入新名称:', session.title);
-  if (newName === null) return;
+  showRenameDialog(sessionId, session.title);
+}
+
+function showRenameDialog(sessionId, currentTitle) {
+  const overlay = document.createElement('div');
+  overlay.className = 'rename-dialog-overlay';
+  overlay.innerHTML = `
+    <div class="rename-dialog">
+      <h3>重命名会话</h3>
+      <input type="text" class="rename-input" value="${escapeHtml(currentTitle)}" placeholder="输入新名称">
+      <div class="rename-dialog-buttons">
+        <button class="rename-cancel">取消</button>
+        <button class="rename-confirm btn btn-primary">确定</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
   
-  const trimmed = newName.trim();
-  if (!trimmed) {
-    alert('名称不能为空');
-    return;
+  const input = overlay.querySelector('.rename-input');
+  const confirmBtn = overlay.querySelector('.rename-confirm');
+  const cancelBtn = overlay.querySelector('.rename-cancel');
+  
+  function close() {
+    overlay.remove();
   }
   
-  session.title = trimmed;
-  saveSessions(sessions);
-  renderSessionList();
+  function confirm() {
+    const newName = input.value.trim();
+    if (!newName) {
+      input.placeholder = '名称不能为空';
+      input.value = '';
+      return;
+    }
+    
+    const sessions = loadSessions();
+    if (sessions[sessionId]) {
+      sessions[sessionId].title = newName;
+      saveSessions(sessions);
+      renderSessionList();
+    }
+    close();
+  }
+  
+  confirmBtn.addEventListener('click', confirm);
+  cancelBtn.addEventListener('click', close);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirm();
+    else if (e.key === 'Escape') close();
+  });
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+  
+  setTimeout(() => input.focus(), 10);
 }
 
 function deleteSession(sessionId) {

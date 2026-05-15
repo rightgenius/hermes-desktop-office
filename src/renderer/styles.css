@@ -799,6 +799,70 @@ body {
   background: rgba(248, 113, 113, 0.1);
 }
 
+/* Rename Dialog */
+.rename-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.rename-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  min-width: 320px;
+  max-width: 480px;
+}
+
+.rename-dialog h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-md) 0;
+}
+
+.rename-input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 14px;
+  margin-bottom: var(--space-md);
+  box-sizing: border-box;
+}
+
+.rename-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.rename-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.rename-cancel {
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.rename-cancel:hover {
+  background: var(--bg-hover);
+}
+
 .space-2xl { padding: 32px; }
 
 /* Cards & Forms */
