@@ -25,6 +25,9 @@ contextBridge.exposeInMainWorld('api', {
   testApiConnection: (params) => ipcRenderer.invoke('test-api-connection', params),
   tryStartAgent: () => ipcRenderer.invoke('try-start-agent'),
 
+  // Session
+  sessionExport: (filename, content) => ipcRenderer.invoke('session-export', { filename, content }),
+
   // Events from main process
   onAgentLog: (fn) => {
     const handler = (_, data) => fn(data);

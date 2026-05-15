@@ -354,6 +354,19 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
+
+  ipcMain.handle('session-export', async (event, { filename, content }) => {
+    const fs = require('fs').promises;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showSaveDialog(win, {
+      title: '保存会话',
+      defaultPath: filename,
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    });
+    if (result.canceled) return { success: false, cancelled: true };
+    await fs.writeFile(result.filePath, content, 'utf-8');
+    return { success: true, filePath: result.filePath };
+  });
 }
 
 // Expose agentManager for graceful shutdown on app quit
