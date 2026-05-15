@@ -63,12 +63,19 @@ hermes-desktop-office/
 - Main area: page content
 - Settings page: card-stacked layout with workspace config + Feishu/DingTalk auth cards
 
+### Session Management
+- **Session list**: Horizontal layout with title/time on left, three-dot menu (⋮) on right
+- **Menu actions**: 重命名 (custom dialog), 导出 Markdown (native save dialog), 删除 (confirmation)
+- **Title tooltip**: Hover over truncated titles shows full text via JS tooltip
+- **State sync**: Input area (send/stop buttons) syncs with session streaming state on tab switch
+- **Storage**: Sessions stored in localStorage under `hermes-chat-sessions` key
+
 ### CLI Auth & Permissions
 - **Feishu (lark-cli)**: Device flow auth. `--no-wait` gets device_code, `--device-code` polls (single process, restart invalidates code). JSON output goes to **stderr**. Token stored in `~/.lark-cli/`. Auth status uses `scope` (space-separated string).
 - **DingTalk (dws)**: Device flow auth via `--device` flag. URL output to stderr. Token stored in `~/.lark-cli/` (shared config dir). No granular permissions — only `authenticated` status with `corp_id`.
 - **Permissions table**: 3 columns (name/description/status). Feishu has 100+ scoped permissions with Chinese descriptions mapped in `app.js`. DingTalk shows single "认证访问" entry.
 - **CLI versions**: Displayed via `--version` flag (e.g., `v1.0.26`). Fetched at startup and after auth.
-- **download-clis.sh bug**: Archive extraction must use `find` to locate binary, NOT `ls | head -1` (picks up CHANGELOG.md alphabetically).
+- **download-clis.sh**: Archive extraction uses `find` to locate binary by name (`lark-cli` or `dws`), skipping documentation files (CHANGELOG.md, LICENSE, etc.)
 
 ### Build
 - `npm run dev` — development with DevTools
