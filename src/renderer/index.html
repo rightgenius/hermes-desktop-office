@@ -269,6 +269,43 @@
           </div>
         </div>
       </main>
+
+      <!-- Workspace Panel -->
+      <aside class="workspace-panel" id="workspace-panel">
+        <div class="workspace-header">
+          <div class="workspace-path-display" id="workspace-path-display">
+            <span class="workspace-path-label">Workspace</span>
+            <span class="workspace-path-value" id="workspace-path-value">未选择</span>
+          </div>
+          <div class="workspace-header-actions">
+            <button class="workspace-btn" id="workspace-browse-btn" title="选择目录">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            </button>
+            <button class="workspace-btn" id="workspace-refresh-btn" title="刷新">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            </button>
+            <button class="workspace-btn" id="workspace-collapse-btn" title="折叠">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="workspace-tree-container" id="workspace-tree-container">
+          <div class="workspace-tree" id="workspace-tree">
+            <div class="workspace-empty">点击文件夹图标选择目录</div>
+          </div>
+        </div>
+
+        <div class="workspace-resize-handle" id="workspace-resize-handle"></div>
+
+        <div class="workspace-preview-container" id="workspace-preview-container">
+          <div class="workspace-preview-tabs" id="workspace-preview-tabs">
+          </div>
+          <div class="workspace-preview-content" id="workspace-preview-content">
+            <div class="workspace-preview-empty">选择文件以预览</div>
+          </div>
+        </div>
+      </aside>
     </div>
   </div>
   <script src="app.js"></script>
