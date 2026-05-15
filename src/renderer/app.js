@@ -776,6 +776,32 @@ function renameSession(sessionId) {
   renderSessionList();
 }
 
+function deleteSession(sessionId) {
+  const sessions = loadSessions();
+  if (!sessions[sessionId]) return;
+  
+  const confirmed = confirm('确定要删除此会话吗？此操作无法撤销。');
+  if (!confirmed) return;
+  
+  delete sessions[sessionId];
+  saveSessions(sessions);
+  
+  if (streamingSessions[sessionId]) {
+    delete streamingSessions[sessionId];
+  }
+  
+  if (sessionId === currentSessionId) {
+    currentSessionId = null;
+    chatMessages.innerHTML = '';
+    const emptyState = document.getElementById('chat-empty-state');
+    if (emptyState) chatMessages.appendChild(emptyState);
+    updateChatLayout();
+    syncInputAreaState(null);
+  }
+  
+  renderSessionList();
+}
+
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.session-menu-wrapper')) {
     closeSessionMenu();
