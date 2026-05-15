@@ -4,13 +4,22 @@ const { app } = require('electron');
 
 const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
 
+// Get default workspace path: user's Documents directory
+function getDefaultWorkspacePath() {
+  try {
+    return app.getPath('documents');
+  } catch {
+    return path.join(app.getPath('home'), 'Documents');
+  }
+}
+
 const DEFAULT_CONFIG = {
   provider: 'auto',
   apiKey: '',
   baseUrl: '',
   model: '',
   workspacePath: '',
-  defaultWorkspacePath: '',
+  defaultWorkspacePath: getDefaultWorkspacePath(),
   autoStart: true,
 };
 

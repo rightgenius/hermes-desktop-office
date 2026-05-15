@@ -357,6 +357,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
+  ipcMain.handle('agent-set-workspace', (_, { sessionId, workspacePath }) => agentManager.setWorkspacePath(sessionId, workspacePath));
 
   ipcMain.handle('session-export', async (event, { filename, content }) => {
     const win = BrowserWindow.fromWebContents(event.sender);

@@ -1258,6 +1258,10 @@ function initWorkspace() {
     if (dirPath) {
       workspaceState.treeData = {};
       loadWorkspaceTree(dirPath);
+      // Update agent workspace path
+      if (currentSessionId && window.api.agentSetWorkspace) {
+        window.api.agentSetWorkspace(currentSessionId, dirPath);
+      }
     }
   });
   
@@ -1338,6 +1342,10 @@ function syncWorkspacePath(sessionWorkspacePath) {
   if (targetPath && targetPath !== workspaceState.currentPath) {
     workspaceState.treeData = {};
     loadWorkspaceTree(targetPath);
+    // Update agent workspace path
+    if (currentSessionId && window.api.agentSetWorkspace) {
+      window.api.agentSetWorkspace(currentSessionId, targetPath);
+    }
   }
 }
 

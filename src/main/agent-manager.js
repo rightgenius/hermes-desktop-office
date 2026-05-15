@@ -38,8 +38,8 @@ class AgentManager {
       };
     }
 
-    const workspacePath = config.workspacePath || '';
-    const env = { ...process.env, HERMES_WORKSPACE: workspacePath };
+    const workspacePath = config.workspacePath || config.defaultWorkspacePath || '';
+    const env = { ...process.env, TERMINAL_CWD: workspacePath };
     if (config.apiKey) env.OPENAI_API_KEY = config.apiKey;
     if (config.baseUrl) env.OPENROUTER_BASE_URL = config.baseUrl;
     if (config.provider && config.provider !== 'auto') env.HERMES_INFERENCE_PROVIDER = config.provider;
@@ -124,15 +124,47 @@ class AgentManager {
       return { success: false, error: '该会话正在生成响应中' };
     }
 
+    // Get workspace path for this session
+    const workspacePath = (sessionState && sessionState.workspacePath) || this._defaultWorkspace || '';
+
     try {
-      const message = JSON.stringify({ type: 'message', session_id: sessionId, content: text, history }) + '\n';
+      const message = JSON.stringify({ 
+        type: 'message', 
+        session_id: sessionId, 
+        content: text, 
+        history,
+        workspace_path: workspacePath
+      }) + '\n';
       this.process.stdin.write(message);
       // Mark session as generating
-      this.sessionStates.set(sessionId, { isGenerating: true });
+      this.sessionStates.set(sessionId, { isGenerating: true, workspacePath });
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
     }
+  }
+
+  setWorkspacePath(sessionId, workspacePath) {
+    const sessionState = this.sessionStates.get(sessionId) || {};
+    sessionState.workspacePath = workspacePath;
+    this.sessionStates.set(sessionId, sessionState);
+    
+    // Also update default workspace for new sessions
+    if (workspacePath) {
+      this._defaultWorkspace = workspacePath;
+    }
+    
+    // Update TERMINAL_CWD in bridge if agent is running
+    if (this.running && this.process) {
+      const message = JSON.stringify({ 
+        type: 'set_workspace', 
+        session_id: sessionId,
+        workspace_path: workspacePath 
+      }) + '\n';
+      this.process.stdin.write(message);
+    }
+    
+    return { success: true };
   }
 
   stopGeneration(sessionId) {

@@ -127,12 +127,19 @@ def _handle_message(msg):
     session_id = msg.get("session_id", "")
     content = msg.get("content", "")
     history = msg.get("history", [])
+    workspace_path = msg.get("workspace_path", "")
 
     if not content:
         _emit({"type": "error", "session_id": session_id, "message": "Empty message"})
         return
 
     try:
+        # Set TERMINAL_CWD for this session's workspace
+        if workspace_path:
+            os.environ["TERMINAL_CWD"] = workspace_path
+        elif "TERMINAL_CWD" not in os.environ:
+            os.environ["TERMINAL_CWD"] = os.getcwd()
+
         agent = _get_or_create_agent(session_id)
 
         def on_chunk(text):
@@ -182,6 +189,15 @@ def _handle_stop(msg):
     _emit({"type": "stopped", "session_id": session_id})
 
 
+def _handle_set_workspace(msg):
+    """Handle a set_workspace message to update TERMINAL_CWD."""
+    session_id = msg.get("session_id", "")
+    workspace_path = msg.get("workspace_path", "")
+    if workspace_path:
+        os.environ["TERMINAL_CWD"] = workspace_path
+        _emit({"type": "workspace_set", "session_id": session_id, "workspace_path": workspace_path})
+
+
 def main():
     # Signal ready
     _emit({"type": "ready"})
@@ -207,6 +223,8 @@ def main():
             t.start()
         elif msg_type == "stop":
             _handle_stop(msg)
+        elif msg_type == "set_workspace":
+            _handle_set_workspace(msg)
         elif msg_type == "ping":
             _emit({"type": "pong"})
 
