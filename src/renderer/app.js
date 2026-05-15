@@ -697,7 +697,7 @@ function restoreStreamingState() {
 function createNewSession() {
   const id = `session-${Date.now()}`;
   const sessions = loadSessions();
-  sessions[id] = { id, messages: [], created: Date.now(), title: '新对话' };
+  sessions[id] = { id, messages: [], created: Date.now(), title: '新对话', workspacePath: null };
   saveSessions(sessions);
   return id;
 }
@@ -993,6 +993,332 @@ function syncInputAreaState(sessionId) {
   }
 }
 
+// ============================
+// Workspace State
+// ============================
+const workspaceState = {
+  currentPath: null,
+  treeData: {},
+  openTabs: [],
+  activeTab: null,
+  collapsed: false,
+  treeCollapsed: false,
+};
+
+function isTextFile(filePath) {
+  const textExts = new Set([
+    'txt', 'md', 'json', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'jsx',
+    'html', 'css', 'scss', 'xml', 'sql', 'sh', 'bash', 'zsh', 'gitignore',
+    'dockerfile', 'makefile', 'cfg', 'ini', 'toml', 'env', 'log', 'csv',
+    'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'swift', 'kt',
+    'php', 'pl', 'lua', 'r', 'm', 'mm', 'vue', 'svelte', 'astro',
+  ]);
+  const ext = filePath.split('.').pop().toLowerCase();
+  const basename = path.basename ? path.basename(filePath).toLowerCase() : filePath.split('/').pop().toLowerCase();
+  return textExts.has(ext) || textExts.has(basename);
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ============================
+// Workspace Tree
+// ============================
+async function loadWorkspaceTree(dirPath) {
+  const treeEl = document.getElementById('workspace-tree');
+  if (!treeEl) return;
+  
+  treeEl.innerHTML = '<div class="workspace-empty">加载中...</div>';
+  
+  try {
+    const result = await window.api.workspaceList({ dirPath });
+    if (!result.success) {
+      treeEl.innerHTML = `<div class="workspace-empty">加载失败: ${result.error}</div>`;
+      return;
+    }
+    
+    workspaceState.currentPath = dirPath;
+    document.getElementById('workspace-path-value').textContent = dirPath;
+    
+    renderWorkspaceTree(result.files, treeEl, 0);
+  } catch (err) {
+    treeEl.innerHTML = `<div class="workspace-empty">加载异常: ${err.message}</div>`;
+  }
+}
+
+function renderWorkspaceTree(files, container, depth) {
+  if (!files || files.length === 0) {
+    container.innerHTML = '<div class="workspace-empty">空目录</div>';
+    return;
+  }
+  
+  container.innerHTML = '';
+  
+  const sorted = [...files].sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  
+  sorted.forEach(file => {
+    const item = document.createElement('div');
+    item.className = `workspace-tree-item ${file.isDirectory ? 'directory' : 'file'}`;
+    item.dataset.path = file.path;
+    item.dataset.name = file.name;
+    item.style.paddingLeft = `${12 + depth * 16}px`;
+    
+    if (file.isDirectory) {
+      const isExpanded = workspaceState.treeData[file.path]?.expanded;
+      item.classList.toggle('expanded', isExpanded);
+      
+      item.innerHTML = `
+        <svg class="workspace-tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        <svg class="workspace-tree-icon folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="workspace-tree-name">${escapeHtml(file.name)}</span>
+      `;
+      
+      item.addEventListener('click', async () => {
+        const isExpanded = item.classList.contains('expanded');
+        if (isExpanded) {
+          item.classList.remove('expanded');
+          workspaceState.treeData[file.path] = { expanded: false };
+          const children = item.nextElementSibling;
+          if (children && children.classList.contains('workspace-tree-children')) {
+            children.remove();
+          }
+        } else {
+          item.classList.add('expanded');
+          workspaceState.treeData[file.path] = { expanded: true };
+          const childrenContainer = document.createElement('div');
+          childrenContainer.className = 'workspace-tree-children';
+          childrenContainer.dataset.parentPath = file.path;
+          
+          try {
+            const result = await window.api.workspaceList({ dirPath: file.path });
+            if (result.success) {
+              renderWorkspaceTree(result.files, childrenContainer, depth + 1);
+              item.after(childrenContainer);
+            }
+          } catch (err) {
+            console.error('Failed to load directory:', err);
+          }
+        }
+      });
+    } else {
+      item.innerHTML = `
+        <svg class="workspace-tree-icon file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        <span class="workspace-tree-name">${escapeHtml(file.name)}</span>
+      `;
+      
+      item.addEventListener('click', () => {
+        if (isTextFile(file.path)) {
+          openFilePreview(file.path, file.name);
+        } else {
+          window.api.workspaceOpen({ filePath: file.path });
+        }
+      });
+    }
+    
+    container.appendChild(item);
+  });
+}
+
+// ============================
+// File Preview & Tabs
+// ============================
+function openFilePreview(filePath, fileName) {
+  const existingTab = workspaceState.openTabs.find(t => t.path === filePath);
+  if (existingTab) {
+    setActiveTab(filePath);
+    return;
+  }
+  
+  workspaceState.openTabs.push({ path: filePath, name: fileName, content: null, size: null });
+  setActiveTab(filePath);
+  renderPreviewTabs();
+  
+  loadFileContent(filePath);
+}
+
+async function loadFileContent(filePath) {
+  try {
+    const result = await window.api.workspaceRead({ filePath });
+    if (!result.success) {
+      updatePreviewContent(`加载失败: ${result.error}`);
+      return;
+    }
+    
+    const tab = workspaceState.openTabs.find(t => t.path === filePath);
+    if (tab) {
+      tab.content = result.content;
+      tab.size = result.size;
+    }
+    
+    if (workspaceState.activeTab === filePath) {
+      updatePreviewContent(result.content, result.filePath, result.size);
+    }
+  } catch (err) {
+    updatePreviewContent(`加载异常: ${err.message}`);
+  }
+}
+
+function setActiveTab(filePath) {
+  workspaceState.activeTab = filePath;
+  renderPreviewTabs();
+  
+  const tab = workspaceState.openTabs.find(t => t.path === filePath);
+  if (tab && tab.content !== null) {
+    updatePreviewContent(tab.content, tab.path, tab.size);
+  } else {
+    updatePreviewContent('加载中...');
+  }
+}
+
+function closeTab(filePath) {
+  const index = workspaceState.openTabs.findIndex(t => t.path === filePath);
+  if (index === -1) return;
+  
+  workspaceState.openTabs.splice(index, 1);
+  
+  if (workspaceState.activeTab === filePath) {
+    workspaceState.activeTab = workspaceState.openTabs.length > 0 
+      ? workspaceState.openTabs[Math.max(0, index - 1)].path 
+      : null;
+  }
+  
+  renderPreviewTabs();
+  
+  if (workspaceState.activeTab) {
+    const tab = workspaceState.openTabs.find(t => t.path === workspaceState.activeTab);
+    if (tab && tab.content !== null) {
+      updatePreviewContent(tab.content, tab.path, tab.size);
+    }
+  } else {
+    updatePreviewContent(null);
+  }
+}
+
+function renderPreviewTabs() {
+  const tabsEl = document.getElementById('workspace-preview-tabs');
+  if (!tabsEl) return;
+  
+  if (workspaceState.openTabs.length === 0) {
+    tabsEl.innerHTML = '';
+    return;
+  }
+  
+  tabsEl.innerHTML = workspaceState.openTabs.map(tab => `
+    <div class="workspace-tab ${tab.path === workspaceState.activeTab ? 'active' : ''}" data-path="${escapeHtml(tab.path)}">
+      <span class="workspace-tab-name">${escapeHtml(tab.name)}</span>
+      <button class="workspace-tab-close" data-path="${escapeHtml(tab.path)}" title="关闭">×</button>
+    </div>
+  `).join('');
+  
+  tabsEl.querySelectorAll('.workspace-tab').forEach(tab => {
+    tab.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('workspace-tab-close')) {
+        setActiveTab(tab.dataset.path);
+      }
+    });
+  });
+  
+  tabsEl.querySelectorAll('.workspace-tab-close').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(btn.dataset.path);
+    });
+  });
+}
+
+function updatePreviewContent(content, filePath = null, size = null) {
+  const contentEl = document.getElementById('workspace-preview-content');
+  if (!contentEl) return;
+  
+  if (!content) {
+    contentEl.innerHTML = '<div class="workspace-preview-empty">选择文件以预览</div>';
+    return;
+  }
+  
+  if (filePath && size !== null) {
+    contentEl.innerHTML = `
+      <div class="workspace-preview-file">
+        <div class="preview-header">
+          <span class="preview-filename">${escapeHtml(filePath)}</span>
+          <span class="preview-size">${formatFileSize(size)}</span>
+        </div>
+        <pre>${escapeHtml(content)}</pre>
+      </div>
+    `;
+  } else {
+    contentEl.innerHTML = `<div class="workspace-preview-file"><pre>${escapeHtml(content)}</pre></div>`;
+  }
+}
+
+// ============================
+// Workspace Initialization
+// ============================
+function initWorkspace() {
+  document.getElementById('workspace-browse-btn')?.addEventListener('click', async () => {
+    const dirPath = await window.api.workspaceBrowse();
+    if (dirPath) {
+      workspaceState.treeData = {};
+      loadWorkspaceTree(dirPath);
+    }
+  });
+  
+  document.getElementById('workspace-refresh-btn')?.addEventListener('click', () => {
+    if (workspaceState.currentPath) {
+      workspaceState.treeData = {};
+      loadWorkspaceTree(workspaceState.currentPath);
+    }
+  });
+  
+  document.getElementById('workspace-collapse-btn')?.addEventListener('click', () => {
+    const panel = document.getElementById('workspace-panel');
+    
+    if (panel) {
+      workspaceState.collapsed = !workspaceState.collapsed;
+      panel.classList.toggle('collapsed', workspaceState.collapsed);
+    }
+  });
+  
+  const resizeHandle = document.getElementById('workspace-resize-handle');
+  const treeContainer = document.getElementById('workspace-tree-container');
+  if (resizeHandle && treeContainer) {
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+    
+    resizeHandle.addEventListener('mousedown', (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = treeContainer.offsetHeight;
+      document.body.style.cursor = 'ns-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const deltaY = e.clientY - startY;
+      const newHeight = Math.max(100, Math.min(startHeight + deltaY, treeContainer.parentElement.offsetHeight * 0.7));
+      treeContainer.style.maxHeight = newHeight + 'px';
+      treeContainer.style.flex = '0 0 auto';
+    });
+    
+    document.addEventListener('mouseup', () => {
+      if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    });
+  }
+}
+
 function loadSession(sessionId) {
   currentSessionId = sessionId;
   const sessions = loadSessions();
@@ -1006,13 +1332,21 @@ function loadSession(sessionId) {
   }
   session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
   
-  // Restore streaming state for this session
   restoreStreamingState();
   
-  // Sync input area state with session streaming status
   syncInputAreaState(sessionId);
   
+  syncWorkspacePath(session.workspacePath);
+  
   renderSessionList();
+}
+
+function syncWorkspacePath(sessionWorkspacePath) {
+  const targetPath = sessionWorkspacePath || workspaceState.currentPath;
+  if (targetPath && targetPath !== workspaceState.currentPath) {
+    workspaceState.treeData = {};
+    loadWorkspaceTree(targetPath);
+  }
 }
 
 function formatTime(timestamp) {
@@ -1844,6 +2178,7 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
 // ============================
 // Init
 // ============================
+initWorkspace();
 loadConfig();
 checkFirstRun();
 updateStatus('status-agent', 'error');
