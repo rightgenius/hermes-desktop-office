@@ -67,12 +67,17 @@ download_bin() {
     fi
     rm -f "$tmp_file"
 
-    # Find the actual binary (skip .md, .txt, LICENSE files)
+    # Find the actual binary (skip documentation files, look for executable or specific name)
     local extracted_bin
     if [[ "$platform" == windows-* ]]; then
         extracted_bin=$(find "$tmp_dir" -name "*.exe" -type f | head -1)
     else
-        extracted_bin=$(find "$tmp_dir" -type f ! -name "*.md" ! -name "LICENSE" ! -name "*.txt" | head -1)
+        # Prefer files named 'lark-cli' or 'dws' (the actual binaries)
+        extracted_bin=$(find "$tmp_dir" -type f -name "lark-cli" -o -name "dws" | head -1)
+        # Fallback: find any executable file (skip docs)
+        if [[ -z "$extracted_bin" ]]; then
+            extracted_bin=$(find "$tmp_dir" -type f ! -name "*.md" ! -name "LICENSE" ! -name "*.txt" ! -name "CHANGELOG" ! -name "README" | head -1)
+        fi
     fi
 
     if [[ -n "$extracted_bin" ]]; then
