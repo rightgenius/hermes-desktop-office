@@ -676,19 +676,22 @@ function saveSessions(sessions) {
 function restoreStreamingState() {
   const sessionId = currentSessionId;
   const state = streamingSessions[sessionId];
-  if (!state || !state.text) return;
+  // Restore if state exists (even if text is empty, meaning only 'start' event received)
+  if (!state) return;
   
   // Check if we already have a streaming message for this session
   const existing = getStreamingMessageEl(sessionId);
   if (existing) return;
   
   // Create streaming message from saved state
-  const msg = addMessage(state.text, 'agent', true, state.reasoning, Object.values(state.toolCalls), sessionId);
+  const msg = addMessage(state.text || '', 'agent', true, state.reasoning || '', Object.values(state.toolCalls || {}), sessionId);
   
   // Restore tool calls
   const bubble = msg.querySelector('.message-bubble');
   bubble._toolCalls = state.toolCalls || {};
-  renderToolCalls(bubble);
+  if (Object.keys(bubble._toolCalls).length > 0) {
+    renderToolCalls(bubble);
+  }
 }
 
 function createNewSession() {
@@ -1372,7 +1375,14 @@ if (window.api) {
     const sessionId = data.sessionId || '';
     switch (data.event) {
       case 'start':
-        addMessage('', 'agent', true, '', [], sessionId);
+        // Initialize streaming state for this session
+        if (sessionId && !streamingSessions[sessionId]) {
+          streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
+        }
+        // Only add DOM message if this session is currently visible
+        if (sessionId === currentSessionId) {
+          addMessage('', 'agent', true, '', [], sessionId);
+        }
         break;
       case 'chunk':
         updateStreamingMessage(sessionId, data.data);
