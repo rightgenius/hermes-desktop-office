@@ -936,6 +936,34 @@ function renderSessionList() {
     </div>
   `).join('') : '<div class="empty-state-text">暂无会话</div>';
 
+  // Add tooltip hover handlers for titles with overflow
+  sessionList.querySelectorAll('.session-title').forEach(title => {
+    const isOverflow = title.scrollWidth > title.clientWidth;
+    if (isOverflow) {
+      title.classList.add('has-overflow');
+      
+      let tooltip = null;
+      
+      title.addEventListener('mouseenter', (e) => {
+        tooltip = document.createElement('div');
+        tooltip.className = 'session-title-tooltip';
+        tooltip.textContent = title.dataset.title;
+        document.body.appendChild(tooltip);
+        
+        const rect = title.getBoundingClientRect();
+        tooltip.style.top = (rect.bottom + 4) + 'px';
+        tooltip.style.left = rect.left + 'px';
+      });
+      
+      title.addEventListener('mouseleave', () => {
+        if (tooltip) {
+          tooltip.remove();
+          tooltip = null;
+        }
+      });
+    }
+  });
+
   sessionList.querySelectorAll('.session-item').forEach(item => {
     item.addEventListener('click', (e) => {
       if (!e.target.closest('.session-menu-btn')) {
