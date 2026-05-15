@@ -2211,16 +2211,21 @@ function initSkillsPage() {
 }
 
 function setupSkillsTabs() {
-  const tabs = document.getElementById('skills-tabs');
-  if (!tabs) return;
-  tabs.addEventListener('click', (e) => {
-    const tab = e.target.closest('.skills-tab');
-    if (!tab) return;
-    tabs.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    skillsState.currentTab = tab.dataset.tab;
-    renderSkillsTable();
+  document.querySelectorAll('.skills-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      skillsState.currentTab = tab.dataset.tab;
+      renderSkillsTable();
+      updateToolbarActions();
+    });
   });
+}
+
+function updateToolbarActions() {
+  const newBtn = document.getElementById('new-skill-btn');
+  if (!newBtn) return;
+  newBtn.style.display = skillsState.currentTab === 'user' ? '' : 'none';
 }
 
 function setupSkillsToolbar() {
@@ -2232,7 +2237,7 @@ function setupSkillsToolbar() {
       debounceTimer = setTimeout(() => {
         skillsState.searchQuery = searchInput.value.trim();
         renderSkillsTable();
-      }, 300);
+      }, 200);
     });
   }
 
@@ -2252,9 +2257,50 @@ function setupSkillsToolbar() {
     });
   }
 
-  document.getElementById('refresh-skills-btn')?.addEventListener('click', () => {
-    loadSkillsList();
-  });
+  const refreshBtn = document.getElementById('refresh-skills-btn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => loadSkillsList());
+  }
+
+  const newBtn = document.getElementById('new-skill-btn');
+  if (newBtn) {
+    newBtn.addEventListener('click', () => showNewSkillDialog());
+  }
+
+  const body = document.getElementById('skills-table-body');
+  if (body) {
+    body.addEventListener('change', async (e) => {
+      if (e.target.classList.contains('skill-status-toggle')) {
+        const skillName = e.target.dataset.skillName;
+        const enabled = e.target.checked;
+        await window.api.skillsSetEnabled(skillName, enabled);
+        loadSkillsList();
+      }
+    });
+
+    body.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.view-btn, .delete-btn, .archive-btn');
+      if (!btn) return;
+
+      const skillPath = btn.dataset.skillPath;
+
+      if (btn.classList.contains('view-btn')) {
+        const skills = skillsState.skills[skillsState.currentTab];
+        const skill = skills.find(s => s.path === skillPath);
+        if (skill) openSkillDetail(skill);
+      } else if (btn.classList.contains('delete-btn')) {
+        if (confirm('确定删除此skill？')) {
+          await window.api.skillsDelete(skillPath);
+          loadSkillsList();
+          closeSkillDetail();
+        }
+      } else if (btn.classList.contains('archive-btn')) {
+        await window.api.skillsArchive(skillPath);
+        loadSkillsList();
+        closeSkillDetail();
+      }
+    });
+  }
 }
 
 function setupSkillsDetailPanel() {
@@ -2287,6 +2333,10 @@ function closeSkillDetail() {
   const detailPanel = document.getElementById('skills-detail-panel');
   if (listPanel) listPanel.style.display = '';
   if (detailPanel) detailPanel.style.display = 'none';
+}
+
+function showNewSkillDialog() {
+  alert('新建skill功能开发中');
 }
 
 async function loadSkillsList() {
@@ -2370,42 +2420,6 @@ function renderSkillsTable() {
       ${getTabRowHTML(tab, skill)}
     </div>
   `).join('');
-
-  body.querySelectorAll('.skills-table-row').forEach(row => {
-    row.addEventListener('click', (e) => {
-      if (e.target.closest('.skill-action-btn, .skill-status-toggle')) return;
-      const skillPath = row.dataset.skillPath;
-      const skill = skills.find(s => s.path === skillPath);
-      if (skill) openSkillDetail(skill);
-    });
-  });
-
-  body.querySelectorAll('.skill-status-toggle').forEach(toggle => {
-    toggle.addEventListener('change', (e) => {
-      e.stopPropagation();
-      const skillName = e.target.dataset.skillName;
-      const enabled = e.target.checked;
-      console.log('Toggle skill:', skillName, enabled);
-    });
-  });
-
-  body.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const skillPath = e.target.dataset.skillPath;
-      if (confirm('确定要删除此skill吗？')) {
-        console.log('Delete skill:', skillPath);
-      }
-    });
-  });
-
-  body.querySelectorAll('.archive-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const skillPath = e.target.dataset.skillPath;
-      console.log('Archive skill:', skillPath);
-    });
-  });
 }
 
 function getTabHeaderHTML(tab) {
