@@ -557,9 +557,16 @@ function setupIPCHandlers(mainWindow) {
 
   ipcMain.handle('skills:create', async (_, skillData) => {
     try {
+      if (!skillData.name || skillData.name.includes('..') || skillData.name.includes('/') || skillData.name.includes('\\')) {
+        return { success: false, error: 'Invalid skill name' };
+      }
       const hermesHome = skillScanner.getHermesHome();
       const skillsDir = path.join(hermesHome, 'skills');
       const skillPath = path.join(skillsDir, skillData.name);
+      const normalized = path.normalize(skillPath);
+      if (!normalized.startsWith(path.normalize(skillsDir))) {
+        return { success: false, error: 'Invalid skill name' };
+      }
       
       if (fs.existsSync(skillPath)) {
         return { success: false, error: 'Skill already exists' };
