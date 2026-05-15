@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('api', {
   // Session
   sessionExport: (filename, content) => ipcRenderer.invoke('session-export', { filename, content }),
 
+  // Workspace
+  workspaceList: (params) => ipcRenderer.invoke('workspace-list', params),
+  workspaceRead: (params) => ipcRenderer.invoke('workspace-read', params),
+  workspaceOpen: (params) => ipcRenderer.invoke('workspace-open', params),
+  workspaceBrowse: () => ipcRenderer.invoke('workspace-browse'),
+
   // Events from main process
   onAgentLog: (fn) => {
     const handler = (_, data) => fn(data);
