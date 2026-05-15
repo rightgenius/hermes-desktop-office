@@ -674,16 +674,16 @@ function saveSessions(sessions) {
 }
 
 function restoreStreamingState() {
-  const state = streamingSessions[currentSessionId];
+  const sessionId = currentSessionId;
+  const state = streamingSessions[sessionId];
   if (!state || !state.text) return;
   
-  // Check if we already have a streaming message
-  const existing = chatMessages.querySelector('.message.agent.streaming:last-of-type');
+  // Check if we already have a streaming message for this session
+  const existing = getStreamingMessageEl(sessionId);
   if (existing) return;
   
   // Create streaming message from saved state
-  const msg = addMessage(state.text, 'agent', true, state.reasoning, Object.values(state.toolCalls));
-  currentAgentMessageEl = msg;
+  const msg = addMessage(state.text, 'agent', true, state.reasoning, Object.values(state.toolCalls), sessionId);
   
   // Restore tool calls
   const bubble = msg.querySelector('.message-bubble');
@@ -737,9 +737,6 @@ function renderSessionList() {
 }
 
 function loadSession(sessionId) {
-  // Save streaming state before switching
-  saveStreamingState();
-  
   currentSessionId = sessionId;
   const sessions = loadSessions();
   const session = sessions[sessionId];
@@ -762,10 +759,11 @@ function formatTime(timestamp) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', toolCalls = []) {
+function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', toolCalls = [], sessionId = '') {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   if (isStreaming) msg.classList.add('streaming');
+  if (sessionId) msg.dataset.sessionId = sessionId;
 
   let innerHTML = '';
   if (sender === 'agent') {
@@ -827,85 +825,92 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   return msg;
 }
 
-// Helper to get current streaming message (works even if user switched away)
-function getCurrentStreamingMessage() {
-  if (currentAgentMessageEl) return currentAgentMessageEl;
-  return chatMessages.querySelector('.message.agent.streaming:last-of-type');
+// Helper to find streaming message element by sessionId
+function getStreamingMessageEl(sessionId) {
+  if (!sessionId) return null;
+  return chatMessages.querySelector(`.message.agent.streaming[data-session-id="${sessionId}"]`);
 }
 
-function saveStreamingState() {
-  if (!currentSessionId) return;
-  const msg = getCurrentStreamingMessage();
-  if (msg) {
-    const bubble = msg.querySelector('.message-bubble');
-    streamingSessions[currentSessionId] = {
-      text: bubble._rawText || '',
-      reasoning: bubble._rawReasoning || '',
-      toolCalls: bubble._toolCalls || {}
-    };
-  }
-  // If msg is null, preserve existing memory state
-}
-
-function updateStreamingMessage(chunk) {
-  // Update memory first (works even if DOM is gone)
-  if (currentSessionId) {
-    if (!streamingSessions[currentSessionId]) {
-      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+function updateStreamingMessage(sessionId, chunk) {
+  // Update memory (always, regardless of DOM visibility)
+  if (sessionId) {
+    if (!streamingSessions[sessionId]) {
+      streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
     }
-    streamingSessions[currentSessionId].text += chunk;
+    streamingSessions[sessionId].text += chunk;
   }
 
-  // Update DOM if available
-  currentAgentMessageEl = getCurrentStreamingMessage();
-  if (currentAgentMessageEl) {
-    const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-    const toolCallsContainer = bubble.querySelector('.message-tool-calls');
-    bubble._rawText = (bubble._rawText || '') + chunk;
-    bubble.innerHTML = renderMarkdown(bubble._rawText);
-    if (toolCallsContainer) {
-      bubble.insertBefore(toolCallsContainer, bubble.firstChild);
+  // Update DOM only if this session is currently visible
+  if (sessionId === currentSessionId) {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const bubble = msg.querySelector('.message-bubble');
+      const toolCallsContainer = bubble.querySelector('.message-tool-calls');
+      bubble._rawText = (bubble._rawText || '') + chunk;
+      bubble.innerHTML = renderMarkdown(bubble._rawText);
+      if (toolCallsContainer) {
+        bubble.insertBefore(toolCallsContainer, bubble.firstChild);
+      }
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      currentAgentMessageEl = msg;
     }
-    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 }
 
-function updateReasoning(text) {
+function updateReasoning(sessionId, text) {
   // Update memory
-  if (currentSessionId) {
-    if (!streamingSessions[currentSessionId]) {
-      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+  if (sessionId) {
+    if (!streamingSessions[sessionId]) {
+      streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
     }
-    streamingSessions[currentSessionId].reasoning += text;
+    streamingSessions[sessionId].reasoning += text;
   }
 
-  // Update DOM
-  currentAgentMessageEl = getCurrentStreamingMessage();
-  if (currentAgentMessageEl) {
-    const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-    bubble._rawReasoning = (bubble._rawReasoning || '') + text;
-    let reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
-    if (!reasoningEl) {
-      reasoningEl = document.createElement('div');
-      reasoningEl.className = 'message-reasoning';
-      reasoningEl.innerHTML = `
-        <div class="message-reasoning-header" onclick="this.parentElement.classList.toggle('expanded')">
-          <span class="message-reasoning-label">思考过程</span>
-          <svg class="message-reasoning-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        </div>
-        <div class="message-reasoning-content"></div>
-      `;
-      currentAgentMessageEl.insertBefore(reasoningEl, currentAgentMessageEl.firstChild);
+  // Update DOM only if visible
+  if (sessionId === currentSessionId) {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const bubble = msg.querySelector('.message-bubble');
+      bubble._rawReasoning = (bubble._rawReasoning || '') + text;
+      let reasoningEl = msg.querySelector('.message-reasoning');
+      if (!reasoningEl) {
+        reasoningEl = document.createElement('div');
+        reasoningEl.className = 'message-reasoning';
+        reasoningEl.innerHTML = `
+          <div class="message-reasoning-header" onclick="this.parentElement.classList.toggle('expanded')">
+            <span class="message-reasoning-label">思考过程</span>
+            <svg class="message-reasoning-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="message-reasoning-content"></div>
+        `;
+        msg.insertBefore(reasoningEl, msg.firstChild);
+      }
+      reasoningEl.querySelector('.message-reasoning-content').textContent = bubble._rawReasoning;
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      currentAgentMessageEl = msg;
     }
-    reasoningEl.querySelector('.message-reasoning-content').textContent = bubble._rawReasoning;
-    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 }
 
-function hideReasoning() {
-  currentAgentMessageEl = getCurrentStreamingMessage();
-  if (currentAgentMessageEl) {
-    const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning');
+function updateThinking(sessionId, text) {
+  if (sessionId === currentSessionId) {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const reasoningEl = msg.querySelector('.message-reasoning-label');
+      if (reasoningEl && text) {
+        reasoningEl.textContent = text;
+      } else if (reasoningEl && !text) {
+        hideReasoning(sessionId);
+      }
+      currentAgentMessageEl = msg;
+    }
+  }
+}
+
+function hideReasoning(sessionId) {
+  const msg = sessionId ? getStreamingMessageEl(sessionId) : currentAgentMessageEl;
+  if (msg) {
+    const reasoningEl = msg.querySelector('.message-reasoning');
     if (reasoningEl) {
       reasoningEl.classList.add('finished');
       const label = reasoningEl.querySelector('.message-reasoning-label');
@@ -914,47 +919,53 @@ function hideReasoning() {
   }
 }
 
-function addToolCall(toolId, name, args) {
+function addToolCall(sessionId, toolId, name, args) {
   // Update memory
-  if (currentSessionId) {
-    if (!streamingSessions[currentSessionId]) {
-      streamingSessions[currentSessionId] = { text: '', reasoning: '', toolCalls: {} };
+  if (sessionId) {
+    if (!streamingSessions[sessionId]) {
+      streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
     }
-    streamingSessions[currentSessionId].toolCalls[toolId] = { name, args, result: null, status: 'running' };
+    streamingSessions[sessionId].toolCalls[toolId] = { name, args, result: null, status: 'running' };
   }
 
-  // Update DOM
-  currentAgentMessageEl = getCurrentStreamingMessage();
-  if (currentAgentMessageEl) {
-    const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-    const toolCalls = bubble._toolCalls || {};
-    toolCalls[toolId] = { name, args, result: null, status: 'running' };
-    bubble._toolCalls = toolCalls;
-    renderToolCalls(bubble);
+  // Update DOM only if visible
+  if (sessionId === currentSessionId) {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const bubble = msg.querySelector('.message-bubble');
+      const toolCalls = bubble._toolCalls || {};
+      toolCalls[toolId] = { name, args, result: null, status: 'running' };
+      bubble._toolCalls = toolCalls;
+      renderToolCalls(bubble);
+      currentAgentMessageEl = msg;
+    }
   }
 }
 
-function updateToolCall(toolId, result) {
+function updateToolCall(sessionId, toolId, result) {
   // Update memory
-  if (currentSessionId && streamingSessions[currentSessionId]) {
-    const tc = streamingSessions[currentSessionId].toolCalls[toolId];
+  if (sessionId && streamingSessions[sessionId]) {
+    const tc = streamingSessions[sessionId].toolCalls[toolId];
     if (tc) {
       tc.result = result;
       tc.status = 'done';
     }
   }
 
-  // Update DOM
-  let targetEl = getCurrentStreamingMessage();
-  if (targetEl) {
-    const bubble = targetEl.querySelector('.message-bubble');
-    if (bubble) {
-      const toolCalls = bubble._toolCalls || {};
-      if (toolCalls[toolId]) {
-        toolCalls[toolId].result = result;
-        toolCalls[toolId].status = 'done';
+  // Update DOM only if visible
+  if (sessionId === currentSessionId) {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const bubble = msg.querySelector('.message-bubble');
+      if (bubble) {
+        const toolCalls = bubble._toolCalls || {};
+        if (toolCalls[toolId]) {
+          toolCalls[toolId].result = result;
+          toolCalls[toolId].status = 'done';
+        }
+        renderToolCalls(bubble);
       }
-      renderToolCalls(bubble);
+      currentAgentMessageEl = msg;
     }
   }
 }
@@ -1100,36 +1111,41 @@ function removePromptOverlay() {
 async function submitPrompt(answer) {
   if (!pendingPrompt) return;
   const requestId = pendingPrompt.request_id;
+  const sessionId = pendingPrompt.session_id || '';
   removePromptOverlay();
   try {
-    await window.api.agentRespondToPrompt(requestId, answer);
+    await window.api.agentRespondToPrompt(sessionId, requestId, answer);
   } catch (err) {
     console.error('Respond to prompt failed:', err);
   }
 }
 
-function finalizeStreamingMessage() {
-  // Find streaming message if currentAgentMessageEl is null (user switched away)
-  if (!currentAgentMessageEl) {
-    currentAgentMessageEl = chatMessages.querySelector('.message.agent.streaming:last-of-type');
-  }
-  if (!currentAgentMessageEl) {
-    // Also clean up in-memory state
-    if (currentSessionId) delete streamingSessions[currentSessionId];
+function finalizeStreamingMessage(sessionId, errorText = null) {
+  if (!sessionId) return;
+  
+  // Find streaming message by sessionId
+  const msg = getStreamingMessageEl(sessionId);
+  if (!msg) {
+    // Clean up in-memory state
+    delete streamingSessions[sessionId];
     return;
   }
   
-  currentAgentMessageEl.classList.remove('streaming');
-  hideReasoning();
-  const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-  const text = bubble._rawText || bubble.textContent;
+  msg.classList.remove('streaming');
+  hideReasoning(sessionId);
+  const bubble = msg.querySelector('.message-bubble');
+  const text = errorText !== null ? errorText : (bubble._rawText || bubble.textContent);
   const reasoning = bubble._rawReasoning || '';
   const toolCalls = bubble._toolCalls || {};
   addMessageToSession(text, 'agent', reasoning, toolCalls);
-  currentAgentMessageEl = null;
   
   // Clean up in-memory state
-  if (currentSessionId) delete streamingSessions[currentSessionId];
+  delete streamingSessions[sessionId];
+  
+  // If this session is currently visible, update UI state
+  if (sessionId === currentSessionId) {
+    currentAgentMessageEl = null;
+  }
 }
 
 function escapeHtml(text) {
@@ -1255,7 +1271,7 @@ async function sendMessage() {
   const history = buildConversationHistory();
 
   try {
-    const result = await window.api.agentSendMessage(text, history);
+    const result = await window.api.agentSendMessage(currentSessionId, text, history);
     if (!result.success) {
       addMessage(result.error || '发送失败', 'agent');
     }
@@ -1276,7 +1292,9 @@ function buildConversationHistory() {
 
 async function stopGeneration() {
   try {
-    await window.api.agentStopGeneration();
+    if (currentSessionId) {
+      await window.api.agentStopGeneration(currentSessionId);
+    }
   } catch (err) { console.error('Stop generation failed:', err); }
 }
 
@@ -1351,32 +1369,25 @@ if (window.api) {
     agentRunning = data.running;
   });
   window.api.onAgentResponse((data) => {
+    const sessionId = data.sessionId || '';
     switch (data.event) {
       case 'start':
-        addMessage('', 'agent', true);
+        addMessage('', 'agent', true, '', [], sessionId);
         break;
       case 'chunk':
-        updateStreamingMessage(data.data);
+        updateStreamingMessage(sessionId, data.data);
         break;
       case 'reasoning':
-        updateReasoning(data.data);
+        updateReasoning(sessionId, data.data);
         break;
       case 'thinking':
-        if (currentAgentMessageEl) {
-          const reasoningEl = currentAgentMessageEl.querySelector('.message-reasoning-label');
-          if (reasoningEl && data.data) {
-            reasoningEl.textContent = data.data;
-          } else if (reasoningEl && !data.data) {
-            // Empty thinking text means agent finished thinking
-            hideReasoning();
-          }
-        }
+        updateThinking(sessionId, data.data);
         break;
       case 'tool_start':
-        addToolCall(data.data.tool_id, data.data.name, data.data.args);
+        addToolCall(sessionId, data.data.tool_id, data.data.name, data.data.args);
         break;
       case 'tool_complete':
-        updateToolCall(data.data.tool_id, data.data.result);
+        updateToolCall(sessionId, data.data.tool_id, data.data.result);
         break;
       case 'tool_progress':
         break;
@@ -1384,6 +1395,7 @@ if (window.api) {
         break;
       case 'clarify_request':
         showPromptOverlay('clarify_request', {
+          session_id: sessionId,
           request_id: data.data.request_id,
           question: data.data.question,
           choices: data.data.choices,
@@ -1391,6 +1403,7 @@ if (window.api) {
         break;
       case 'approval_request':
         showPromptOverlay('approval_request', {
+          session_id: sessionId,
           request_id: data.data.request_id,
           command: data.data.command,
           description: data.data.description,
@@ -1398,11 +1411,13 @@ if (window.api) {
         break;
       case 'sudo_request':
         showPromptOverlay('sudo_request', {
+          session_id: sessionId,
           request_id: data.data.request_id,
         });
         break;
       case 'secret_request':
         showPromptOverlay('secret_request', {
+          session_id: sessionId,
           request_id: data.data.request_id,
           env_var: data.data.env_var,
           prompt: data.data.prompt,
@@ -1410,29 +1425,28 @@ if (window.api) {
         });
         break;
       case 'complete':
-        finalizeStreamingMessage();
-        sendBtn.disabled = false;
-        sendBtn.textContent = '发送';
-        if (stopBtn) stopBtn.style.display = 'none';
+        finalizeStreamingMessage(sessionId);
+        if (sessionId === currentSessionId) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = '发送';
+          if (stopBtn) stopBtn.style.display = 'none';
+        }
         break;
       case 'error':
-        if (currentAgentMessageEl) {
-          const bubble = currentAgentMessageEl.querySelector('.message-bubble');
-          bubble._rawText = data.data;
-          bubble.innerHTML = renderMarkdown(data.data);
-          finalizeStreamingMessage();
-        } else {
-          addMessage(data.data, 'agent');
+        finalizeStreamingMessage(sessionId, data.data);
+        if (sessionId === currentSessionId) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = '发送';
+          if (stopBtn) stopBtn.style.display = 'none';
         }
-        sendBtn.disabled = false;
-        sendBtn.textContent = '发送';
-        if (stopBtn) stopBtn.style.display = 'none';
         break;
       case 'stopped':
-        finalizeStreamingMessage();
-        sendBtn.disabled = false;
-        sendBtn.textContent = '发送';
-        if (stopBtn) stopBtn.style.display = 'none';
+        finalizeStreamingMessage(sessionId);
+        if (sessionId === currentSessionId) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = '发送';
+          if (stopBtn) stopBtn.style.display = 'none';
+        }
         break;
     }
   });
@@ -1549,9 +1563,6 @@ function showWizard() {
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
-  // Save streaming state before clearing
-  saveStreamingState();
-  
   currentSessionId = null;
   chatMessages.innerHTML = '';
   const emptyState = document.getElementById('chat-empty-state');
