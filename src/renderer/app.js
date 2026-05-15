@@ -931,7 +931,7 @@ function renderSessionList() {
         <span class="session-time">${formatTime(s.created)}</span>
       </div>
       <div class="session-menu-wrapper">
-        <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作"></button>
+        <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作">⋮</button>
       </div>
     </div>
   `).join('') : '<div class="empty-state-text">暂无会话</div>';
