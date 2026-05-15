@@ -757,6 +757,25 @@ function closeSessionMenu() {
   if (existing) existing.remove();
 }
 
+function renameSession(sessionId) {
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session) return;
+  
+  const newName = prompt('请输入新名称:', session.title);
+  if (newName === null) return;
+  
+  const trimmed = newName.trim();
+  if (!trimmed) {
+    alert('名称不能为空');
+    return;
+  }
+  
+  session.title = trimmed;
+  saveSessions(sessions);
+  renderSessionList();
+}
+
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.session-menu-wrapper')) {
     closeSessionMenu();
