@@ -729,13 +729,27 @@ function renderSessionList() {
   const sorted = Object.values(sessions).sort((a, b) => b.created - a.created);
   sessionList.innerHTML = sorted.length ? sorted.map(s => `
     <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-session-id="${s.id}">
-      <span class="session-title">${escapeHtml(s.title)}</span>
-      <span class="session-time">${formatTime(s.created)}</span>
+      <div class="session-menu-wrapper">
+        <span class="session-title">${escapeHtml(s.title)}</span>
+        <span class="session-time">${formatTime(s.created)}</span>
+        <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作">⋮</button>
+      </div>
     </div>
   `).join('') : '<div class="empty-state-text">暂无会话</div>';
 
   sessionList.querySelectorAll('.session-item').forEach(item => {
-    item.addEventListener('click', () => loadSession(item.dataset.sessionId));
+    item.addEventListener('click', (e) => {
+      if (!e.target.closest('.session-menu-btn')) {
+        loadSession(item.dataset.sessionId);
+      }
+    });
+  });
+
+  sessionList.querySelectorAll('.session-menu-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSessionMenu(btn.dataset.sessionId, e);
+    });
   });
 }
 
