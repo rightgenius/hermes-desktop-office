@@ -802,6 +802,76 @@ function deleteSession(sessionId) {
   renderSessionList();
 }
 
+function formatSessionMarkdown(session) {
+  const lines = [];
+  const date = new Date(session.created);
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+  
+  lines.push(`# ${escapeHtml(session.title)}`);
+  lines.push(`Created: ${dateStr}`);
+  lines.push('');
+  
+  session.messages.forEach(msg => {
+    if (msg.sender === 'user') {
+      lines.push('## User');
+      lines.push(escapeHtml(msg.text));
+      lines.push('');
+    } else if (msg.sender === 'agent') {
+      lines.push('## Assistant');
+      if (msg.reasoning) {
+        lines.push('> **Thinking:**');
+        lines.push(`> ${escapeHtml(msg.reasoning).replace(/\n/g, '\n> ')}`);
+        lines.push('');
+      }
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        msg.toolCalls.forEach(tc => {
+          lines.push(`<details><summary>Tool: ${escapeHtml(tc.name || 'unknown')}</summary>`);
+          lines.push('');
+          lines.push('```');
+          lines.push(escapeHtml(tc.result || ''));
+          lines.push('```');
+          lines.push('</details>');
+          lines.push('');
+        });
+      }
+      if (msg.text) {
+        lines.push(msg.text);
+      }
+      lines.push('');
+    }
+  });
+  
+  return lines.join('\n');
+}
+
+async function exportSessionMarkdown(sessionId) {
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session) return;
+  
+  const markdown = formatSessionMarkdown(session);
+  const filename = `${session.title.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_')}.md`;
+  
+  if (window.api && window.api.sessionExport) {
+    try {
+      await window.api.sessionExport(filename, markdown);
+      return;
+    } catch (err) {
+      console.warn('IPC export failed, falling back to download:', err);
+    }
+  }
+  
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 document.addEventListener('click', (e) => {
   if (!e.target.closest('.session-menu-wrapper')) {
     closeSessionMenu();
