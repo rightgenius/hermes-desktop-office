@@ -2304,35 +2304,204 @@ function setupSkillsToolbar() {
 }
 
 function setupSkillsDetailPanel() {
-  document.getElementById('detail-close-btn')?.addEventListener('click', () => {
-    closeSkillDetail();
+  const closeBtn = document.getElementById('detail-close-btn');
+  if (closeBtn) closeBtn.addEventListener('click', closeSkillDetail);
+  
+  document.querySelectorAll('.detail-tab-btn').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.detail-tab-btn').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      switchDetailTab(tab.dataset.detailTab);
+    });
   });
+  
+  const saveBtn = document.getElementById('detail-save-btn');
+  if (saveBtn) saveBtn.addEventListener('click', saveSkillDetail);
+  
+  const cancelBtn = document.getElementById('detail-cancel-btn');
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelSkillEdit);
 }
 
-function openSkillDetail(skill) {
+async function openSkillDetail(skill) {
   skillsState.selectedSkill = skill;
   skillsState.detailVisible = true;
-  const listPanel = document.getElementById('skills-list-panel');
-  const detailPanel = document.getElementById('skills-detail-panel');
-  if (listPanel) listPanel.style.display = 'none';
-  if (detailPanel) detailPanel.style.display = '';
-
+  
+  const panel = document.getElementById('skills-detail-panel');
+  if (panel) {
+    panel.style.display = '';
+    requestAnimationFrame(() => panel.classList.add('visible'));
+  }
+  
   const nameEl = document.getElementById('detail-skill-name');
   const badgeEl = document.getElementById('detail-source-badge');
+  const statusToggle = document.getElementById('detail-status-toggle');
+  
   if (nameEl) nameEl.textContent = skill.name;
   if (badgeEl) {
-    badgeEl.textContent = skillsState.currentTab;
-    badgeEl.className = `detail-source-badge ${skillsState.currentTab}`;
+    badgeEl.textContent = skill.source;
+    badgeEl.className = `detail-source-badge ${skill.source}`;
+  }
+  if (statusToggle) statusToggle.style.display = skill.source === 'builtin' ? '' : 'none';
+  
+  document.querySelectorAll('.detail-tab-btn').forEach(t => t.classList.remove('active'));
+  const contentTab = document.querySelector('.detail-tab-btn[data-detail-tab="content"]');
+  if (contentTab) contentTab.classList.add('active');
+  switchDetailTab('content');
+  
+  if (skill.skillMdContent) {
+    const markdownEl = document.getElementById('detail-markdown');
+    if (markdownEl) markdownEl.innerHTML = renderMarkdown(skill.skillMdContent);
+  }
+  
+  if (skill.source !== 'builtin') {
+    const header = document.getElementById('detail-header');
+    if (header && !document.getElementById('detail-edit-btn')) {
+      const editBtn = document.createElement('button');
+      editBtn.id = 'detail-edit-btn';
+      editBtn.className = 'skill-action-btn';
+      editBtn.textContent = '编辑';
+      editBtn.addEventListener('click', startSkillEdit);
+      header.insertBefore(editBtn, statusToggle);
+    }
+  } else {
+    const existingBtn = document.getElementById('detail-edit-btn');
+    if (existingBtn) existingBtn.remove();
   }
 }
 
 function closeSkillDetail() {
   skillsState.selectedSkill = null;
   skillsState.detailVisible = false;
-  const listPanel = document.getElementById('skills-list-panel');
-  const detailPanel = document.getElementById('skills-detail-panel');
-  if (listPanel) listPanel.style.display = '';
-  if (detailPanel) detailPanel.style.display = 'none';
+  
+  const panel = document.getElementById('skills-detail-panel');
+  if (panel) {
+    panel.classList.remove('visible');
+    setTimeout(() => { panel.style.display = 'none'; }, 200);
+  }
+  
+  const existingBtn = document.getElementById('detail-edit-btn');
+  if (existingBtn) existingBtn.remove();
+}
+
+function switchDetailTab(tabName) {
+  const content = document.getElementById('detail-content');
+  const editor = document.getElementById('detail-editor');
+  
+  if (tabName === 'content') {
+    if (content) content.style.display = '';
+    if (editor) editor.style.display = 'none';
+    
+    if (skillsState.selectedSkill?.skillMdContent) {
+      const markdownEl = document.getElementById('detail-markdown');
+      if (markdownEl) markdownEl.innerHTML = renderMarkdown(skillsState.selectedSkill.skillMdContent);
+    }
+  } else if (tabName === 'files') {
+    if (content) content.style.display = '';
+    if (editor) editor.style.display = 'none';
+    loadSkillFiles();
+  }
+}
+
+async function loadSkillFiles() {
+  const skill = skillsState.selectedSkill;
+  if (!skill) return;
+  
+  const content = document.getElementById('detail-content');
+  if (!content) return;
+  
+  const result = await window.api.skillsListFiles(skill.path);
+  if (!result.success) {
+    content.innerHTML = '<p class="empty-state-text">加载文件失败</p>';
+    return;
+  }
+  
+  const files = result.files || [];
+  if (files.length === 0) {
+    content.innerHTML = '<p class="empty-state-text">无文件</p>';
+    return;
+  }
+  
+  content.innerHTML = `
+    <div class="detail-file-tree">
+      ${files.map(file => `
+        <div class="detail-file-item" data-file-path="${escapeHtml(file.path)}">
+          <span class="detail-file-icon">${file.isDirectory ? '📁' : '📄'}</span>
+          <span class="detail-file-name">${escapeHtml(file.name)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  
+  content.querySelectorAll('.detail-file-item').forEach(item => {
+    item.addEventListener('click', async () => {
+      const filePath = item.dataset.filePath;
+      const file = files.find(f => f.path === filePath);
+      if (file && !file.isDirectory) await openFileEditor(filePath);
+    });
+  });
+}
+
+async function openFileEditor(filePath) {
+  const result = await window.api.skillsGetFile(filePath);
+  if (!result.success) {
+    alert('加载文件失败: ' + result.error);
+    return;
+  }
+  
+  const textarea = document.getElementById('detail-editor-textarea');
+  if (textarea) {
+    textarea.value = result.content;
+    textarea.dataset.filePath = filePath;
+  }
+  
+  const content = document.getElementById('detail-content');
+  const editor = document.getElementById('detail-editor');
+  if (content) content.style.display = 'none';
+  if (editor) editor.classList.add('visible');
+}
+
+function startSkillEdit() {
+  const skill = skillsState.selectedSkill;
+  if (!skill) return;
+  
+  const textarea = document.getElementById('detail-editor-textarea');
+  if (textarea) {
+    textarea.value = skill.skillMdContent || '';
+    textarea.dataset.filePath = skill.skillMdPath;
+  }
+  
+  const content = document.getElementById('detail-content');
+  const editor = document.getElementById('detail-editor');
+  if (content) content.style.display = 'none';
+  if (editor) editor.classList.add('visible');
+}
+
+async function saveSkillDetail() {
+  const textarea = document.getElementById('detail-editor-textarea');
+  if (!textarea) return;
+  
+  const filePath = textarea.dataset.filePath;
+  const content = textarea.value;
+  
+  const result = await window.api.skillsWriteFile(filePath, content);
+  if (!result.success) {
+    alert('保存失败: ' + result.error);
+    return;
+  }
+  
+  if (skillsState.selectedSkill) {
+    skillsState.selectedSkill.skillMdContent = content;
+  }
+  
+  cancelSkillEdit();
+  loadSkillsList();
+}
+
+function cancelSkillEdit() {
+  const content = document.getElementById('detail-content');
+  const editor = document.getElementById('detail-editor');
+  if (content) content.style.display = '';
+  if (editor) editor.classList.remove('visible');
 }
 
 function showNewSkillDialog() {
