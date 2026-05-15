@@ -729,6 +729,27 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+  position: relative;
+  cursor: default;
+}
+
+.session-title:hover::after {
+  content: attr(data-title);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 12px;
+  white-space: nowrap;
+  max-width: 300px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  margin-bottom: 4px;
 }
 
 .session-time {

@@ -927,11 +927,11 @@ function renderSessionList() {
   sessionList.innerHTML = sorted.length ? sorted.map(s => `
     <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" data-session-id="${s.id}">
       <div class="session-content">
-        <span class="session-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
+        <span class="session-title" data-title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</span>
         <span class="session-time">${formatTime(s.created)}</span>
       </div>
       <div class="session-menu-wrapper">
-        <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作">⋮</button>
+        <button class="session-menu-btn" data-session-id="${s.id}" title="更多操作"></button>
       </div>
     </div>
   `).join('') : '<div class="empty-state-text">暂无会话</div>';
