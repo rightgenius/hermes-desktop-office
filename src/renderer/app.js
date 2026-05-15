@@ -2505,7 +2505,84 @@ function cancelSkillEdit() {
 }
 
 function showNewSkillDialog() {
-  alert('新建skill功能开发中');
+  const overlay = document.createElement('div');
+  overlay.className = 'new-skill-dialog-overlay';
+  overlay.innerHTML = `
+    <div class="new-skill-dialog">
+      <div class="new-skill-dialog-header">创建新Skill</div>
+      <div class="new-skill-dialog-body">
+        <div class="form-group">
+          <label for="new-skill-name">名称 (必填)</label>
+          <input type="text" id="new-skill-name" placeholder="skill名称">
+        </div>
+        <div class="form-group">
+          <label for="new-skill-description">描述 (必填)</label>
+          <input type="text" id="new-skill-description" placeholder="skill描述">
+        </div>
+        <div class="form-group">
+          <label for="new-skill-category">分类 (可选)</label>
+          <input type="text" id="new-skill-category" placeholder="general">
+        </div>
+        <div class="form-group">
+          <label for="new-skill-template">模板 (可选)</label>
+          <select id="new-skill-template">
+            <option value="">空模板</option>
+            <option value="feishu">飞书模板</option>
+            <option value="dingtalk">钉钉模板</option>
+            <option value="office">Office模板</option>
+          </select>
+        </div>
+      </div>
+      <div class="new-skill-dialog-footer">
+        <button class="btn btn-secondary" id="new-skill-cancel">取消</button>
+        <button class="btn btn-primary" id="new-skill-create">创建</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  overlay.querySelector('#new-skill-cancel').addEventListener('click', () => overlay.remove());
+  
+  overlay.querySelector('#new-skill-create').addEventListener('click', async () => {
+    const name = overlay.querySelector('#new-skill-name').value.trim();
+    const description = overlay.querySelector('#new-skill-description').value.trim();
+    const category = overlay.querySelector('#new-skill-category').value.trim() || 'general';
+    const template = overlay.querySelector('#new-skill-template').value;
+    
+    if (!name || !description) {
+      alert('请填写名称和描述');
+      return;
+    }
+    
+    let content = '';
+    switch (template) {
+      case 'feishu':
+        content = '## 飞书技能\n\n使用 lark-cli 命令行工具操作飞书。\n\n### 常用命令\n\n\`\`\`bash\nlark-cli user info\nlark-cli doc list\n\`\`\`';
+        break;
+      case 'dingtalk':
+        content = '## 钉钉技能\n\n使用 dws 命令行工具操作钉钉。\n\n### 常用命令\n\n\`\`\`bash\ndws user info\ndws doc list\n\`\`\`';
+        break;
+      case 'office':
+        content = '## Office技能\n\n处理Office文档相关操作。\n\n### 使用方法\n\n描述你的skill使用方式。';
+        break;
+      default:
+        content = '# New Skill\n\n描述你的skill。';
+    }
+    
+    const result = await window.api.skillsCreate({ name, description, category, content });
+    
+    if (result.success) {
+      overlay.remove();
+      loadSkillsList();
+    } else {
+      alert('创建失败: ' + result.error);
+    }
+  });
+  
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 }
 
 async function loadSkillsList() {
