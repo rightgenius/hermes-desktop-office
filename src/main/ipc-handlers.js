@@ -467,6 +467,24 @@ function setupIPCHandlers(mainWindow) {
     return null;
   });
   // Skills management handlers
+  function validateSkillPath(filePath) {
+    if (!filePath || !path.isAbsolute(filePath)) {
+      return { valid: false, error: 'Invalid path: must be absolute' };
+    }
+    const hermesSkills = path.join(skillScanner.getHermesHome(), 'skills');
+    const agentsSkills = path.join(skillScanner.getAgentsHome(), 'skills');
+    const appDir = path.join(__dirname, '..');
+    const builtinSkills = path.join(appDir, 'hermes-agent', 'skills');
+    const builtinOptional = path.join(appDir, 'hermes-agent', 'optional-skills');
+    const normalized = path.normalize(filePath);
+    const allowed = [hermesSkills, agentsSkills, builtinSkills, builtinOptional];
+    const isAllowed = allowed.some(dir => normalized.startsWith(path.normalize(dir)));
+    if (!isAllowed) {
+      return { valid: false, error: 'Invalid path: not in allowed skills directory' };
+    }
+    return { valid: true };
+  }
+
   ipcMain.handle('skills:list', async () => {
     try {
       const builtin = await skillScanner.scanBuiltinSkills();
@@ -479,6 +497,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:get-detail', async (_, skillPath) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const files = await skillScanner.listSkillFiles(skillPath);
       return { success: true, files };
@@ -558,6 +578,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:update', async (_, { skillPath, content }) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const skillMdPath = path.join(skillPath, 'SKILL.md');
       fs.writeFileSync(skillMdPath, content, 'utf-8');
@@ -568,6 +590,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:delete', async (_, skillPath) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       fs.rmSync(skillPath, { recursive: true, force: true });
       return { success: true };
@@ -577,6 +601,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:archive', async (_, skillPath) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const archiveDir = path.join(skillPath, '.archive');
       fs.mkdirSync(archiveDir, { recursive: true });
@@ -594,6 +620,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:unarchive', async (_, skillPath) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const archiveDir = path.join(skillPath, '.archive');
       if (!fs.existsSync(archiveDir)) {
@@ -613,6 +641,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:get-file', async (_, filePath) => {
+    const validation = validateSkillPath(filePath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       return { success: true, content };
@@ -622,6 +652,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:write-file', async (_, { filePath, content }) => {
+    const validation = validateSkillPath(filePath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       fs.writeFileSync(filePath, content, 'utf-8');
       return { success: true };
@@ -631,6 +663,8 @@ function setupIPCHandlers(mainWindow) {
   });
 
   ipcMain.handle('skills:list-files', async (_, skillPath) => {
+    const validation = validateSkillPath(skillPath);
+    if (!validation.valid) return { success: false, error: validation.error };
     try {
       const files = await skillScanner.listSkillFiles(skillPath);
       return { success: true, files };
