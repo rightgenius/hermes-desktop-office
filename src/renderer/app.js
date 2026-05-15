@@ -2190,6 +2190,300 @@ function showWizard() {
 }
 
 // ============================
+// Skills Page
+// ============================
+const skillsState = {
+  currentTab: 'builtin',
+  skills: { builtin: [], user: [], agent: [] },
+  selectedSkill: null,
+  detailVisible: false,
+  categories: new Set(),
+  searchQuery: '',
+  statusFilter: '',
+  categoryFilter: '',
+};
+
+function initSkillsPage() {
+  setupSkillsTabs();
+  setupSkillsToolbar();
+  setupSkillsDetailPanel();
+  loadSkillsList();
+}
+
+function setupSkillsTabs() {
+  const tabs = document.getElementById('skills-tabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('.skills-tab');
+    if (!tab) return;
+    tabs.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    skillsState.currentTab = tab.dataset.tab;
+    renderSkillsTable();
+  });
+}
+
+function setupSkillsToolbar() {
+  const searchInput = document.getElementById('skills-search');
+  if (searchInput) {
+    let debounceTimer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        skillsState.searchQuery = searchInput.value.trim();
+        renderSkillsTable();
+      }, 300);
+    });
+  }
+
+  const categoryFilter = document.getElementById('skills-category-filter');
+  if (categoryFilter) {
+    categoryFilter.addEventListener('change', () => {
+      skillsState.categoryFilter = categoryFilter.value;
+      renderSkillsTable();
+    });
+  }
+
+  const statusFilter = document.getElementById('skills-status-filter');
+  if (statusFilter) {
+    statusFilter.addEventListener('change', () => {
+      skillsState.statusFilter = statusFilter.value;
+      renderSkillsTable();
+    });
+  }
+
+  document.getElementById('refresh-skills-btn')?.addEventListener('click', () => {
+    loadSkillsList();
+  });
+}
+
+function setupSkillsDetailPanel() {
+  document.getElementById('detail-close-btn')?.addEventListener('click', () => {
+    closeSkillDetail();
+  });
+}
+
+function openSkillDetail(skill) {
+  skillsState.selectedSkill = skill;
+  skillsState.detailVisible = true;
+  const listPanel = document.getElementById('skills-list-panel');
+  const detailPanel = document.getElementById('skills-detail-panel');
+  if (listPanel) listPanel.style.display = 'none';
+  if (detailPanel) detailPanel.style.display = '';
+
+  const nameEl = document.getElementById('detail-skill-name');
+  const badgeEl = document.getElementById('detail-source-badge');
+  if (nameEl) nameEl.textContent = skill.name;
+  if (badgeEl) {
+    badgeEl.textContent = skillsState.currentTab;
+    badgeEl.className = `detail-source-badge ${skillsState.currentTab}`;
+  }
+}
+
+function closeSkillDetail() {
+  skillsState.selectedSkill = null;
+  skillsState.detailVisible = false;
+  const listPanel = document.getElementById('skills-list-panel');
+  const detailPanel = document.getElementById('skills-detail-panel');
+  if (listPanel) listPanel.style.display = '';
+  if (detailPanel) detailPanel.style.display = 'none';
+}
+
+async function loadSkillsList() {
+  const result = await window.api.skillsList();
+  if (!result.success) {
+    console.error('Failed to load skills:', result.error);
+    return;
+  }
+
+  skillsState.skills = result;
+
+  skillsState.categories = new Set();
+  ['builtin', 'user', 'agent'].forEach(source => {
+    result[source].forEach(skill => {
+      if (skill.category) skillsState.categories.add(skill.category);
+    });
+  });
+
+  updateCategoryFilter();
+  renderSkillsTable();
+}
+
+function updateCategoryFilter() {
+  const select = document.getElementById('skills-category-filter');
+  if (!select) return;
+
+  const currentValue = select.value;
+  select.innerHTML = '<option value="">全部分类</option>';
+
+  Array.from(skillsState.categories).sort().forEach(cat => {
+    const option = document.createElement('option');
+    option.value = cat;
+    option.textContent = cat;
+    select.appendChild(option);
+  });
+
+  select.value = currentValue;
+}
+
+function getFilteredSkills() {
+  const skills = skillsState.skills[skillsState.currentTab] || [];
+
+  return skills.filter(skill => {
+    if (skillsState.searchQuery) {
+      const q = skillsState.searchQuery.toLowerCase();
+      if (!skill.name.toLowerCase().includes(q) && !skill.description.toLowerCase().includes(q)) return false;
+    }
+
+    if (skillsState.categoryFilter && skill.category !== skillsState.categoryFilter) return false;
+
+    if (skillsState.statusFilter) {
+      if (skillsState.currentTab === 'agent') {
+        if (skill.curatorState !== skillsState.statusFilter) return false;
+      } else {
+        if (skill.status !== skillsState.statusFilter) return false;
+      }
+    }
+
+    return true;
+  });
+}
+
+function renderSkillsTable() {
+  const body = document.getElementById('skills-table-body');
+  const header = document.getElementById('skills-table-header');
+  if (!body || !header) return;
+
+  const tab = skillsState.currentTab;
+  const skills = getFilteredSkills();
+
+  header.className = `skills-table-header ${tab}`;
+  header.innerHTML = getTabHeaderHTML(tab);
+
+  if (skills.length === 0) {
+    body.innerHTML = '<div class="empty-state-text">暂无skills</div>';
+    return;
+  }
+
+  body.innerHTML = skills.map(skill => `
+    <div class="skills-table-row ${tab}" data-skill-path="${escapeHtml(skill.path)}">
+      ${getTabRowHTML(tab, skill)}
+    </div>
+  `).join('');
+
+  body.querySelectorAll('.skills-table-row').forEach(row => {
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.skill-action-btn, .skill-status-toggle')) return;
+      const skillPath = row.dataset.skillPath;
+      const skill = skills.find(s => s.path === skillPath);
+      if (skill) openSkillDetail(skill);
+    });
+  });
+
+  body.querySelectorAll('.skill-status-toggle').forEach(toggle => {
+    toggle.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const skillName = e.target.dataset.skillName;
+      const enabled = e.target.checked;
+      console.log('Toggle skill:', skillName, enabled);
+    });
+  });
+
+  body.querySelectorAll('.delete-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const skillPath = e.target.dataset.skillPath;
+      if (confirm('确定要删除此skill吗？')) {
+        console.log('Delete skill:', skillPath);
+      }
+    });
+  });
+
+  body.querySelectorAll('.archive-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const skillPath = e.target.dataset.skillPath;
+      console.log('Archive skill:', skillPath);
+    });
+  });
+}
+
+function getTabHeaderHTML(tab) {
+  const headers = {
+    builtin: '<span>Icon</span><span>Name</span><span>Description</span><span>Category</span><span>Status</span><span>Actions</span>',
+    user: '<span>Icon</span><span>Name</span><span>Description</span><span>Location</span><span>Created</span><span>Status</span><span>Actions</span>',
+    agent: '<span>Icon</span><span>Name</span><span>Description</span><span>Uses</span><span>Last Activity</span><span>State</span><span>Actions</span>',
+  };
+  return headers[tab] || '';
+}
+
+function getTabRowHTML(tab, skill) {
+  const icon = tab === 'builtin' ? '📚' : tab === 'agent' ? '🤖' : '📝';
+  const desc = skill.description || '';
+  const truncatedDesc = desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
+
+  if (tab === 'builtin') {
+    return `
+      <span class="skills-row-icon">${icon}</span>
+      <span class="skills-row-name">${escapeHtml(skill.name)}</span>
+      <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
+      <span class="skills-row-category">${escapeHtml(skill.category || '-')}</span>
+      <span class="skills-row-status">
+        <label class="toggle-label">
+          <input type="checkbox" ${skill.status === 'enabled' ? 'checked' : ''} data-skill-name="${escapeHtml(skill.name)}" class="skill-status-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </span>
+      <span class="skills-row-actions">
+        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
+      </span>
+    `;
+  }
+
+  if (tab === 'user') {
+    const location = skill.path.includes('/.hermes/') ? '~/.hermes/skills/' : '~/.agents/skills/';
+    const created = skill.created ? new Date(skill.created).toLocaleDateString() : '-';
+    return `
+      <span class="skills-row-icon">${icon}</span>
+      <span class="skills-row-name">${escapeHtml(skill.name)}</span>
+      <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
+      <span class="skills-row-location">${location}</span>
+      <span class="skills-row-created">${created}</span>
+      <span class="skills-row-status">
+        <label class="toggle-label">
+          <input type="checkbox" ${skill.status === 'enabled' ? 'checked' : ''} data-skill-name="${escapeHtml(skill.name)}" class="skill-status-toggle">
+          <span class="toggle-slider"></span>
+        </label>
+      </span>
+      <span class="skills-row-actions">
+        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
+        <button class="skill-action-btn danger delete-btn" data-skill-path="${escapeHtml(skill.path)}">删除</button>
+      </span>
+    `;
+  }
+
+  if (tab === 'agent') {
+    const useCount = skill.useCount || 0;
+    const lastActivity = skill.lastActivity ? new Date(skill.lastActivity).toLocaleDateString() : '-';
+    const curatorState = skill.curatorState || 'active';
+    return `
+      <span class="skills-row-icon">${icon}</span>
+      <span class="skills-row-name">${escapeHtml(skill.name)}</span>
+      <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
+      <span class="skills-row-use-count">${useCount}</span>
+      <span class="skills-row-last-activity">${lastActivity}</span>
+      <span class="skills-row-curator-state ${curatorState}">${curatorState}</span>
+      <span class="skills-row-actions">
+        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
+        <button class="skill-action-btn archive-btn" data-skill-path="${escapeHtml(skill.path)}">归档</button>
+      </span>
+    `;
+  }
+
+  return '';
+}
+
+// ============================
 // New Chat Button
 // ============================
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
@@ -2211,6 +2505,7 @@ loadConfig();
 checkFirstRun();
 updateStatus('status-agent', 'error');
 checkAuthStatus();
+initSkillsPage();
 
 // Auto-start Agent on launch (only if configured)
 async function autoStartAgent() {
