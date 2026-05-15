@@ -1006,7 +1006,7 @@ function isTextFile(filePath) {
     'php', 'pl', 'lua', 'r', 'm', 'mm', 'vue', 'svelte', 'astro',
   ]);
   const ext = filePath.split('.').pop().toLowerCase();
-  const basename = path.basename ? path.basename(filePath).toLowerCase() : filePath.split('/').pop().toLowerCase();
+  const basename = filePath.split('/').pop().toLowerCase();
   return textExts.has(ext) || textExts.has(basename);
 }
 
