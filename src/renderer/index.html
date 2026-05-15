@@ -250,6 +250,79 @@
             <div id="log-viewer" class="log-viewer"></div>
           </div>
         </div>
+
+        <!-- Skills Page -->
+        <div class="page" id="page-skills">
+          <div class="page-header">
+            <h2>Skills管理</h2>
+          </div>
+          <div class="skills-toolbar">
+            <input type="text" class="skills-search-input" id="skills-search" placeholder="搜索skill名称或描述...">
+            <select class="skills-filter-select" id="skills-category-filter">
+              <option value="">全部分类</option>
+            </select>
+            <select class="skills-filter-select" id="skills-status-filter">
+              <option value="">全部状态</option>
+              <option value="enabled">已启用</option>
+              <option value="disabled">已禁用</option>
+            </select>
+            <div class="skills-toolbar-actions" id="skills-toolbar-actions">
+              <button class="btn btn-primary" id="new-skill-btn" style="display:none">新建Skill</button>
+              <button class="btn btn-secondary" id="refresh-skills-btn">刷新</button>
+            </div>
+          </div>
+          <div class="skills-tabs" id="skills-tabs">
+            <button class="skills-tab active" data-tab="builtin">内置库</button>
+            <button class="skills-tab" data-tab="user">我的Skills</button>
+            <button class="skills-tab" data-tab="agent">Agent生成</button>
+          </div>
+          <div class="skills-content">
+            <div class="skills-list-panel" id="skills-list-panel">
+              <div class="skills-table-container" id="skills-table-container">
+                <div class="skills-table-header builtin" id="skills-table-header">
+                  <span>Icon</span>
+                  <span>Name</span>
+                  <span>Description</span>
+                  <span>Category</span>
+                  <span>Status</span>
+                  <span>Actions</span>
+                </div>
+                <div class="skills-table-body" id="skills-table-body">
+                  <div class="empty-state-text">加载中...</div>
+                </div>
+              </div>
+            </div>
+            <div class="skills-detail-panel" id="skills-detail-panel" style="display:none">
+              <div class="detail-header" id="detail-header">
+                <span class="detail-skill-name" id="detail-skill-name">Skill Name</span>
+                <span class="detail-source-badge builtin" id="detail-source-badge">builtin</span>
+                <span class="detail-status-toggle" id="detail-status-toggle" style="display:none">
+                  <label class="toggle-label">
+                    <input type="checkbox" id="detail-enable-toggle">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </span>
+                <button class="detail-close-btn" id="detail-close-btn">×</button>
+              </div>
+              <div class="detail-tabs" id="detail-tabs">
+                <button class="detail-tab-btn active" data-detail-tab="content">Content</button>
+                <button class="detail-tab-btn" data-detail-tab="files">Files</button>
+              </div>
+              <div class="detail-content" id="detail-content">
+                <div class="detail-markdown" id="detail-markdown">
+                  <p class="empty-state-text">选择skill查看详情</p>
+                </div>
+              </div>
+              <div class="detail-editor" id="detail-editor" style="display:none">
+                <textarea class="detail-editor-textarea" id="detail-editor-textarea" rows="20"></textarea>
+                <div class="detail-editor-buttons">
+                  <button class="btn btn-primary" id="detail-save-btn">保存</button>
+                  <button class="btn btn-secondary" id="detail-cancel-btn">取消</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
 
       <!-- Workspace Panel -->
