@@ -4,6 +4,7 @@ const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const ConfigStore = require('./config-store');
 const { AgentManager } = require('./agent-manager');
+const skillScanner = require('./skill-scanner');
 
 const fsPromises = fs.promises;
 
@@ -464,6 +465,178 @@ function setupIPCHandlers(mainWindow) {
     });
     if (!result.canceled && result.filePaths.length > 0) return result.filePaths[0];
     return null;
+  });
+  // Skills management handlers
+  ipcMain.handle('skills:list', async () => {
+    try {
+      const builtin = await skillScanner.scanBuiltinSkills();
+      const user = await skillScanner.scanUserSkills();
+      const agent = await skillScanner.scanAgentSkills();
+      return { success: true, builtin, user, agent };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:get-detail', async (_, skillPath) => {
+    try {
+      const files = await skillScanner.listSkillFiles(skillPath);
+      return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:set-enabled', async (_, skillName, enabled) => {
+    try {
+      const hermesHome = skillScanner.getHermesHome();
+      const configPath = path.join(hermesHome, 'config.yaml');
+      let content = '';
+      
+      try {
+        content = fs.readFileSync(configPath, 'utf-8');
+      } catch {
+        content = 'skills:\n  enabled: []\n  disabled: []\n';
+      }
+      
+      const enabledMatch = content.match(/(skills:\s*\n\s+enabled:\s*\[)([^\]]*)(\])/);
+      const disabledMatch = content.match(/(skills:\s*\n(?:.*\n)*?\s+disabled:\s*\[)([^\]]*)(\])/);
+      
+      let enabledList = enabledMatch ? enabledMatch[2].split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean) : [];
+      let disabledList = disabledMatch ? disabledMatch[2].split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean) : [];
+      
+      if (enabled) {
+        enabledList = [...new Set([...enabledList, skillName])];
+        disabledList = disabledList.filter(n => n !== skillName);
+      } else {
+        disabledList = [...new Set([...disabledList, skillName])];
+        enabledList = enabledList.filter(n => n !== skillName);
+      }
+      
+      const enabledStr = enabledList.map(n => `'${n}'`).join(', ');
+      const disabledStr = disabledList.map(n => `'${n}'`).join(', ');
+      
+      if (enabledMatch) {
+        content = content.replace(enabledMatch[0], `skills:\n  enabled: [${enabledStr}]`);
+      } else {
+        content += `\nskills:\n  enabled: [${enabledStr}]\n`;
+      }
+      
+      if (disabledMatch) {
+        content = content.replace(disabledMatch[0], `skills:\n  disabled: [${disabledStr}]`);
+      } else {
+        content += `\nskills:\n  disabled: [${disabledStr}]\n`;
+      }
+      
+      fs.writeFileSync(configPath, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:create', async (_, skillData) => {
+    try {
+      const hermesHome = skillScanner.getHermesHome();
+      const skillsDir = path.join(hermesHome, 'skills');
+      const skillPath = path.join(skillsDir, skillData.name);
+      
+      if (fs.existsSync(skillPath)) {
+        return { success: false, error: 'Skill already exists' };
+      }
+      
+      fs.mkdirSync(skillPath, { recursive: true });
+      
+      const skillMdContent = `---\nname: ${skillData.name}\ndescription: ${skillData.description}\ncategory: ${skillData.category || 'general'}\n---\n\n${skillData.content || '# New Skill\n\nDescribe your skill here.'}\n`;
+      
+      fs.writeFileSync(path.join(skillPath, 'SKILL.md'), skillMdContent, 'utf-8');
+      
+      return { success: true, path: skillPath };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:update', async (_, { skillPath, content }) => {
+    try {
+      const skillMdPath = path.join(skillPath, 'SKILL.md');
+      fs.writeFileSync(skillMdPath, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:delete', async (_, skillPath) => {
+    try {
+      fs.rmSync(skillPath, { recursive: true, force: true });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:archive', async (_, skillPath) => {
+    try {
+      const archiveDir = path.join(skillPath, '.archive');
+      fs.mkdirSync(archiveDir, { recursive: true });
+      const entries = fs.readdirSync(skillPath);
+      for (const entry of entries) {
+        if (entry === '.archive') continue;
+        const src = path.join(skillPath, entry);
+        const dest = path.join(archiveDir, entry);
+        fs.renameSync(src, dest);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:unarchive', async (_, skillPath) => {
+    try {
+      const archiveDir = path.join(skillPath, '.archive');
+      if (!fs.existsSync(archiveDir)) {
+        return { success: false, error: 'No archive found' };
+      }
+      const entries = fs.readdirSync(archiveDir);
+      for (const entry of entries) {
+        const src = path.join(archiveDir, entry);
+        const dest = path.join(skillPath, entry);
+        fs.renameSync(src, dest);
+      }
+      fs.rmSync(archiveDir, { recursive: true, force: true });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:get-file', async (_, filePath) => {
+    try {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return { success: true, content };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:write-file', async (_, { filePath, content }) => {
+    try {
+      fs.writeFileSync(filePath, content, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('skills:list-files', async (_, skillPath) => {
+    try {
+      const files = await skillScanner.listSkillFiles(skillPath);
+      return { success: true, files };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   });
 }
 
