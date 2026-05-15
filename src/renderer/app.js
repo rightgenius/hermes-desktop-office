@@ -724,6 +724,45 @@ function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
   }
 }
 
+function openSessionMenu(sessionId, event) {
+  closeSessionMenu();
+  
+  const dropdown = document.createElement('div');
+  dropdown.className = 'session-menu-dropdown';
+  dropdown.id = 'session-menu-active';
+  dropdown.innerHTML = `
+    <button class="session-menu-item" data-action="rename" data-session-id="${sessionId}">重命名</button>
+    <button class="session-menu-item" data-action="export" data-session-id="${sessionId}">导出 Markdown</button>
+    <button class="session-menu-item danger" data-action="delete" data-session-id="${sessionId}">删除</button>
+  `;
+  
+  const btn = event.target;
+  btn.closest('.session-menu-wrapper').appendChild(dropdown);
+  
+  dropdown.querySelectorAll('.session-menu-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = item.dataset.action;
+      const sid = item.dataset.sessionId;
+      closeSessionMenu();
+      if (action === 'rename') renameSession(sid);
+      else if (action === 'export') exportSessionMarkdown(sid);
+      else if (action === 'delete') deleteSession(sid);
+    });
+  });
+}
+
+function closeSessionMenu() {
+  const existing = document.getElementById('session-menu-active');
+  if (existing) existing.remove();
+}
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.session-menu-wrapper')) {
+    closeSessionMenu();
+  }
+});
+
 function renderSessionList() {
   const sessions = loadSessions();
   const sorted = Object.values(sessions).sort((a, b) => b.created - a.created);
