@@ -107,6 +107,23 @@ async function findSkillMds(baseDir, source) {
   return skills;
 }
 
+// Load .bundled_manifest to identify builtin skills synced to ~/.hermes/skills/
+async function loadBundledManifest() {
+  const manifestPath = path.join(getHermesHome(), 'skills', '.bundled_manifest');
+  try {
+    const content = await fsPromises.readFile(manifestPath, 'utf-8');
+    // Format: "skill-name:hash" per line
+    const names = [];
+    content.split('\n').forEach(line => {
+      const match = line.match(/^([^:]+):/);
+      if (match) names.push(match[1]);
+    });
+    return new Set(names);
+  } catch {
+    return new Set();
+  }
+}
+
 // Load .usage.json for agent skill provenance
 async function loadUsageJson() {
   const usagePath = path.join(getHermesHome(), 'skills', '.usage.json');
@@ -189,52 +206,34 @@ async function scanBuiltinSkills() {
   return skills;
 }
 
-// Scan user skills (root-level only, with usage data from .usage.json)
+// Scan user skills from ~/.agents/skills/
 async function scanUserSkills() {
-  const hermesSkillsDir = path.join(getHermesHome(), 'skills');
   const agentsSkillsDir = path.join(getAgentsHome(), 'skills');
-  const usageData = await loadUsageJson();
   
   const skills = [];
   
-  // Only scan root-level directories (not category subdirectories)
-  const scanRootDirs = async (baseDir) => {
-    try {
-      const entries = await fsPromises.readdir(baseDir, { withFileTypes: true });
+  try {
+    const entries = await fsPromises.readdir(agentsSkillsDir, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
       
-      for (const entry of entries) {
-        // Skip hidden files/dirs
-        if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        const fullPath = path.join(agentsSkillsDir, entry.name);
+        const skillMdPath = path.join(fullPath, 'SKILL.md');
         
-        if (entry.isDirectory()) {
-          const fullPath = path.join(baseDir, entry.name);
-          const skillMdPath = path.join(fullPath, 'SKILL.md');
-          
-          try {
-            await fsPromises.access(skillMdPath);
-            const skill = await scanSkillDir(fullPath, 'user');
-            if (skill) {
-              // Enrich with usage data if available
-              const usage = usageData[skill.name];
-              if (usage) {
-                skill.useCount = usage.use_count || 0;
-                skill.lastActivity = usage.last_used_at || usage.last_viewed_at || null;
-                skill.curatorState = usage.state || 'active';
-              }
-              skills.push(skill);
-            }
-          } catch {
-            // No SKILL.md in this directory, skip (don't recurse into subdirectories)
-          }
+        try {
+          await fsPromises.access(skillMdPath);
+          const skill = await scanSkillDir(fullPath, 'user');
+          if (skill) skills.push(skill);
+        } catch {
+          // No SKILL.md, skip
         }
       }
-    } catch {
-      // Directory doesn't exist
     }
-  };
-  
-  await scanRootDirs(hermesSkillsDir);
-  await scanRootDirs(agentsSkillsDir);
+  } catch {
+    // Directory doesn't exist
+  }
   
   const config = loadHermesConfig();
   applyStatus(skills, config);
@@ -242,10 +241,11 @@ async function scanUserSkills() {
   return skills;
 }
 
-// Scan user/agent skills (root-level only, with usage data from .usage.json)
+// Scan agent-generated skills from ~/.hermes/skills/ (root-level, excluding builtin)
 async function scanAgentSkills() {
   const hermesSkillsDir = path.join(getHermesHome(), 'skills');
   const usageData = await loadUsageJson();
+  const bundledNames = await loadBundledManifest();
   
   const skills = [];
   
@@ -256,6 +256,9 @@ async function scanAgentSkills() {
       if (entry.name.startsWith('.')) continue;
       
       if (entry.isDirectory()) {
+        // Skip builtin skills (listed in .bundled_manifest)
+        if (bundledNames.has(entry.name)) continue;
+        
         const fullPath = path.join(hermesSkillsDir, entry.name);
         const skillMdPath = path.join(fullPath, 'SKILL.md');
         
@@ -323,9 +326,11 @@ async function listSkillFiles(skillPath) {
 module.exports = {
   scanBuiltinSkills,
   scanUserSkills,
+  scanAgentSkills,
   listSkillFiles,
   getHermesHome,
   getAgentsHome,
   loadHermesConfig,
   loadUsageJson,
+  loadBundledManifest,
 };

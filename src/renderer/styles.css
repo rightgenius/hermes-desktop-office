@@ -2194,7 +2194,11 @@ body {
 }
 
 .skills-table-header.user {
-  grid-template-columns: 40px 1fr 1.2fr 100px 80px 70px 80px 120px;
+  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+}
+
+.skills-table-header.agent {
+  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
 }
 
 .skills-table-body {
@@ -2217,7 +2221,11 @@ body {
 }
 
 .skills-table-row.user {
-  grid-template-columns: 40px 1fr 1.2fr 100px 80px 70px 80px 120px;
+  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+}
+
+.skills-table-row.agent {
+  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
 }
 
 .skills-table-row:hover {
