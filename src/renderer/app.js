@@ -2670,15 +2670,71 @@ function renderSkillsTable() {
       ${getTabRowHTML(tab, skill)}
     </div>
   `).join('');
+
+  body.querySelectorAll('.skills-row-path[data-path]').forEach(pathEl => {
+    const isOverflow = pathEl.scrollWidth > pathEl.clientWidth;
+    if (isOverflow) {
+      let tooltip = null;
+      pathEl.addEventListener('mouseenter', (e) => {
+        tooltip = document.createElement('div');
+        tooltip.className = 'session-title-tooltip';
+        tooltip.textContent = pathEl.dataset.path;
+        document.body.appendChild(tooltip);
+        const rect = pathEl.getBoundingClientRect();
+        tooltip.style.top = (rect.bottom + 4) + 'px';
+        tooltip.style.left = rect.left + 'px';
+      });
+      pathEl.addEventListener('mouseleave', () => {
+        if (tooltip) {
+          tooltip.remove();
+          tooltip = null;
+        }
+      });
+    }
+  });
 }
 
 function getTabHeaderHTML(tab) {
   const headers = {
-    builtin: '<span>Icon</span><span>Name</span><span>Description</span><span>Category</span><span>Status</span><span>Actions</span>',
-    user: '<span>Icon</span><span>Name</span><span>Description</span><span>Location</span><span>Created</span><span>Status</span><span>Actions</span>',
-    agent: '<span>Icon</span><span>Name</span><span>Description</span><span>Uses</span><span>Last Activity</span><span>State</span><span>Actions</span>',
+    builtin: '<span>Icon</span><span>Name</span><span>Description</span><span>Category</span><span>Path</span><span>Status</span><span>Actions</span>',
+    user: '<span>Icon</span><span>Name</span><span>Description</span><span>Path</span><span>Created</span><span>Status</span><span>Actions</span>',
+    agent: '<span>Icon</span><span>Name</span><span>Description</span><span>Uses</span><span>Last Activity</span><span>Path</span><span>State</span><span>Actions</span>',
   };
   return headers[tab] || '';
+}
+
+function formatSkillPath(fullPath, tab) {
+  const dirPath = fullPath.replace(/\/SKILL\.md$/, '');
+  let displayPath;
+  
+  if (tab === 'builtin') {
+    const match = dirPath.match(/hermes-agent\/(skills|optional-skills)\/(.+)$/);
+    if (match) {
+      displayPath = `${match[1]}/${match[2]}`;
+    } else {
+      const idx = dirPath.lastIndexOf('hermes-agent');
+      if (idx !== -1) {
+        displayPath = dirPath.substring(idx + 14);
+      } else {
+        displayPath = path.basename(dirPath);
+      }
+    }
+  } else if (tab === 'user' || tab === 'agent') {
+    if (dirPath.includes('/.agents/skills/')) {
+      const match = dirPath.match(/\.agents\/skills\/(.+)$/);
+      displayPath = match ? `~/.agents/skills/${match[1]}` : dirPath;
+    } else if (dirPath.includes('/.hermes/skills/')) {
+      const match = dirPath.match(/\.hermes\/skills\/(.+)$/);
+      displayPath = match ? `~/.hermes/skills/${match[1]}` : dirPath;
+    } else {
+      displayPath = dirPath;
+    }
+  }
+  
+  if (displayPath.length > 50) {
+    displayPath = displayPath.substring(0, 47) + '...';
+  }
+  return displayPath;
 }
 
 function getTabRowHTML(tab, skill) {
@@ -2687,11 +2743,13 @@ function getTabRowHTML(tab, skill) {
   const truncatedDesc = desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
 
   if (tab === 'builtin') {
+    const displayPath = formatSkillPath(skill.path, 'builtin');
     return `
       <span class="skills-row-icon">${icon}</span>
       <span class="skills-row-name">${escapeHtml(skill.name)}</span>
       <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
       <span class="skills-row-category">${escapeHtml(skill.category || '-')}</span>
+      <span class="skills-row-path" data-path="${escapeHtml(skill.path.replace(/\/SKILL\.md$/, ''))}">${escapeHtml(displayPath)}</span>
       <span class="skills-row-status">
         <label class="toggle-label">
           <input type="checkbox" ${skill.status === 'enabled' ? 'checked' : ''} data-skill-name="${escapeHtml(skill.name)}" class="skill-status-toggle">
@@ -2704,13 +2762,13 @@ function getTabRowHTML(tab, skill) {
   }
 
   if (tab === 'user') {
-    const location = skill.path.includes('/.hermes/') ? '~/.hermes/skills/' : '~/.agents/skills/';
+    const displayPath = formatSkillPath(skill.path, 'user');
     const created = skill.created ? new Date(skill.created).toLocaleDateString() : '-';
     return `
       <span class="skills-row-icon">${icon}</span>
       <span class="skills-row-name">${escapeHtml(skill.name)}</span>
       <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
-      <span class="skills-row-location">${location}</span>
+      <span class="skills-row-path" data-path="${escapeHtml(skill.path.replace(/\/SKILL\.md$/, ''))}">${escapeHtml(displayPath)}</span>
       <span class="skills-row-created">${created}</span>
       <span class="skills-row-status">
         <label class="toggle-label">
@@ -2728,12 +2786,14 @@ function getTabRowHTML(tab, skill) {
     const useCount = skill.useCount || 0;
     const lastActivity = skill.lastActivity ? new Date(skill.lastActivity).toLocaleDateString() : '-';
     const curatorState = skill.curatorState || 'active';
+    const displayPath = formatSkillPath(skill.path, 'agent');
     return `
       <span class="skills-row-icon">${icon}</span>
       <span class="skills-row-name">${escapeHtml(skill.name)}</span>
       <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
       <span class="skills-row-use-count">${useCount}</span>
       <span class="skills-row-last-activity">${lastActivity}</span>
+      <span class="skills-row-path" data-path="${escapeHtml(skill.path.replace(/\/SKILL\.md$/, ''))}">${escapeHtml(displayPath)}</span>
       <span class="skills-row-curator-state ${curatorState}">${curatorState}</span>
       <span class="skills-row-actions">
         <button class="skill-action-btn archive-btn" data-skill-path="${escapeHtml(skill.path)}">归档</button>

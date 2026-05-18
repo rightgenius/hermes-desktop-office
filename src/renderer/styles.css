@@ -2190,15 +2190,15 @@ body {
 }
 
 .skills-table-header.builtin {
-  grid-template-columns: 40px 1fr 1.5fr 120px 80px 60px;
+  grid-template-columns: 40px 120px 1.2fr 100px 160px 80px 60px;
 }
 
 .skills-table-header.user {
-  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+  grid-template-columns: 40px 120px 1fr 160px 80px 80px 120px;
 }
 
 .skills-table-header.agent {
-  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
+  grid-template-columns: 40px 120px 0.8fr 70px 90px 160px 80px 120px;
 }
 
 .skills-table-body {
@@ -2217,15 +2217,15 @@ body {
 }
 
 .skills-table-row.builtin {
-  grid-template-columns: 40px 1fr 1.5fr 120px 80px 60px;
+  grid-template-columns: 40px 120px 1.2fr 100px 160px 80px 60px;
 }
 
 .skills-table-row.user {
-  grid-template-columns: 40px 1fr 1.2fr 100px 80px 80px 120px;
+  grid-template-columns: 40px 120px 1fr 160px 80px 80px 120px;
 }
 
 .skills-table-row.agent {
-  grid-template-columns: 40px 1fr 1fr 70px 100px 80px 120px;
+  grid-template-columns: 40px 120px 0.8fr 70px 90px 160px 80px 120px;
 }
 
 .skills-table-row:hover {
@@ -2248,8 +2248,9 @@ body {
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-wrap: break-word;
+  max-height: 2.4em;
+  line-height: 1.2;
 }
 
 .skills-row-desc {
@@ -2268,6 +2269,15 @@ body {
   color: var(--text-muted);
   font-size: 11px;
   font-family: var(--font-mono);
+}
+
+.skills-row-path {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .skills-row-created {

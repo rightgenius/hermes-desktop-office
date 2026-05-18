@@ -13,6 +13,21 @@ function getAgentsHome() {
   return path.join(app.getPath('home'), '.agents');
 }
 
+function getHermesAgentPath() {
+  const devPath = path.join(__dirname, '..', 'hermes-agent');
+  if (fs.existsSync(path.join(devPath, 'cli.py'))) {
+    return devPath;
+  }
+  
+  const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+  const prodPath = path.join(resourcesDir, 'hermes-agent');
+  if (fs.existsSync(path.join(prodPath, 'cli.py'))) {
+    return prodPath;
+  }
+  
+  return null;
+}
+
 // Parse YAML frontmatter from SKILL.md
 function parseFrontmatter(content) {
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
@@ -193,9 +208,11 @@ function applyStatus(skills, config) {
 
 // Scan builtin skills
 async function scanBuiltinSkills() {
-  const appDir = path.join(__dirname, '..');
-  const skillsDir = path.join(appDir, 'hermes-agent', 'skills');
-  const optionalDir = path.join(appDir, 'hermes-agent', 'optional-skills');
+  const hermesAgentPath = getHermesAgentPath();
+  if (!hermesAgentPath) return [];
+  
+  const skillsDir = path.join(hermesAgentPath, 'skills');
+  const optionalDir = path.join(hermesAgentPath, 'optional-skills');
   
   const skills = [];
   skills.push(...await findSkillMds(skillsDir, 'builtin'));
@@ -314,6 +331,7 @@ module.exports = {
   listSkillFiles,
   getHermesHome,
   getAgentsHome,
+  getHermesAgentPath,
   loadHermesConfig,
   loadUsageJson,
   loadBundledManifest,
