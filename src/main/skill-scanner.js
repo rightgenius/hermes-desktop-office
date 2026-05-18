@@ -193,8 +193,9 @@ function applyStatus(skills, config) {
 
 // Scan builtin skills
 async function scanBuiltinSkills() {
-  const skillsDir = path.join(__dirname, 'hermes-agent', 'skills');
-  const optionalDir = path.join(__dirname, 'hermes-agent', 'optional-skills');
+  const appDir = path.join(__dirname, '..');
+  const skillsDir = path.join(appDir, 'hermes-agent', 'skills');
+  const optionalDir = path.join(appDir, 'hermes-agent', 'optional-skills');
   
   const skills = [];
   skills.push(...await findSkillMds(skillsDir, 'builtin'));
@@ -241,50 +242,33 @@ async function scanUserSkills() {
   return skills;
 }
 
-// Scan agent-generated skills from ~/.hermes/skills/ (root-level, excluding builtin)
+// Scan agent-generated skills from ~/.hermes/skills/ (excluding builtin from .bundled_manifest)
 async function scanAgentSkills() {
   const hermesSkillsDir = path.join(getHermesHome(), 'skills');
   const usageData = await loadUsageJson();
   const bundledNames = await loadBundledManifest();
   
-  const skills = [];
+  // Recursively find all SKILL.md files
+  const allSkills = await findSkillMds(hermesSkillsDir, 'user');
   
-  try {
-    const entries = await fsPromises.readdir(hermesSkillsDir, { withFileTypes: true });
-    
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
-      
-      if (entry.isDirectory()) {
-        // Skip builtin skills (listed in .bundled_manifest)
-        if (bundledNames.has(entry.name)) continue;
-        
-        const fullPath = path.join(hermesSkillsDir, entry.name);
-        const skillMdPath = path.join(fullPath, 'SKILL.md');
-        
-        try {
-          await fsPromises.access(skillMdPath);
-          const skill = await scanSkillDir(fullPath, 'user');
-          if (skill) {
-            // Enrich with usage data if available
-            const usage = usageData[skill.name];
-            if (usage) {
-              skill.useCount = usage.use_count || 0;
-              skill.lastActivity = usage.last_used_at || usage.last_viewed_at || null;
-              skill.curatorState = usage.state || 'active';
-            }
-            skills.push(skill);
-          }
-        } catch {
-          // No SKILL.md, skip
-        }
-      }
+  // Filter: exclude builtin skills (listed in .bundled_manifest)
+  const agentSkills = allSkills.filter(skill => {
+    // Check by skill name (from frontmatter) or directory name
+    const name = skill.name || path.basename(skill.path);
+    return !bundledNames.has(name);
+  });
+  
+  // Enrich with usage data
+  agentSkills.forEach(skill => {
+    const usage = usageData[skill.name];
+    if (usage) {
+      skill.useCount = usage.use_count || 0;
+      skill.lastActivity = usage.last_used_at || usage.last_viewed_at || null;
+      skill.curatorState = usage.state || 'active';
     }
-  } catch {
-    // Directory doesn't exist
-  }
+  });
   
-  return skills;
+  return agentSkills;
 }
 
 // List files in skill directory
