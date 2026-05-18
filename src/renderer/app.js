@@ -2194,7 +2194,7 @@ function showWizard() {
 // ============================
 const skillsState = {
   currentTab: 'builtin',
-  skills: { builtin: [], user: [], agent: [] },
+  skills: { builtin: [], user: [] },
   selectedSkill: null,
   detailVisible: false,
   categories: new Set(),
@@ -2279,25 +2279,25 @@ function setupSkillsToolbar() {
     });
 
     body.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.view-btn, .delete-btn, .archive-btn');
-      if (!btn) return;
+      const btn = e.target.closest('.delete-btn');
+      if (btn) {
+        const skillPath = btn.dataset.skillPath;
+        if (btn.classList.contains('delete-btn')) {
+          if (confirm('确定删除此skill？')) {
+            await window.api.skillsDelete(skillPath);
+            loadSkillsList();
+            closeSkillDetail();
+          }
+        }
+        return;
+      }
 
-      const skillPath = btn.dataset.skillPath;
-
-      if (btn.classList.contains('view-btn')) {
+      const row = e.target.closest('.skills-table-row');
+      if (row && !e.target.closest('.skill-action-btn, .skill-status-toggle')) {
+        const skillPath = row.dataset.skillPath;
         const skills = skillsState.skills[skillsState.currentTab];
         const skill = skills.find(s => s.path === skillPath);
         if (skill) openSkillDetail(skill);
-      } else if (btn.classList.contains('delete-btn')) {
-        if (confirm('确定删除此skill？')) {
-          await window.api.skillsDelete(skillPath);
-          loadSkillsList();
-          closeSkillDetail();
-        }
-      } else if (btn.classList.contains('archive-btn')) {
-        await window.api.skillsArchive(skillPath);
-        loadSkillsList();
-        closeSkillDetail();
       }
     });
   }
@@ -2595,7 +2595,7 @@ async function loadSkillsList() {
   skillsState.skills = result;
 
   skillsState.categories = new Set();
-  ['builtin', 'user', 'agent'].forEach(source => {
+  ['builtin', 'user'].forEach(source => {
     result[source].forEach(skill => {
       if (skill.category) skillsState.categories.add(skill.category);
     });
@@ -2634,11 +2634,7 @@ function getFilteredSkills() {
     if (skillsState.categoryFilter && skill.category !== skillsState.categoryFilter) return false;
 
     if (skillsState.statusFilter) {
-      if (skillsState.currentTab === 'agent') {
-        if (skill.curatorState !== skillsState.statusFilter) return false;
-      } else {
-        if (skill.status !== skillsState.statusFilter) return false;
-      }
+      if (skill.status !== skillsState.statusFilter) return false;
     }
 
     return true;
@@ -2671,14 +2667,13 @@ function renderSkillsTable() {
 function getTabHeaderHTML(tab) {
   const headers = {
     builtin: '<span>Icon</span><span>Name</span><span>Description</span><span>Category</span><span>Status</span><span>Actions</span>',
-    user: '<span>Icon</span><span>Name</span><span>Description</span><span>Location</span><span>Created</span><span>Status</span><span>Actions</span>',
-    agent: '<span>Icon</span><span>Name</span><span>Description</span><span>Uses</span><span>Last Activity</span><span>State</span><span>Actions</span>',
+    user: '<span>Icon</span><span>Name</span><span>Description</span><span>Location</span><span>Created</span><span>Uses</span><span>Status</span><span>Actions</span>',
   };
   return headers[tab] || '';
 }
 
 function getTabRowHTML(tab, skill) {
-  const icon = tab === 'builtin' ? '📚' : tab === 'agent' ? '🤖' : '📝';
+  const icon = tab === 'builtin' ? '📚' : '📝';
   const desc = skill.description || '';
   const truncatedDesc = desc.length > 60 ? desc.substring(0, 60) + '...' : desc;
 
@@ -2695,7 +2690,6 @@ function getTabRowHTML(tab, skill) {
         </label>
       </span>
       <span class="skills-row-actions">
-        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
       </span>
     `;
   }
@@ -2703,12 +2697,14 @@ function getTabRowHTML(tab, skill) {
   if (tab === 'user') {
     const location = skill.path.includes('/.hermes/') ? '~/.hermes/skills/' : '~/.agents/skills/';
     const created = skill.created ? new Date(skill.created).toLocaleDateString() : '-';
+    const useCount = skill.useCount || 0;
     return `
       <span class="skills-row-icon">${icon}</span>
       <span class="skills-row-name">${escapeHtml(skill.name)}</span>
       <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
       <span class="skills-row-location">${location}</span>
       <span class="skills-row-created">${created}</span>
+      <span class="skills-row-use-count">${useCount}</span>
       <span class="skills-row-status">
         <label class="toggle-label">
           <input type="checkbox" ${skill.status === 'enabled' ? 'checked' : ''} data-skill-name="${escapeHtml(skill.name)}" class="skill-status-toggle">
@@ -2716,26 +2712,7 @@ function getTabRowHTML(tab, skill) {
         </label>
       </span>
       <span class="skills-row-actions">
-        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
         <button class="skill-action-btn danger delete-btn" data-skill-path="${escapeHtml(skill.path)}">删除</button>
-      </span>
-    `;
-  }
-
-  if (tab === 'agent') {
-    const useCount = skill.useCount || 0;
-    const lastActivity = skill.lastActivity ? new Date(skill.lastActivity).toLocaleDateString() : '-';
-    const curatorState = skill.curatorState || 'active';
-    return `
-      <span class="skills-row-icon">${icon}</span>
-      <span class="skills-row-name">${escapeHtml(skill.name)}</span>
-      <span class="skills-row-desc" title="${escapeHtml(desc)}">${escapeHtml(truncatedDesc)}</span>
-      <span class="skills-row-use-count">${useCount}</span>
-      <span class="skills-row-last-activity">${lastActivity}</span>
-      <span class="skills-row-curator-state ${curatorState}">${curatorState}</span>
-      <span class="skills-row-actions">
-        <button class="skill-action-btn view-btn" data-skill-path="${escapeHtml(skill.path)}">查看</button>
-        <button class="skill-action-btn archive-btn" data-skill-path="${escapeHtml(skill.path)}">归档</button>
       </span>
     `;
   }

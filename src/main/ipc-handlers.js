@@ -489,8 +489,7 @@ function setupIPCHandlers(mainWindow) {
     try {
       const builtin = await skillScanner.scanBuiltinSkills();
       const user = await skillScanner.scanUserSkills();
-      const agent = await skillScanner.scanAgentSkills();
-      return { success: true, builtin, user, agent };
+      return { success: true, builtin, user };
     } catch (err) {
       return { success: false, error: err.message };
     }
