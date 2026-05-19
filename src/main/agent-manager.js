@@ -79,13 +79,14 @@ class AgentManager {
     }
 
     try {
-      // Find bridge script: development or production (unpacked from asar)
-      const devBridge = path.join(__dirname, 'agent-bridge.py');
+      // Find bridge script: production unpacked path first, then development
       const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked', 'src', 'main');
       const prodBridge = path.join(unpackedDir, 'agent-bridge.py');
+      const devBridge = path.join(__dirname, 'agent-bridge.py');
       
-      const bridgeScript = fs.existsSync(devBridge) ? devBridge
-                       : fs.existsSync(prodBridge) ? prodBridge
+      // Check unpacked path first (production), then asar-internal (development only)
+      const bridgeScript = fs.existsSync(prodBridge) ? prodBridge
+                       : (fs.existsSync(devBridge) && !__dirname.includes('app.asar')) ? devBridge
                        : null;
       
       if (!bridgeScript) {
