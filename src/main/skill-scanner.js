@@ -214,17 +214,19 @@ async function scanBuiltinSkills() {
   const skillsDir = path.join(hermesAgentPath, 'skills');
   const optionalDir = path.join(hermesAgentPath, 'optional-skills');
   
-  // Also scan office skills from assets/skills/ (bundled with app)
-  const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+  // Also scan office skills from skills/ directory (bundled with app)
   const appDir = path.join(__dirname, '..');
-  const officeSkillsDir = fs.existsSync(path.join(resourcesDir, 'assets', 'skills')) 
-    ? path.join(resourcesDir, 'assets', 'skills')
-    : path.join(appDir, '..', 'assets', 'skills');
+  const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+  const officeSkillsDir = fs.existsSync(path.join(resourcesDir, 'skills'))
+    ? path.join(resourcesDir, 'skills')
+    : path.join(appDir, '..', 'skills');
   
   const skills = [];
   skills.push(...await findSkillMds(skillsDir, 'builtin'));
   skills.push(...await findSkillMds(optionalDir, 'builtin'));
-  skills.push(...await findSkillMds(officeSkillsDir, 'builtin'));
+  if (fs.existsSync(officeSkillsDir)) {
+    skills.push(...await findSkillMds(officeSkillsDir, 'builtin'));
+  }
   
   const config = loadHermesConfig();
   applyStatus(skills, config);

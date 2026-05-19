@@ -31,9 +31,6 @@ npm-debug.log*
 assets/feishu-cli/
 assets/dws-cli/
 
-# Office skills (copied from ~/.hermes/skills during build)
-assets/skills/
-
 # Hermes workspace data
 workspaces/
 .hermes/
