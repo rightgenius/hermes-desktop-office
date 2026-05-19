@@ -217,14 +217,26 @@ async function scanBuiltinSkills() {
   // Also scan office skills from skills/ directory (bundled with app)
   const appDir = path.join(__dirname, '..');
   const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
-  const officeSkillsDir = fs.existsSync(path.join(resourcesDir, 'skills'))
-    ? path.join(resourcesDir, 'skills')
-    : path.join(appDir, '..', 'skills');
+  const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked');
+  
+  // Try multiple possible locations for office skills
+  let officeSkillsDir = null;
+  const candidates = [
+    path.join(unpackedDir, 'skills'),           // Production: Resources/app.asar.unpacked/skills
+    path.join(resourcesDir, 'skills'),          // Alternative: Resources/skills
+    path.join(appDir, '..', 'skills'),          // Development: project root/skills
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      officeSkillsDir = candidate;
+      break;
+    }
+  }
   
   const skills = [];
   skills.push(...await findSkillMds(skillsDir, 'builtin'));
   skills.push(...await findSkillMds(optionalDir, 'builtin'));
-  if (fs.existsSync(officeSkillsDir)) {
+  if (officeSkillsDir) {
     skills.push(...await findSkillMds(officeSkillsDir, 'builtin'));
   }
   
