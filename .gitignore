@@ -42,6 +42,9 @@ src/hermes-agent/.venv/
 # Hermes Agent bundled deps (created by scripts/bundle-agent-deps.sh, bundled in build)
 src/hermes-agent/deps/
 
+# Bundled Python runtime (created by scripts/bundle-python.sh, bundled in build)
+assets/python-runtime/
+
 # Python cache
 src/main/__pycache__/
 

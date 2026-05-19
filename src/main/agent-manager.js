@@ -33,10 +33,10 @@ class AgentManager {
     let pythonPathEnv = null;
 
     if (isProduction) {
-      // Production: use system python3 + PYTHONPATH
-      const systemPython = '/usr/bin/python3';
-      if (fs.existsSync(systemPython)) {
-        pythonCmd = systemPython;
+      // Production: use bundled Python runtime
+      const bundledPython = path.join(resourcesDir, 'python-runtime', 'bin', 'python3');
+      if (fs.existsSync(bundledPython)) {
+        pythonCmd = bundledPython;
         const depsPath = path.join(hermesPath, 'deps');
         pythonPathEnv = [hermesPath, depsPath].filter(p => fs.existsSync(p)).join(path.delimiter);
       }
@@ -53,7 +53,7 @@ class AgentManager {
       return {
         success: false,
         error: isProduction
-          ? '系统未安装 Python3，请先安装 Python3'
+          ? 'Python 运行时未正确打包，请重新构建应用'
           : 'Hermes Agent 依赖未安装。请运行以下命令安装依赖：\n' +
             'cd src/hermes-agent && uv venv && uv pip install .\n\n' +
             '或使用项目脚本：bash scripts/setup-agent.sh'
