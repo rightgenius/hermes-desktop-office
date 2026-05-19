@@ -37,5 +37,9 @@ python3 -m pip install --target "$DEPS_DIR" --upgrade pip setuptools wheel
 python3 -m pip install --target "$DEPS_DIR" "$HERMES_DIR"
 
 echo ""
+echo "→ Installing office skills dependencies (markitdown, Pillow, openpyxl, pandas) ..."
+python3 -m pip install --target "$DEPS_DIR" "markitdown[pptx]" Pillow openpyxl pandas
+
+echo ""
 echo "✅ Dependencies bundled to src/hermes-agent/deps/"
 echo "   $(ls "$DEPS_DIR" | wc -l | tr -d ' ') packages installed"
