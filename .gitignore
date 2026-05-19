@@ -39,6 +39,9 @@ workspaces/
 src/hermes-agent/venv/
 src/hermes-agent/.venv/
 
+# Hermes Agent bundled deps (created by scripts/bundle-agent-deps.sh, bundled in build)
+src/hermes-agent/deps/
+
 # Python cache
 src/main/__pycache__/
 

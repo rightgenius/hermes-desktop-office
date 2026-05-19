@@ -14,27 +14,49 @@ class AgentManager {
   async start(config = {}) {
     if (this.running) return { success: false, error: 'Agent 已在运行中' };
 
-    const hermesPath = path.join(__dirname, '../hermes-agent');
-    if (!fs.existsSync(path.join(hermesPath, 'cli.py'))) {
+    // Find hermes-agent path: development or production
+    const devPath = path.join(__dirname, '../hermes-agent');
+    const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+    const prodPath = path.join(resourcesDir, 'hermes-agent');
+    
+    const hermesPath = fs.existsSync(path.join(devPath, 'cli.py')) ? devPath
+                     : fs.existsSync(path.join(prodPath, 'cli.py')) ? prodPath
+                     : null;
+    const isProduction = hermesPath === prodPath;
+
+    if (!hermesPath) {
       return { success: false, error: 'Hermes Agent 未安装，请确保 hermes-agent submodule 已正确初始化' };
     }
 
     // Find Python interpreter
-    const venvPython = path.join(hermesPath, 'venv', 'bin', 'python3');
-    const dotVenvPython = path.join(hermesPath, '.venv', 'bin', 'python3');
-    const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
-    const packagedVenv = path.join(resourcesDir, 'hermes-agent', 'venv', 'bin', 'python3');
-    const pythonCmd = fs.existsSync(venvPython) ? venvPython
-                    : fs.existsSync(dotVenvPython) ? dotVenvPython
-                    : fs.existsSync(packagedVenv) ? packagedVenv
-                    : null;
+    let pythonCmd = null;
+    let pythonPathEnv = null;
+
+    if (isProduction) {
+      // Production: use system python3 + PYTHONPATH
+      const systemPython = '/usr/bin/python3';
+      if (fs.existsSync(systemPython)) {
+        pythonCmd = systemPython;
+        const depsPath = path.join(hermesPath, 'deps');
+        pythonPathEnv = [hermesPath, depsPath].filter(p => fs.existsSync(p)).join(path.delimiter);
+      }
+    } else {
+      // Development: use venv python
+      const venvPython = path.join(hermesPath, 'venv', 'bin', 'python3');
+      const dotVenvPython = path.join(hermesPath, '.venv', 'bin', 'python3');
+      pythonCmd = fs.existsSync(venvPython) ? venvPython
+                : fs.existsSync(dotVenvPython) ? dotVenvPython
+                : null;
+    }
 
     if (!pythonCmd) {
       return {
         success: false,
-        error: 'Hermes Agent 依赖未安装。请运行以下命令安装依赖：\n' +
-          'cd src/hermes-agent && uv venv && uv pip install .\n\n' +
-          '或使用项目脚本：bash scripts/setup-agent.sh'
+        error: isProduction
+          ? '系统未安装 Python3，请先安装 Python3'
+          : 'Hermes Agent 依赖未安装。请运行以下命令安装依赖：\n' +
+            'cd src/hermes-agent && uv venv && uv pip install .\n\n' +
+            '或使用项目脚本：bash scripts/setup-agent.sh'
       };
     }
 
@@ -50,6 +72,11 @@ class AgentManager {
     if (config.baseUrl) env.OPENROUTER_BASE_URL = config.baseUrl;
     if (config.provider && config.provider !== 'auto') env.HERMES_INFERENCE_PROVIDER = config.provider;
     if (config.model) env.HERMES_INFERENCE_MODEL = config.model;
+
+    // Set PYTHONPATH for production builds
+    if (pythonPathEnv) {
+      env.PYTHONPATH = pythonPathEnv;
+    }
 
     try {
       const bridgeScript = path.join(__dirname, 'agent-bridge.py');
