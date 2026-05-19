@@ -79,8 +79,16 @@ class AgentManager {
     }
 
     try {
-      const bridgeScript = path.join(__dirname, 'agent-bridge.py');
-      if (!fs.existsSync(bridgeScript)) {
+      // Find bridge script: development or production (unpacked from asar)
+      const devBridge = path.join(__dirname, 'agent-bridge.py');
+      const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked', 'src', 'main');
+      const prodBridge = path.join(unpackedDir, 'agent-bridge.py');
+      
+      const bridgeScript = fs.existsSync(devBridge) ? devBridge
+                       : fs.existsSync(prodBridge) ? prodBridge
+                       : null;
+      
+      if (!bridgeScript) {
         return { success: false, error: 'agent-bridge.py 未找到' };
       }
 

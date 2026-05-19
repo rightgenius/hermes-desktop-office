@@ -38,6 +38,9 @@
       "assets/dws-cli/**/dws.exe",
       "assets/icon.png"
     ],
+    "asarUnpack": [
+      "src/main/agent-bridge.py"
+    ],
     "extraResources": [
       {
         "from": "src/hermes-agent",
