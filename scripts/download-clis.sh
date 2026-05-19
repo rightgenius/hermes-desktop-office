@@ -9,7 +9,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ASSETS_DIR="$PROJECT_DIR/assets"
 
 LARK_CLI_VERSION="1.0.26"
-DWS_CLI_VERSION="1.0.21"
+DWS_CLI_VERSION="1.0.29"
 
 # Determine platforms
 PLATFORMS=("darwin-arm64" "darwin-amd64" "linux-amd64" "windows-amd64")
@@ -36,11 +36,17 @@ download_bin() {
     fi
 
     # lark-cli uses: lark-cli-VERSION-PLATFORM.tar.gz
+    # dws-cli uses: dws-PLATFORM.tar.gz
     local ext="tar.gz"
     if [[ "$platform" == windows-* ]]; then
         ext="zip"
     fi
-    local url="https://github.com/larksuite/cli/releases/download/v$version/lark-cli-$version-$platform.$ext"
+    local url
+    if [[ "$bin_name" == "lark-cli" ]]; then
+        url="https://github.com/larksuite/cli/releases/download/v$version/lark-cli-$version-$platform.$ext"
+    else
+        url="https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases/download/v$version/dws-$platform.$ext"
+    fi
     echo "  Downloading $url ..."
 
     local tmp_file="/tmp/cli-tmp-$$.$ext"
@@ -103,32 +109,13 @@ fi
 
 echo "Downloading lark-cli v$LARK_CLI_VERSION ..."
 for plat in "${PLATFORMS[@]}"; do
-    download_bin "$plat" "$LARK_CLI_VERSION" "$ASSETS_DIR/feishu-cli" "lark-cli"
+    download_bin "$plat" "$LARK_CLI_VERSION" "$ASSETS_DIR/feishu-cli" "lark-cli" || true
 done
 
 echo ""
 echo "Downloading dws-cli v$DWS_CLI_VERSION ..."
 for plat in "${PLATFORMS[@]}"; do
-    # dws-cli doesn't publish GitHub releases — use npm package for darwin-arm64
-    if [[ "$plat" == "darwin-arm64" ]]; then
-        if [[ -f "$ASSETS_DIR/dws-cli/$plat/dws" ]]; then
-            echo "  ✓ $plat/dws already exists, skipping"
-        else
-            echo "  Installing dws-cli via npm for current platform..."
-            npm install -g dingtalk-workspace-cli 2>/dev/null || true
-            DWS_BIN=$(find "$(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli" -name "dws" -type f 2>/dev/null | head -1)
-            if [[ -n "$DWS_BIN" ]]; then
-                mkdir -p "$ASSETS_DIR/dws-cli/$plat"
-                cp "$DWS_BIN" "$ASSETS_DIR/dws-cli/$plat/dws"
-                chmod +x "$ASSETS_DIR/dws-cli/$plat/dws"
-                echo "  ✓ $plat/dws installed from npm"
-            else
-                echo "  ✗ Failed to find dws binary from npm package"
-            fi
-        fi
-    else
-        echo "  ○ $plat — dws-cli only available for darwin-arm64, skip"
-    fi
+    download_bin "$plat" "$DWS_CLI_VERSION" "$ASSETS_DIR/dws-cli" "dws" || true
 done
 
 echo ""
