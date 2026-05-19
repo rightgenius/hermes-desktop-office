@@ -12,11 +12,12 @@
     "download-clis": "bash scripts/download-clis.sh",
     "download-clis:clean": "bash scripts/download-clis.sh --clean",
     "setup:agent": "bash scripts/setup-agent.sh",
-    "prebuild:mac": "npm run setup:agent && npm run bundle:python && npm run bundle:deps",
-    "prebuild:win": "npm run setup:agent && npm run bundle:python && npm run bundle:deps",
-    "prebuild:linux": "npm run setup:agent && npm run bundle:python && npm run bundle:deps",
+    "prebuild:mac": "npm run setup:agent && npm run bundle:python && npm run bundle:deps && npm run bundle:office-skills",
+    "prebuild:win": "npm run setup:agent && npm run bundle:python && npm run bundle:deps && npm run bundle:office-skills",
+    "prebuild:linux": "npm run setup:agent && npm run bundle:python && npm run bundle:deps && npm run bundle:office-skills",
     "bundle:deps": "bash scripts/bundle-agent-deps.sh",
-    "bundle:python": "bash scripts/bundle-python.sh"
+    "bundle:python": "bash scripts/bundle-python.sh",
+    "bundle:office-skills": "bash scripts/bundle-office-skills.sh"
   },
   "build": {
     "appId": "ai.hermes.desktop.office",
@@ -37,12 +38,14 @@
       "assets/feishu-cli/**/lark-cli.exe",
       "assets/dws-cli/**/dws",
       "assets/dws-cli/**/dws.exe",
-      "assets/icon.png"
+      "assets/icon.png",
+      "assets/skills/**/*"
     ],
     "asarUnpack": [
       "src/main/agent-bridge.py",
       "assets/feishu-cli/**/lark-cli",
-      "assets/dws-cli/**/dws"
+      "assets/dws-cli/**/dws",
+      "assets/skills/**/*"
     ],
     "extraResources": [
       {
