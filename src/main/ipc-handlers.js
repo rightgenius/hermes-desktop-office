@@ -14,7 +14,13 @@ let agentManager = null;
 function getCLIBinaryPath(cliName) {
   const platform = process.platform;
   const arch = process.arch;
-  const assetsDir = path.join(__dirname, '../../assets');
+  
+  // In production, use unpacked path (CLI binaries can't run from asar)
+  const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+  const unpackedAssets = path.join(resourcesDir, 'app.asar.unpacked', 'assets');
+  const devAssets = path.join(__dirname, '../../assets');
+  const assetsDir = fs.existsSync(path.join(unpackedAssets, 'feishu-cli')) ? unpackedAssets : devAssets;
+  
   if (cliName === 'lark-cli') {
     if (platform === 'darwin') return path.join(assetsDir, 'feishu-cli', `darwin-${arch}`, 'lark-cli');
     if (platform === 'win32') return path.join(assetsDir, 'feishu-cli', 'windows-amd64', 'lark-cli.exe');

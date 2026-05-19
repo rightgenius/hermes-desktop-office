@@ -40,7 +40,9 @@
       "assets/icon.png"
     ],
     "asarUnpack": [
-      "src/main/agent-bridge.py"
+      "src/main/agent-bridge.py",
+      "assets/feishu-cli/**/lark-cli",
+      "assets/dws-cli/**/dws"
     ],
     "extraResources": [
       {

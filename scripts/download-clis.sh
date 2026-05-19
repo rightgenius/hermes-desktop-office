@@ -109,21 +109,25 @@ done
 echo ""
 echo "Downloading dws-cli v$DWS_CLI_VERSION ..."
 for plat in "${PLATFORMS[@]}"; do
-    # dws-cli doesn't publish GitHub releases — use npm package
-    if [[ "$plat" == "darwin-arm64" && ! -f "$ASSETS_DIR/dws-cli/$plat/dws" ]]; then
-        echo "  Installing dws-cli via npm for current platform..."
-        npm install -g dingtalk-workspace-cli 2>/dev/null || true
-        DWS_BIN=$(find "$(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli" -name "dws" -type f 2>/dev/null | head -1)
-        if [[ -n "$DWS_BIN" ]]; then
-            mkdir -p "$ASSETS_DIR/dws-cli/$plat"
-            cp "$DWS_BIN" "$ASSETS_DIR/dws-cli/$plat/dws"
-            chmod +x "$ASSETS_DIR/dws-cli/$plat/dws"
-            echo "  ✓ $plat/dws installed from npm"
+    # dws-cli doesn't publish GitHub releases — use npm package for darwin-arm64
+    if [[ "$plat" == "darwin-arm64" ]]; then
+        if [[ -f "$ASSETS_DIR/dws-cli/$plat/dws" ]]; then
+            echo "  ✓ $plat/dws already exists, skipping"
         else
-            echo "  ✗ Failed to find dws binary from npm package"
+            echo "  Installing dws-cli via npm for current platform..."
+            npm install -g dingtalk-workspace-cli 2>/dev/null || true
+            DWS_BIN=$(find "$(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli" -name "dws" -type f 2>/dev/null | head -1)
+            if [[ -n "$DWS_BIN" ]]; then
+                mkdir -p "$ASSETS_DIR/dws-cli/$plat"
+                cp "$DWS_BIN" "$ASSETS_DIR/dws-cli/$plat/dws"
+                chmod +x "$ASSETS_DIR/dws-cli/$plat/dws"
+                echo "  ✓ $plat/dws installed from npm"
+            else
+                echo "  ✗ Failed to find dws binary from npm package"
+            fi
         fi
     else
-        echo "  ○ $plat — dws-cli binary not available via GitHub releases, skip"
+        echo "  ○ $plat — dws-cli only available for darwin-arm64, skip"
     fi
 done
 
