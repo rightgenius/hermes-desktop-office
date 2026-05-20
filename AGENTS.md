@@ -4,7 +4,7 @@ AI coding assistant instructions for working on this project.
 
 ## Project Overview
 
-Electron desktop application bundling Hermes Agent with Feishu (Lark) CLI and DingTalk CLI tools.
+Electron desktop application bundling Hermes Agent with Feishu (Lark) CLI, DingTalk CLI tools, and Office document skills (docx/pptx/xlsx).
 
 ## Architecture
 
@@ -13,23 +13,36 @@ hermes-desktop-office/
 ├── src/
 │   ├── main/
 │   │   ├── index.js              # Electron entry, window lifecycle, graceful shutdown
-│   │   ├── ipc-handlers.js       # IPC channels (config, auth, agent, CLI tools, API test)
-│   │   ├── agent-manager.js      # Spawn/stop Hermes Agent via bridge.py
+│   │   ├── ipc-handlers.js       # IPC channels (config, auth, agent, CLI tools, skills, API test)
+│   │   ├── agent-manager.js      # Spawn/stop Hermes Agent via bridge.py + runtime deps install
 │   │   ├── agent-bridge.py       # JSON stdin/stdout bridge for GUI ↔ Agent communication
-│   │   └── config-store.js       # JSON config read/write (Electron userData)
+│   │   ├── config-store.js       # JSON config read/write (Electron userData)
+│   │   └── skill-scanner.js      # Scan builtin/user/agent skills with production path resolution
 │   ├── preload/
 │   │   └── index.js              # contextBridge exposing typed API to renderer
 │   └── renderer/
 │       ├── index.html            # Three-column layout: rail + sidebar + main
 │       ├── styles.css            # Dark theme CSS with semantic variables
-│       └── app.js                # Frontend logic (nav, settings, auth, chat, logs, wizard)
+│       └── app.js                # Frontend logic (nav, settings, auth, chat, logs, skills, wizard)
 ├── assets/
-│   ├── feishu-cli/darwin-arm64/  # lark-cli binary
-│   └── dws-cli/darwin-arm64/     # dws binary
+│   ├── feishu-cli/darwin-arm64/  # lark-cli binary (gitignored, downloaded during build)
+│   ├── dws-cli/darwin-arm64/     # dws binary (gitignored, downloaded during build)
+│   ├── icon.png                  # App icon (warm gold #FFE6CC)
+│   ├── logo.svg                  # SVG logo source
+│   └── python-runtime/           # Standalone Python 3.13 (gitignored, downloaded during build)
+├── skills/office/                # Office document skills (version controlled)
+│   ├── docx/                     # Word document skill (from anthropics/skills)
+│   ├── pptx/                     # PowerPoint skill (from anthropics/skills)
+│   ├── xlsx/                     # Excel skill (from anthropics/skills)
+│   ├── feishu-cli/               # Feishu CLI skill
+│   ├── dingtalk-cli-messaging/   # DingTalk messaging skill
+│   └── dws/                      # DingTalk full skill with references + scripts
 ├── src/hermes-agent/             # Git submodule — Hermes Agent (DO NOT modify)
 ├── scripts/
 │   ├── setup-agent.sh            # Create venv + install hermes-agent deps
-│   └── download-clis.sh          # Download CLI binaries for all platforms
+│   ├── download-clis.sh          # Download CLI binaries for all platforms (lark-cli + dws-cli)
+│   ├── bundle-agent-deps.sh      # Bundle Python deps to hermes-agent/deps/ (incl. office deps)
+│   └── bundle-python.sh          # Download standalone Python 3.13 from python-build-standalone
 └── docs/
     ├── tasks.md                  # Development task checklist (Phases 1-10)
     └── phase-10-ui-plan.md       # UI redesign plan
@@ -39,7 +52,7 @@ hermes-desktop-office/
 
 ### Configuration
 - GUI config: `~/Library/Application Support/hermes-desktop-office/config.json`
-- TUI config: `~/.hermes/config.yaml` + `~/.hermes/.env` (completely separate)
+- TUI config  config: `~/.hermes/config.yaml` + `~/.hermes/.env` (completely separate)
 - Agent launched with env vars: `OPENAI_API_KEY`, `OPENROUTER_BASE_URL`, `HERMES_INFERENCE_PROVIDER`, `HERMES_INFERENCE_MODEL`
 
 ### Agent Communication
@@ -48,6 +61,14 @@ hermes-desktop-office/
 - Input message format: `{type: "message", content: "user text", history: [{role: "user|assistant", content: "..."}]}`
 - Bridge converts `history` to context text and passes to `agent.chat()` with streaming callback
 - Never modify `src/hermes-agent/` — it's a git submodule from NousResearch
+
+### Python Runtime (Production)
+- **Bundled Python**: Standalone Python 3.13.13 from `python-build-standalone` (not system Python 3.9)
+- **Bundled deps**: `Resources/hermes-agent/deps/` — 197 packages including hermes-agent + office deps (markitdown, Pillow, openpyxl, pandas)
+- **User deps**: `~/.hermes/skills-deps/` — user-writable directory for runtime-installed packages
+- **PYTHONPATH priority**: user-deps → bundled-deps → hermes-agent
+- **Runtime install**: `agentManager.installSkillDeps(['package1', 'package2'])` installs to user-deps via bundled pip
+- **Path resolution**: `agent-manager.js` checks dev path (`src/hermes-agent`) first, then production path (`process.resourcesPath/hermes-agent`)
 
 ### Chat Rendering
 - `app.js` has a lightweight `renderMarkdown()` function for agent messages (no external deps)
@@ -70,18 +91,30 @@ hermes-desktop-office/
 - **State sync**: Input area (send/stop buttons) syncs with session streaming state on tab switch
 - **Storage**: Sessions stored in localStorage under `hermes-chat-sessions` key
 
+### Skills Management
+- **Three tabs**: 内置库 (Builtin), 我的Skills (User), Agent生成 (Agent)
+- **Builtin skills**: `src/hermes-agent/skills/` + `optional-skills/` + `skills/office/`
+- **User skills**: `~/.agents/skills/`
+- **Agent skills**: `~/.hermes/skills/` (excluding entries from `.bundled_manifest`)
+- **Path column**: All tables show skill source path with hover tooltip (custom JS tooltip, not native `title`)
+- **Row click**: Opens detail panel directly (no separate view button)
+- **Status sync**: Toggle switches synced to `~/.hermes/config.yaml` enabled/disabled lists
+- **Production path**: `skill-scanner.js` checks multiple locations: `app.asar.unpacked/skills` → `Resources/skills` → project root `skills`
+
 ### CLI Auth & Permissions
 - **Feishu (lark-cli)**: Device flow auth. `--no-wait` gets device_code, `--device-code` polls (single process, restart invalidates code). JSON output goes to **stderr**. Token stored in `~/.lark-cli/`. Auth status uses `scope` (space-separated string).
 - **DingTalk (dws)**: Device flow auth via `--device` flag. URL output to stderr. Token stored in `~/.lark-cli/` (shared config dir). No granular permissions — only `authenticated` status with `corp_id`.
 - **Permissions table**: 3 columns (name/description/status). Feishu has 100+ scoped permissions with Chinese descriptions mapped in `app.js`. DingTalk shows single "认证访问" entry.
 - **CLI versions**: Displayed via `--version` flag (e.g., `v1.0.26`). Fetched at startup and after auth.
-- **download-clis.sh**: Archive extraction uses `find` to locate binary by name (`lark-cli` or `dws`), skipping documentation files (CHANGELOG.md, LICENSE, etc.)
+- **download-clis.sh**: Downloads from GitHub releases — lark-cli from `larksuite/cli`, dws-cli from `DingTalk-Real-AI/dingtalk-workspace-cli`. Archive extraction uses `find` to locate binary by name, skipping documentation files.
 
 ### Build
 - `npm run dev` — development with DevTools
-- `npm run build:mac` — prebuild installs venv, then electron-builder
-- venv bundled in `extraResources`, unpacked to `Resources/hermes-agent/venv/`
-- CLI binaries in `assets/` are gitignored, downloaded during build
+- `npm run build:mac` — prebuild bundles Python runtime + agent deps, then electron-builder
+- **asarUnpack**: `agent-bridge.py`, CLI binaries (`lark-cli`, `dws`), and `skills/` are unpacked from asar for external process access
+- **extraResources**: `hermes-agent/` (from submodule), `python-runtime/` (standalone Python 3.13)
+- CLI binaries and python-runtime are gitignored, downloaded during build
+- Office skills (`skills/office/`) are version controlled and bundled via `files` in package.json
 
 ## Rules
 
@@ -90,6 +123,8 @@ hermes-desktop-office/
 3. Use semantic CSS variables (`--bg`, `--accent`, `--text`) — don't add hardcoded colors.
 4. Test in dev mode before committing: `npm run dev`
 5. Each commit = one logical change with descriptive message.
+6. **Python dependencies**: New skill deps should be added to `scripts/bundle-agent-deps.sh` for bundling, or installed at runtime via `agentManager.installSkillDeps()`.
+7. **Skills**: Office skills from `anthropics/skills` are source-available (proprietary license). Keep them in `skills/office/` under version control.
 
 ## Setup
 
