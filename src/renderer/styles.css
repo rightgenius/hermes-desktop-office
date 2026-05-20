@@ -1137,7 +1137,19 @@ body {
 
 .wizard-status {
   margin-top: var(--space-md);
+  padding: 8px 12px;
+  border-radius: 6px;
   font-size: 13px;
+}
+.wizard-status.success {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--success, #22c55e);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+.wizard-status.error {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--error, #ef4444);
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .wizard-nav {
@@ -1145,8 +1157,6 @@ body {
   gap: var(--space-sm);
   margin-top: var(--space-lg);
 }
-
-.wizard-status { color: var(--text-secondary); font-size: 12px; margin-top: 8px; }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; }
@@ -2642,4 +2652,18 @@ body {
 /* Skills page specific - hide mid-panel */
 .page-skills-active .mid-panel {
   display: none !important;
+}
+
+/* Text button for skip actions */
+.btn-text {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px 16px;
+  font-size: 14px;
+}
+.btn-text:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
 }

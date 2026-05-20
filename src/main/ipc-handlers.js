@@ -112,7 +112,7 @@ function setupIPCHandlers(mainWindow) {
   // First-run check
   ipcMain.handle('is-first-run', () => {
     const config = configStore.get();
-    return !config.gatewayUrl && !config.apiToken;
+    return !config.apiKey && (!config.provider || config.provider === 'auto');
   });
 
   // Auth handlers

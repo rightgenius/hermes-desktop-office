@@ -21,6 +21,8 @@ const DEFAULT_CONFIG = {
   workspacePath: '',
   defaultWorkspacePath: getDefaultWorkspacePath(),
   autoStart: true,
+  apiFormat: '',
+  providerRegion: '',
 };
 
 class ConfigStore {

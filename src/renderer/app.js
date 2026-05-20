@@ -245,69 +245,134 @@ function setBtnState(btn, text, duration = 2000) {
 // Settings Page
 // ============================
 const els = {
+  apiFormat: document.getElementById('api-format'),
   provider: document.getElementById('provider'),
+  providerRegion: document.getElementById('provider-region'),
+  providerRegionGroup: document.getElementById('provider-region-group'),
   apiKey: document.getElementById('api-key'),
   baseUrl: document.getElementById('base-url'),
+  modelSelect: document.getElementById('model-select'),
   model: document.getElementById('model'),
   workspacePath: document.getElementById('workspace-path'),
   autoStart: document.getElementById('auto-start'),
   saveConfig: document.getElementById('save-config'),
-  runSetupWizard: document.getElementById('run-setup-wizard'),
   toggleApiKey: document.getElementById('toggle-api-key'),
   browseFolder: document.getElementById('browse-folder'),
   checkConfig: document.getElementById('check-config'),
   configStatus: document.getElementById('config-status'),
-  apiKeyGroup: document.getElementById('api-key-group'),
-  baseUrlGroup: document.getElementById('base-url-group'),
   apiKeyHint: document.getElementById('api-key-hint'),
+  testConnection: document.getElementById('test-connection'),
 };
 
-// Provider to base_url mapping
-const PROVIDER_URLS = {
-  'auto': '',
-  'anthropic': 'https://api.anthropic.com',
-  'openrouter': 'https://openrouter.ai/api/v1',
-  'gemini': 'https://generativelanguage.googleapis.com/v1beta',
-  'openai': 'https://api.openai.com/v1',
-  'deepseek': 'https://api.deepseek.com',
-  'zhipuai': 'https://open.bigmodel.cn/api/paas/v4',
-  'moonshot': 'https://api.moonshot.cn/v1',
-  'minimax': 'https://api.minimax.chat/v1',
-  'custom': ''
-};
+function updateApiFormatOptions() {
+  if (!els.apiFormat) return;
+  els.apiFormat.innerHTML = API_FORMATS.map(f =>
+    `<option value="${f.value}">${f.label}</option>`
+  ).join('');
+}
 
-function updateProviderUI() {
-  const provider = els.provider.value;
-  const hints = {
-    'auto': '自动检测已配置的 API Key',
-    'anthropic': '需要 ANTHROPIC_API_KEY',
-    'openrouter': '需要 OPENROUTER_API_KEY',
-    'nous': '需要通过 hermes login 命令授权',
-    'gemini': '需要 GOOGLE_API_KEY 或 GEMINI_API_KEY',
-    'openai': '需要 OPENAI_API_KEY',
-    'deepseek': '需要 DEEPSEEK_API_KEY',
-    'zhipuai': '需要 GLM_API_KEY',
-    'moonshot': '需要 KIMI_API_KEY',
-    'minimax': '需要 MINIMAX_API_KEY',
-    'custom': '需要自定义 API Key 和端点 URL',
-  };
-  
-  els.apiKeyHint.textContent = hints[provider] || '';
-  
-  // Auto-fill base_url for known providers
-  if (PROVIDER_URLS[provider]) {
-    els.baseUrl.value = PROVIDER_URLS[provider];
-  }
-  
-  if (provider === 'custom') {
-    els.baseUrlGroup.style.display = 'block';
+function updateProviderOptions() {
+  if (!els.provider) return;
+  const format = els.apiFormat.value;
+  const providers = getProvidersByFormat(format);
+  els.provider.innerHTML = providers.map(p =>
+    `<option value="${p.key}">${p.label}</option>`
+  ).join('');
+}
+
+function updateRegionOptions() {
+  if (!els.providerRegion || !els.providerRegionGroup) return;
+  const provider = findProviderByKey(els.provider.value);
+  if (provider && provider.regions && provider.regions.length > 0) {
+    els.providerRegion.innerHTML = provider.regions.map(r =>
+      `<option value="${r.key}">${r.label}</option>`
+    ).join('');
+    els.providerRegionGroup.style.display = '';
   } else {
-    els.baseUrlGroup.style.display = 'none';
+    els.providerRegionGroup.style.display = 'none';
   }
 }
 
+function updateModelOptions() {
+  if (!els.modelSelect) return;
+  const provider = findProviderByKey(els.provider.value);
+  if (provider && provider.models && provider.models.length > 0) {
+    els.modelSelect.innerHTML = '<option value="">留空自动选择</option>' +
+      provider.models.map(m => `<option value="${m}">${m}</option>`).join('');
+  } else {
+    els.modelSelect.innerHTML = '<option value="">留空自动选择</option>';
+  }
+}
+
+function updateProviderUI() {
+  const provider = findProviderByKey(els.provider.value);
+  if (!provider) return;
+
+  if (els.apiKeyHint) {
+    els.apiKeyHint.textContent = provider.envLabel || '';
+  }
+
+  const regionKey = els.providerRegion?.value;
+  let baseUrl = provider.baseUrl;
+  if (provider.regions && regionKey) {
+    const region = provider.regions.find(r => r.key === regionKey);
+    if (region) {
+      baseUrl = region.baseUrl;
+      if (region.envVar && els.apiKeyHint) {
+        els.apiKeyHint.textContent = `需要 ${region.envVar}`;
+      }
+    }
+  }
+  if (baseUrl && !provider.isCustom) {
+    els.baseUrl.value = baseUrl;
+  }
+
+  updateRegionOptions();
+  updateModelOptions();
+
+  if (provider.isCustom) {
+    els.baseUrl.placeholder = 'https://your-api-endpoint/v1';
+    els.apiKeyHint.textContent = '需要自定义 API Key';
+  } else {
+    els.baseUrl.placeholder = '选择服务商后自动填充';
+  }
+}
+
+// Cascading event bindings
+if (els.apiFormat) {
+  els.apiFormat.addEventListener('change', () => {
+    updateProviderOptions();
+    updateProviderUI();
+  });
+}
+
 if (els.provider) {
-  els.provider.addEventListener('change', updateProviderUI);
+  els.provider.addEventListener('change', () => {
+    updateRegionOptions();
+    updateProviderUI();
+  });
+}
+
+if (els.providerRegion) {
+  els.providerRegion.addEventListener('change', () => {
+    updateProviderUI();
+  });
+}
+
+if (els.modelSelect) {
+  els.modelSelect.addEventListener('change', () => {
+    if (els.modelSelect.value && els.model) {
+      els.model.value = els.modelSelect.value;
+    }
+  });
+}
+
+if (els.model) {
+  els.model.addEventListener('input', () => {
+    if (els.modelSelect && els.model.value !== els.modelSelect.value) {
+      els.modelSelect.value = '';
+    }
+  });
 }
 
 if (els.toggleApiKey) {
@@ -334,8 +399,11 @@ if (els.saveConfig) {
   els.saveConfig.addEventListener('click', async () => {
     try {
       setBtnState(els.saveConfig, '保存中...');
+      const provider = findProviderByKey(els.provider.value);
       await window.api.configSave({
-        provider: els.provider.value,
+        apiFormat: els.apiFormat.value,
+        provider: provider ? (provider.isCustom ? 'custom' : els.provider.value) : els.provider.value,
+        providerRegion: els.providerRegion?.value || '',
         apiKey: els.apiKey.value,
         baseUrl: els.baseUrl.value,
         model: els.model.value,
@@ -352,23 +420,52 @@ if (els.saveConfig) {
 async function loadConfig() {
   try {
     const config = await window.api.configGet();
-    els.provider.value = config.provider || 'auto';
+    
+    let apiFormat = config.apiFormat || '';
+    let providerKey = config.providerRegion || '';
+    
+    if (!providerKey && config.provider) {
+      const inferred = legacyProviderToKey(config.provider, config.baseUrl);
+      if (inferred) {
+        providerKey = inferred;
+        const p = findProviderByKey(inferred);
+        if (p) apiFormat = p.format;
+      }
+    }
+    
+    if (!apiFormat) apiFormat = 'openai';
+    
+    if (els.apiFormat) els.apiFormat.value = apiFormat;
+    
+    updateProviderOptions();
+    if (els.provider && providerKey) {
+      els.provider.value = providerKey;
+    }
+    
+    updateRegionOptions();
+    if (els.providerRegion && config.providerRegion) {
+      els.providerRegion.value = config.providerRegion;
+    }
+    
     els.apiKey.value = config.apiKey || '';
     els.baseUrl.value = config.baseUrl || '';
     els.model.value = config.model || '';
+    if (els.modelSelect && config.model) {
+      els.modelSelect.value = config.model;
+    }
     els.workspacePath.value = config.workspacePath || '';
     els.autoStart.checked = config.autoStart !== false;
+    
     updateProviderUI();
   } catch (err) { console.error('Load config failed:', err); }
 }
 
 // Test API connection
 async function testApiConnection() {
-  const provider = els.provider.value;
+  const provider = findProviderByKey(els.provider.value);
   let baseUrl = els.baseUrl.value.trim();
-  // Auto-fill from provider if base_url is empty
-  if (!baseUrl && PROVIDER_URLS[provider]) {
-    baseUrl = PROVIDER_URLS[provider];
+  if (!baseUrl && provider && provider.baseUrl) {
+    baseUrl = provider.baseUrl;
   }
   if (!baseUrl) {
     alert('请先选择服务商或填写自定义端点 URL');
@@ -402,6 +499,10 @@ async function testApiConnection() {
   } catch (err) {
     alert(`API 连接异常: ${err.message}\n\n堆栈:\n${err.stack || ''}`);
   }
+}
+
+if (els.testConnection) {
+  els.testConnection.addEventListener('click', () => testApiConnection());
 }
 
 // Try starting agent and report result
@@ -2098,40 +2199,80 @@ function showWizard() {
   overlay.innerHTML = `
     <div class="wizard-modal">
       <button class="wizard-close">&times;</button>
+      
       <div class="wizard-step" data-step="1">
         <h3>欢迎使用 Hermes Desktop</h3>
-        <p class="wizard-desc">完成以下步骤即可开始使用</p>
+        <p class="wizard-desc">选择你的 AI 服务商并完成配置</p>
         <div class="form-group">
-          <label for="wizard-gateway">Gateway URL</label>
-          <input type="text" id="wizard-gateway" placeholder="https://your-gateway-url">
+          <label for="wizard-api-format">API 格式</label>
+          <select id="wizard-api-format">
+            <option value="openai">OpenAI 兼容格式</option>
+            <option value="anthropic">Anthropic 兼容格式</option>
+          </select>
         </div>
         <div class="form-group">
-          <label for="wizard-token">API Token</label>
-          <input type="password" id="wizard-token" placeholder="输入你的 API Token">
+          <label for="wizard-provider">服务商</label>
+          <select id="wizard-provider"></select>
+        </div>
+        <div class="form-group" id="wizard-region-group" style="display: none;">
+          <label for="wizard-provider-region">区域 / 套餐</label>
+          <select id="wizard-provider-region"></select>
+        </div>
+        <div class="form-group">
+          <label for="wizard-api-key">API Key</label>
+          <div class="input-with-action">
+            <input type="password" id="wizard-api-key" placeholder="输入你的 API Key">
+            <button id="wizard-toggle-api-key" class="btn-icon" title="显示/隐藏">👁</button>
+          </div>
+          <small class="form-hint" id="wizard-api-key-hint"></small>
+        </div>
+        <div class="form-group">
+          <label for="wizard-model">默认模型（可选）</label>
+          <select id="wizard-model-select">
+            <option value="">留空自动选择</option>
+          </select>
+          <input type="text" id="wizard-model" placeholder="或手动输入模型 ID" style="margin-top: 6px;">
         </div>
         <button class="btn btn-primary wizard-next">下一步</button>
       </div>
+
       <div class="wizard-step" data-step="2" style="display:none">
+        <h3>验证 API 连接</h3>
+        <p class="wizard-desc">测试你的配置是否可以正常连接</p>
+        <div id="wizard-test-status" class="wizard-status"></div>
+        <button class="btn btn-secondary wizard-test-connection">测试连接</button>
+        <div class="wizard-nav">
+          <button class="btn btn-secondary wizard-prev">上一步</button>
+          <button class="btn btn-primary wizard-next">下一步</button>
+          <button class="btn btn-text wizard-skip-test">跳过</button>
+        </div>
+      </div>
+
+      <div class="wizard-step" data-step="3" style="display:none">
         <h3>授权飞书</h3>
-        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权</p>
+        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权（可稍后在设置中完成）</p>
         <button class="btn btn-primary wizard-auth-feishu">开始授权</button>
         <div id="wizard-feishu-status" class="wizard-status"></div>
         <div class="wizard-nav">
           <button class="btn btn-secondary wizard-prev">上一步</button>
           <button class="btn btn-primary wizard-next">下一步</button>
+          <button class="btn btn-text wizard-skip">跳过</button>
         </div>
       </div>
-      <div class="wizard-step" data-step="3" style="display:none">
+
+      <div class="wizard-step" data-step="4" style="display:none">
         <h3>授权钉钉</h3>
-        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权</p>
+        <p class="wizard-desc">点击下方按钮，在浏览器中完成授权（可稍后在设置中完成）</p>
         <button class="btn btn-primary wizard-auth-dingtalk">开始授权</button>
         <div id="wizard-dingtalk-status" class="wizard-status"></div>
         <div class="wizard-nav">
           <button class="btn btn-secondary wizard-prev">上一步</button>
-          <button class="btn btn-primary wizard-next">完成</button>
+          <button class="btn btn-primary wizard-next">下一步</button>
+          <button class="btn btn-text wizard-skip">跳过</button>
         </div>
       </div>
-      <div class="wizard-step" data-step="4" style="display:none">
+
+      <div class="wizard-step" data-step="5" style="display:none">
         <h3>设置完成</h3>
         <p class="wizard-desc">一切就绪，开始使用吧！</p>
         <button class="btn btn-primary wizard-done">开始使用</button>
@@ -2141,7 +2282,73 @@ function showWizard() {
   document.body.appendChild(overlay);
 
   let currentStep = 1;
-  const wizardConfig = { gatewayUrl: '', apiToken: '' };
+  const wizardConfig = { apiFormat: 'openai', provider: '', providerRegion: '', apiKey: '', baseUrl: '', model: '' };
+
+  function wizardUpdateProviderOptions() {
+    const format = document.getElementById('wizard-api-format').value;
+    const providers = getProvidersByFormat(format);
+    const select = document.getElementById('wizard-provider');
+    select.innerHTML = providers.map(p =>
+      `<option value="${p.key}">${p.label}</option>`
+    ).join('');
+    wizardUpdateProviderUI();
+  }
+
+  function wizardUpdateRegionOptions() {
+    const provider = findProviderByKey(document.getElementById('wizard-provider').value);
+    const group = document.getElementById('wizard-region-group');
+    const select = document.getElementById('wizard-provider-region');
+    if (provider && provider.regions && provider.regions.length > 0) {
+      select.innerHTML = provider.regions.map(r =>
+        `<option value="${r.key}">${r.label}</option>`
+      ).join('');
+      group.style.display = '';
+    } else {
+      group.style.display = 'none';
+    }
+  }
+
+  function wizardUpdateModelOptions() {
+    const provider = findProviderByKey(document.getElementById('wizard-provider').value);
+    const select = document.getElementById('wizard-model-select');
+    if (provider && provider.models && provider.models.length > 0) {
+      select.innerHTML = '<option value="">留空自动选择</option>' +
+        provider.models.map(m => `<option value="${m}">${m}</option>`).join('');
+    } else {
+      select.innerHTML = '<option value="">留空自动选择</option>';
+    }
+  }
+
+  function wizardUpdateProviderUI() {
+    const provider = findProviderByKey(document.getElementById('wizard-provider').value);
+    if (!provider) return;
+    const hint = document.getElementById('wizard-api-key-hint');
+    if (hint) hint.textContent = provider.envLabel || '';
+    wizardUpdateRegionOptions();
+    wizardUpdateModelOptions();
+  }
+
+  document.getElementById('wizard-toggle-api-key')?.addEventListener('click', () => {
+    const input = document.getElementById('wizard-api-key');
+    input.type = input.type === 'password' ? 'text' : 'password';
+    document.getElementById('wizard-toggle-api-key').textContent = input.type === 'password' ? '👁' : '👁‍🗨';
+  });
+
+  document.getElementById('wizard-api-format')?.addEventListener('change', () => {
+    wizardUpdateProviderOptions();
+  });
+  document.getElementById('wizard-provider')?.addEventListener('change', () => {
+    wizardUpdateProviderUI();
+  });
+  document.getElementById('wizard-provider-region')?.addEventListener('change', () => {
+    wizardUpdateProviderUI();
+  });
+  document.getElementById('wizard-model-select')?.addEventListener('change', () => {
+    const v = document.getElementById('wizard-model-select').value;
+    if (v) document.getElementById('wizard-model').value = v;
+  });
+
+  wizardUpdateProviderOptions();
 
   function goToStep(step) {
     overlay.querySelectorAll('.wizard-step').forEach(s => s.style.display = 'none');
@@ -2149,44 +2356,92 @@ function showWizard() {
     currentStep = step;
   }
 
+  function collectWizardConfig() {
+    const provider = findProviderByKey(document.getElementById('wizard-provider').value);
+    wizardConfig.apiFormat = document.getElementById('wizard-api-format').value;
+    wizardConfig.provider = document.getElementById('wizard-provider').value;
+    wizardConfig.providerRegion = document.getElementById('wizard-provider-region')?.value || '';
+    wizardConfig.apiKey = document.getElementById('wizard-api-key').value;
+    wizardConfig.baseUrl = provider ? (provider.regions && wizardConfig.providerRegion
+      ? (provider.regions.find(r => r.key === wizardConfig.providerRegion)?.baseUrl || provider.baseUrl)
+      : provider.baseUrl) : '';
+    wizardConfig.model = document.getElementById('wizard-model').value;
+    return wizardConfig;
+  }
+
   overlay.querySelector('.wizard-next').addEventListener('click', async () => {
     if (currentStep === 1) {
-      wizardConfig.gatewayUrl = document.getElementById('wizard-gateway').value;
-      wizardConfig.apiToken = document.getElementById('wizard-token').value;
+      collectWizardConfig();
       await window.api.configSave(wizardConfig);
       goToStep(2);
     } else if (currentStep === 2) { goToStep(3); }
     else if (currentStep === 3) { goToStep(4); }
+    else if (currentStep === 4) { goToStep(5); }
   });
 
-  overlay.querySelector('.wizard-prev').addEventListener('click', () => goToStep(currentStep - 1));
+  overlay.querySelector('.wizard-prev')?.addEventListener('click', () => goToStep(currentStep - 1));
+
+  overlay.querySelector('.wizard-skip-test')?.addEventListener('click', () => goToStep(3));
+
+  overlay.querySelectorAll('.wizard-skip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (currentStep === 3) goToStep(4);
+      else if (currentStep === 4) goToStep(5);
+    });
+  });
+
   overlay.querySelector('.wizard-close').addEventListener('click', () => overlay.remove());
 
-  overlay.querySelector('.wizard-auth-feishu').addEventListener('click', async (e) => {
+  overlay.querySelector('.wizard-test-connection')?.addEventListener('click', async (e) => {
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = '测试中...';
+    const statusEl = document.getElementById('wizard-test-status');
+    collectWizardConfig();
+    try {
+      const result = await window.api.testApiConnection({
+        baseUrl: wizardConfig.baseUrl,
+        apiKey: wizardConfig.apiKey,
+        model: wizardConfig.model || 'gpt-4o-mini',
+      });
+      if (result.success) {
+        statusEl.className = 'wizard-status success';
+        statusEl.textContent = `✓ 连接成功！模型: ${result.model || '未知'}`;
+      } else {
+        statusEl.className = 'wizard-status error';
+        statusEl.textContent = `✗ 连接失败: ${result.error || '未知错误'}`;
+      }
+    } catch (err) {
+      statusEl.className = 'wizard-status error';
+      statusEl.textContent = `✗ 连接异常: ${err.message}`;
+    }
+    btn.disabled = false; btn.textContent = '测试连接';
+  });
+
+  overlay.querySelector('.wizard-auth-feishu')?.addEventListener('click', async (e) => {
     const btn = e.target;
     btn.disabled = true; btn.textContent = '授权中...';
     const statusEl = document.getElementById('wizard-feishu-status');
     try {
       const result = await window.api.authFeishu();
       statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
-      if (result.success) setAuthState('feishu', true, result.userName);
+      if (result.success) setAuthState('feishu', true, result.userName, result.version);
     } catch (err) { statusEl.textContent = `✗ ${err.message}`; }
     btn.disabled = false; btn.textContent = '开始授权';
   });
 
-  overlay.querySelector('.wizard-auth-dingtalk').addEventListener('click', async (e) => {
+  overlay.querySelector('.wizard-auth-dingtalk')?.addEventListener('click', async (e) => {
     const btn = e.target;
     btn.disabled = true; btn.textContent = '授权中...';
     const statusEl = document.getElementById('wizard-dingtalk-status');
     try {
       const result = await window.api.authDingtalk();
       statusEl.textContent = result.success ? `✓ 已授权: ${result.userName}` : `✗ ${result.error}`;
-      if (result.success) setAuthState('dingtalk', true, result.userName);
+      if (result.success) setAuthState('dingtalk', true, result.userName, result.version);
     } catch (err) { statusEl.textContent = `✗ ${err.message}`; }
     btn.disabled = false; btn.textContent = '开始授权';
   });
 
-  overlay.querySelector('.wizard-done').addEventListener('click', () => { overlay.remove(); checkAuthStatus(); });
+  overlay.querySelector('.wizard-done').addEventListener('click', () => { overlay.remove(); checkAuthStatus(); loadConfig(); });
 }
 
 // ============================
@@ -2821,6 +3076,9 @@ document.getElementById('new-chat-btn')?.addEventListener('click', () => {
 // ============================
 // Init
 // ============================
+// Initialize cascading selectors
+updateApiFormatOptions();
+updateProviderOptions();
 initWorkspace();
 loadConfig();
 checkFirstRun();

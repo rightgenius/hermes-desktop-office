@@ -90,22 +90,23 @@
             <div class="card">
               <h3>AI 模型配置</h3>
               <div class="form-group">
-                <label for="provider">推理服务商</label>
-                <select id="provider">
-                  <option value="auto">自动检测</option>
-                  <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="nous">Nous Portal</option>
-                  <option value="gemini">Google Gemini</option>
-                  <option value="openai">OpenAI</option>
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="zhipuai">智谱 AI (GLM)</option>
-                  <option value="moonshot">Moonshot (Kimi)</option>
-                  <option value="minimax">MiniMax</option>
-                  <option value="custom">自定义端点</option>
+                <label for="api-format">API 格式</label>
+                <select id="api-format">
+                  <option value="openai">OpenAI 兼容格式</option>
+                  <option value="anthropic">Anthropic 兼容格式</option>
                 </select>
               </div>
-              <div class="form-group" id="api-key-group">
+              <div class="form-group">
+                <label for="provider">服务商</label>
+                <select id="provider">
+                </select>
+              </div>
+              <div class="form-group" id="provider-region-group" style="display: none;">
+                <label for="provider-region">区域 / 套餐</label>
+                <select id="provider-region">
+                </select>
+              </div>
+              <div class="form-group">
                 <label for="api-key">API Key</label>
                 <div class="input-with-action">
                   <input type="password" id="api-key" placeholder="输入 API Key">
@@ -113,16 +114,21 @@
                 </div>
                 <small class="form-hint" id="api-key-hint"></small>
               </div>
-              <div class="form-group" id="base-url-group" style="display: none;">
-                <label for="base-url">自定义端点 URL</label>
-                <input type="text" id="base-url" placeholder="https://your-api-endpoint">
+              <div class="form-group">
+                <label for="base-url">端点 URL</label>
+                <input type="text" id="base-url" placeholder="选择服务商后自动填充">
+                <small class="form-hint">可以根据需要手动修改</small>
               </div>
               <div class="form-group">
-                <label for="model">默认模型（可选）</label>
-                <input type="text" id="model" placeholder="留空自动选择">
-                <small class="form-hint">例如: anthropic/claude-sonnet-4, openrouter/anthropic/claude-3.5-sonnet</small>
+                <label for="model-select">默认模型</label>
+                <select id="model-select">
+                  <option value="">留空自动选择</option>
+                </select>
+                <small class="form-hint">也可以手动输入任意模型 ID</small>
+                <input type="text" id="model" placeholder="或手动输入模型 ID" style="margin-top: 6px;">
               </div>
               <div class="form-actions">
+                <button id="test-connection" class="btn btn-secondary">测试连接</button>
                 <button id="try-start-agent" class="btn btn-secondary">尝试启动 Agent</button>
                 <button id="save-config" class="btn btn-primary">保存配置</button>
               </div>
@@ -363,6 +369,7 @@
       </aside>
     </div>
   </div>
+  <script src="llm-providers.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
