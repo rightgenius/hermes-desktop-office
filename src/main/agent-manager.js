@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
@@ -9,6 +9,39 @@ class AgentManager {
     this.running = false;
     // Track per-session generation state
     this.sessionStates = new Map(); // sessionId -> { isGenerating: boolean }
+    // Runtime deps management
+    this._pythonCmd = null;
+    this._userDepsPath = null;
+  }
+
+  // Install additional Python dependencies at runtime
+  async installSkillDeps(packages) {
+    if (!this._pythonCmd) {
+      const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+      const bundledPython = path.join(resourcesDir, 'python-runtime', 'bin', 'python3');
+      if (fs.existsSync(bundledPython)) {
+        this._pythonCmd = bundledPython;
+      } else {
+        this._pythonCmd = 'python3';
+      }
+    }
+    if (!this._userDepsPath) {
+      this._userDepsPath = path.join(require('os').homedir(), '.hermes', 'skills-deps');
+      if (!fs.existsSync(this._userDepsPath)) {
+        fs.mkdirSync(this._userDepsPath, { recursive: true });
+      }
+    }
+
+    return new Promise((resolve) => {
+      const args = ['-m', 'pip', 'install', '--target', this._userDepsPath, ...packages];
+      const child = execFile(this._pythonCmd, args, { timeout: 300000 }, (err, stdout, stderr) => {
+        if (err) {
+          resolve({ success: false, error: stderr || err.message });
+        } else {
+          resolve({ success: true, output: stdout });
+        }
+      });
+    });
   }
 
   async start(config = {}) {
@@ -31,14 +64,21 @@ class AgentManager {
     // Find Python interpreter
     let pythonCmd = null;
     let pythonPathEnv = null;
+    let userDepsPath = null;
 
     if (isProduction) {
       // Production: use bundled Python runtime
       const bundledPython = path.join(resourcesDir, 'python-runtime', 'bin', 'python3');
       if (fs.existsSync(bundledPython)) {
         pythonCmd = bundledPython;
-        const depsPath = path.join(hermesPath, 'deps');
-        pythonPathEnv = [hermesPath, depsPath].filter(p => fs.existsSync(p)).join(path.delimiter);
+        const bundledDeps = path.join(hermesPath, 'deps');
+        // User-writable deps directory for runtime-installed packages
+        userDepsPath = path.join(app.getPath('home'), '.hermes', 'skills-deps');
+        if (!fs.existsSync(userDepsPath)) {
+          fs.mkdirSync(userDepsPath, { recursive: true });
+        }
+        // PYTHONPATH: user deps first (override), then bundled deps, then hermes-agent
+        pythonPathEnv = [userDepsPath, bundledDeps, hermesPath].filter(p => fs.existsSync(p)).join(path.delimiter);
       }
     } else {
       // Development: use venv python

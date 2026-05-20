@@ -271,6 +271,7 @@ function setupIPCHandlers(mainWindow) {
     await agentManager.stop();
     return agentManager.start(config);
   });
+  ipcMain.handle('agent-install-deps', (_, packages) => agentManager.installSkillDeps(packages));
   ipcMain.handle('agent-stop-generation', (_, sessionId) => agentManager.stopGeneration(sessionId));
   ipcMain.handle('agent-respond', (_, { sessionId, requestId, answer }) => agentManager.respondToPrompt(sessionId, requestId, answer));
 

@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   agentStart: (config) => ipcRenderer.invoke('agent-start', config),
   agentStop: () => ipcRenderer.invoke('agent-stop'),
   agentRestart: () => ipcRenderer.invoke('agent-restart'),
+  agentInstallDeps: (packages) => ipcRenderer.invoke('agent-install-deps', packages),
   agentSendMessage: (sessionId, text, history) => ipcRenderer.invoke('agent-send-message', { sessionId, text, history }),
   agentSetWorkspace: (sessionId, workspacePath) => ipcRenderer.invoke('agent-set-workspace', { sessionId, workspacePath }),
   agentStopGeneration: (sessionId) => ipcRenderer.invoke('agent-stop-generation', sessionId),
