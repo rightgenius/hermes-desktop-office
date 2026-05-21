@@ -280,9 +280,11 @@ function setupIPCHandlers(mainWindow) {
   ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat }) => {
     const https = require('https');
     const http = require('http');
-    const cleanApiKey = (apiKey || '').trim().replace(/[^\x20-\x7E]/g, '');
+    // Only trim whitespace — do NOT strip characters from the key.
+    // The agent passes the key as-is via env var, so the test should do the same.
+    const cleanApiKey = (apiKey || '').trim();
     if (!cleanApiKey) {
-      return { success: false, error: 'API Key 为空或包含无效字符', hint: '请确保只包含 ASCII 可见字符' };
+      return { success: false, error: 'API Key 为空', hint: '请输入你的 API Key' };
     }
 
     const format = apiFormat || 'openai';

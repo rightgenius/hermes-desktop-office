@@ -5,7 +5,7 @@ const https = require('https');
 const http = require('http');
 
 function buildTestRequest(baseUrl, apiKey, model, apiFormat) {
-  const cleanApiKey = (apiKey || '').trim().replace(/[^\x20-\x7E]/g, '');
+  const cleanApiKey = (apiKey || '').trim();
   const format = apiFormat || 'openai';
   let requestUrl, headers, payload;
 
