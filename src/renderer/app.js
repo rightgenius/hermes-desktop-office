@@ -203,7 +203,7 @@ function showPage(pageName) {
   // Hide sidebar for settings, logs, and skills pages
   const midPanel = document.querySelector('.mid-panel');
   if (midPanel) {
-    midPanel.style.display = (pageName === 'settings' || pageName === 'logs' || pageName === 'skills') ? 'none' : '';
+    midPanel.style.display = (pageName === 'settings' || pageName === 'logs' || pageName === 'skills' || pageName === 'cron') ? 'none' : '';
   }
 }
 
@@ -211,7 +211,7 @@ function showPage(pageName) {
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && e.key >= '1' && e.key <= '4') {
     e.preventDefault();
-    const pages = ['chat', 'settings', 'skills', 'logs'];
+    const pages = ['chat', 'settings', 'skills', 'logs', 'cron'];
     showPage(pages[parseInt(e.key) - 1]);
   }
 });
@@ -3179,3 +3179,300 @@ async function autoStartAgent() {
   }
 }
 autoStartAgent();
+
+// ============================
+// Cron Page
+// ============================
+const cronEls = {
+  list: document.getElementById('cron-list'),
+  statusBadge: document.getElementById('cron-status-badge'),
+  toggleBtn: document.getElementById('cron-toggle-btn'),
+  newBtn: document.getElementById('new-cron-btn'),
+  modal: document.getElementById('cron-modal'),
+  modalTitle: document.getElementById('cron-modal-title'),
+  modalClose: document.getElementById('cron-modal-close'),
+  modalCancel: document.getElementById('cron-modal-cancel'),
+  modalSave: document.getElementById('cron-modal-save'),
+  name: document.getElementById('cron-name'),
+  prompt: document.getElementById('cron-prompt'),
+  repeat: document.getElementById('cron-repeat'),
+  workdir: document.getElementById('cron-workdir'),
+  browseWorkdir: document.getElementById('cron-browse-workdir'),
+  scheduleIntervalGroup: document.getElementById('cron-schedule-interval-group'),
+  scheduleCronGroup: document.getElementById('cron-schedule-cron-group'),
+  scheduleOnceGroup: document.getElementById('cron-schedule-once-group'),
+  scheduleValue: document.getElementById('cron-schedule-value'),
+  scheduleUnit: document.getElementById('cron-schedule-unit'),
+  scheduleCron: document.getElementById('cron-schedule-cron'),
+  scheduleOnce: document.getElementById('cron-schedule-once'),
+  recurring: document.getElementById('cron-recurring'),
+};
+
+let cronJobs = [];
+let editingCronJobId = null;
+let cronStatusRunning = false;
+
+async function loadCronJobs() {
+  const result = await window.api.cronList();
+  if (result.success) {
+    cronJobs = result.jobs;
+    renderCronList();
+  }
+}
+
+async function loadCronStatus() {
+  const result = await window.api.cronStatus();
+  if (result.success) {
+    cronStatusRunning = result.isRunning;
+    updateCronStatusUI();
+  }
+}
+
+function updateCronStatusUI() {
+  if (cronEls.statusBadge) {
+    cronEls.statusBadge.textContent = cronStatusRunning ? '运行中' : '未启动';
+    cronEls.statusBadge.className = 'cron-status-badge' + (cronStatusRunning ? ' running' : '');
+  }
+  if (cronEls.toggleBtn) {
+    cronEls.toggleBtn.textContent = cronStatusRunning ? '停止' : '启动';
+  }
+}
+
+function renderCronList() {
+  if (!cronEls.list) return;
+  if (cronJobs.length === 0) {
+    cronEls.list.innerHTML = '<div class="empty-state-text">暂无定时任务，点击"新建任务"创建</div>';
+    return;
+  }
+
+  let html = '';
+  for (const job of cronJobs) {
+    const statusClass = job.state || 'scheduled';
+    const statusText = {
+      scheduled: '等待中',
+      running: '执行中',
+      paused: '已暂停',
+      error: '错误',
+      completed: '已完成',
+    }[statusClass] || statusClass;
+
+    const nextRun = job.next_run_at ? formatRelativeTime(job.next_run_at) : '-';
+    const lastRun = job.last_run_at ? formatRelativeTime(job.last_run_at) : '-';
+    const schedule = typeof job.schedule_display === 'string' ? job.schedule_display : (typeof job.schedule === 'string' ? job.schedule : '-');
+
+    html += `
+      <div class="cron-card" data-job-id="${job.id}">
+        <div class="cron-card-header">
+          <span class="cron-card-name">${escapeHtml(job.name || '未命名任务')}</span>
+          <span class="cron-card-status ${statusClass}">${statusText}</span>
+        </div>
+        <div class="cron-card-meta">
+          <span>📅 ${escapeHtml(schedule)}</span>
+          <span>⏰ 下次: ${nextRun}</span>
+          <span>🕐 上次: ${lastRun}</span>
+        </div>
+        ${job.prompt ? `<div class="cron-card-prompt">${escapeHtml(job.prompt)}</div>` : ''}
+        <div class="cron-card-actions">
+          ${job.state === 'paused'
+            ? `<button class="btn btn-secondary btn-resume" data-job-id="${job.id}">恢复</button>`
+            : `<button class="btn btn-secondary btn-pause" data-job-id="${job.id}">暂停</button>`
+          }
+          <button class="btn btn-secondary btn-trigger" data-job-id="${job.id}">立即执行</button>
+          <button class="btn btn-secondary btn-edit" data-job-id="${job.id}">编辑</button>
+          <button class="btn btn-secondary btn-delete" data-job-id="${job.id}">删除</button>
+        </div>
+      </div>
+    `;
+  }
+  cronEls.list.innerHTML = html;
+
+  cronEls.list.querySelectorAll('.btn-pause').forEach(btn => {
+    btn.addEventListener('click', () => pauseCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-resume').forEach(btn => {
+    btn.addEventListener('click', () => resumeCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-trigger').forEach(btn => {
+    btn.addEventListener('click', () => triggerCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => editCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-delete').forEach(btn => {
+    btn.addEventListener('click', () => deleteCronJob(btn.dataset.jobId));
+  });
+}
+
+function formatRelativeTime(isoString) {
+  const now = new Date();
+  const target = new Date(isoString);
+  const diff = Math.floor((target - now) / 1000);
+  if (diff < 0) return Math.abs(diff) < 60 ? `${Math.abs(diff)}秒前` : Math.abs(diff) < 3600 ? `${Math.floor(Math.abs(diff) / 60)}分钟前` : `${Math.floor(Math.abs(diff) / 3600)}小时前`;
+  if (diff < 60) return `${diff}秒后`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟后`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时后`;
+  return `${Math.floor(diff / 86400)}天后`;
+}
+
+async function pauseCronJob(jobId) {
+  const result = await window.api.cronPause(jobId);
+  if (result.success) await loadCronJobs();
+}
+
+async function resumeCronJob(jobId) {
+  const result = await window.api.cronResume(jobId);
+  if (result.success) await loadCronJobs();
+}
+
+async function triggerCronJob(jobId) {
+  const result = await window.api.cronTrigger(jobId);
+  if (result.success) await loadCronJobs();
+}
+
+async function deleteCronJob(jobId) {
+  if (!confirm('确定删除此定时任务？')) return;
+  const result = await window.api.cronDelete(jobId);
+  if (result.success) await loadCronJobs();
+}
+
+function editCronJob(jobId) {
+  const job = cronJobs.find(j => j.id === jobId);
+  if (!job) return;
+  editingCronJobId = jobId;
+  cronEls.modalTitle.textContent = '编辑定时任务';
+  cronEls.name.value = job.name || '';
+  cronEls.prompt.value = job.prompt || '';
+  cronEls.repeat.value = job.repeat?.times || '';
+  cronEls.workdir.value = job.workdir || '';
+  openCronModal();
+}
+
+function openCronModal() {
+  cronEls.modal.style.display = 'flex';
+}
+
+function closeCronModal() {
+  cronEls.modal.style.display = 'none';
+  editingCronJobId = null;
+  cronEls.name.value = '';
+  cronEls.prompt.value = '';
+  cronEls.repeat.value = '';
+  cronEls.workdir.value = '';
+  cronEls.scheduleValue.value = 30;
+  cronEls.scheduleUnit.value = 'm';
+  cronEls.recurring.checked = true;
+  cronEls.scheduleCron.value = '';
+  cronEls.scheduleOnce.value = '';
+}
+
+function getCronSchedule() {
+  const type = document.querySelector('input[name="cron-schedule-type"]:checked').value;
+  if (type === 'interval') {
+    const value = cronEls.scheduleValue.value;
+    const unit = cronEls.scheduleUnit.value;
+    const recurring = cronEls.recurring.checked;
+    if (recurring) return `every ${value}${unit}`;
+    return `${value}${unit}`;
+  }
+  if (type === 'cron') {
+    return cronEls.scheduleCron.value;
+  }
+  if (type === 'once') {
+    const val = cronEls.scheduleOnce.value;
+    if (val) return val;
+    const value = cronEls.scheduleValue.value;
+    const unit = cronEls.scheduleUnit.value;
+    return `${value}${unit}`;
+  }
+  return '30m';
+}
+
+async function saveCronJob() {
+  const prompt = cronEls.prompt.value.trim();
+  if (!prompt) {
+    alert('请输入提示词');
+    return;
+  }
+
+  const data = {
+    name: cronEls.name.value.trim() || undefined,
+    prompt,
+    schedule: getCronSchedule(),
+    schedule_display: getCronSchedule(),
+    repeat: cronEls.repeat.value ? parseInt(cronEls.repeat.value) : null,
+    workdir: cronEls.workdir.value.trim() || null,
+  };
+
+  let result;
+  if (editingCronJobId) {
+    result = await window.api.cronUpdate(editingCronJobId, data);
+  } else {
+    result = await window.api.cronCreate(data);
+  }
+
+  if (result.success) {
+    closeCronModal();
+    await loadCronJobs();
+  } else {
+    alert('保存失败: ' + result.error);
+  }
+}
+
+if (cronEls.newBtn) cronEls.newBtn.addEventListener('click', () => {
+  editingCronJobId = null;
+  cronEls.modalTitle.textContent = '新建定时任务';
+  openCronModal();
+});
+
+if (cronEls.modalClose) cronEls.modalClose.addEventListener('click', closeCronModal);
+if (cronEls.modalCancel) cronEls.modalCancel.addEventListener('click', closeCronModal);
+if (cronEls.modalSave) cronEls.modalSave.addEventListener('click', saveCronJob);
+
+if (cronEls.toggleBtn) cronEls.toggleBtn.addEventListener('click', async () => {
+  if (cronStatusRunning) {
+    await window.api.cronStop();
+  } else {
+    await window.api.cronStart();
+  }
+  await loadCronStatus();
+});
+
+if (cronEls.browseWorkdir) cronEls.browseWorkdir.addEventListener('click', async () => {
+  const p = prompt('输入工作目录路径:');
+  if (p) cronEls.workdir.value = p;
+});
+
+document.querySelectorAll('input[name="cron-schedule-type"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    const val = radio.value;
+    cronEls.scheduleIntervalGroup.style.display = val === 'interval' ? '' : 'none';
+    cronEls.scheduleCronGroup.style.display = val === 'cron' ? '' : 'none';
+    cronEls.scheduleOnceGroup.style.display = val === 'once' ? '' : 'none';
+  });
+});
+
+document.querySelectorAll('.cron-quick-times .btn-sm').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const minutes = parseInt(btn.dataset.minutes);
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + minutes);
+    const iso = now.toISOString().slice(0, 16);
+    cronEls.scheduleOnce.value = iso;
+  });
+});
+
+if (window.api.onCronStatus) {
+  window.api.onCronStatus((data) => {
+    cronStatusRunning = data.isRunning;
+    updateCronStatusUI();
+  });
+}
+
+const _origShowPage = showPage;
+showPage = function(pageName) {
+  _origShowPage(pageName);
+  if (pageName === 'cron') {
+    loadCronJobs();
+    loadCronStatus();
+  }
+};
