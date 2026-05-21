@@ -267,12 +267,22 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Agent handlers
-  ipcMain.handle('agent-start', (_, config) => agentManager.start(config));
-  ipcMain.handle('agent-stop', () => agentManager.stop());
+  ipcMain.handle('agent-start', async (_, config) => {
+    const result = await agentManager.start(config);
+    if (result.success && cronManager) cronManager.start();
+    return result;
+  });
+  ipcMain.handle('agent-stop', async () => {
+    if (cronManager) cronManager.stop();
+    return agentManager.stop();
+  });
   ipcMain.handle('agent-restart', async () => {
     const config = configStore.get();
     await agentManager.stop();
-    return agentManager.start(config);
+    if (cronManager) cronManager.stop();
+    const result = await agentManager.start(config);
+    if (result.success && cronManager) cronManager.start();
+    return result;
   });
   ipcMain.handle('agent-install-deps', (_, packages) => agentManager.installSkillDeps(packages));
   ipcMain.handle('agent-stop-generation', (_, sessionId) => agentManager.stopGeneration(sessionId));

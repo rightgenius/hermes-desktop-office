@@ -2136,6 +2136,7 @@ if (window.api) {
   window.api.onAgentStatus((data) => {
     updateStatus('status-agent', data.running ? 'success' : 'error');
     agentRunning = data.running;
+    if (typeof updateCronStatusUI === 'function') updateCronStatusUI();
   });
   window.api.onAgentResponse((data) => {
     const sessionId = data.sessionId || '';
@@ -3170,6 +3171,7 @@ async function autoStartAgent() {
       updateStatus('status-agent', 'success');
       agentRunning = true;
       appendLog('[INFO] Agent 已自动启动');
+      if (typeof updateCronStatusUI === 'function') updateCronStatusUI();
     } else {
       appendLog(`[ERROR] Agent 启动失败: ${result?.error || '未知错误'}`);
     }
@@ -3186,7 +3188,6 @@ autoStartAgent();
 const cronEls = {
   list: document.getElementById('cron-list'),
   statusBadge: document.getElementById('cron-status-badge'),
-  toggleBtn: document.getElementById('cron-toggle-btn'),
   newBtn: document.getElementById('new-cron-btn'),
   modal: document.getElementById('cron-modal'),
   modalTitle: document.getElementById('cron-modal-title'),
@@ -3210,7 +3211,7 @@ const cronEls = {
 
 let cronJobs = [];
 let editingCronJobId = null;
-let cronStatusRunning = false;
+let cronEngineRunning = false;
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
@@ -3220,21 +3221,17 @@ async function loadCronJobs() {
   }
 }
 
-async function loadCronStatus() {
-  const result = await window.api.cronStatus();
-  if (result.success) {
-    cronStatusRunning = result.isRunning;
-    updateCronStatusUI();
-  }
-}
-
 function updateCronStatusUI() {
-  if (cronEls.statusBadge) {
-    cronEls.statusBadge.textContent = cronStatusRunning ? '运行中' : '未启动';
-    cronEls.statusBadge.className = 'cron-status-badge' + (cronStatusRunning ? ' running' : '');
-  }
-  if (cronEls.toggleBtn) {
-    cronEls.toggleBtn.textContent = cronStatusRunning ? '停止' : '启动';
+  if (!cronEls.statusBadge) return;
+  if (!agentRunning) {
+    cronEls.statusBadge.textContent = 'Agent 未启动';
+    cronEls.statusBadge.className = 'cron-status-badge no-agent';
+  } else if (cronEngineRunning) {
+    cronEls.statusBadge.textContent = '执行中';
+    cronEls.statusBadge.className = 'cron-status-badge running';
+  } else {
+    cronEls.statusBadge.textContent = '已停止';
+    cronEls.statusBadge.className = 'cron-status-badge stopped';
   }
 }
 
@@ -3428,15 +3425,6 @@ if (cronEls.modalClose) cronEls.modalClose.addEventListener('click', closeCronMo
 if (cronEls.modalCancel) cronEls.modalCancel.addEventListener('click', closeCronModal);
 if (cronEls.modalSave) cronEls.modalSave.addEventListener('click', saveCronJob);
 
-if (cronEls.toggleBtn) cronEls.toggleBtn.addEventListener('click', async () => {
-  if (cronStatusRunning) {
-    await window.api.cronStop();
-  } else {
-    await window.api.cronStart();
-  }
-  await loadCronStatus();
-});
-
 if (cronEls.browseWorkdir) cronEls.browseWorkdir.addEventListener('click', async () => {
   const p = prompt('输入工作目录路径:');
   if (p) cronEls.workdir.value = p;
@@ -3463,7 +3451,7 @@ document.querySelectorAll('.cron-quick-times .btn-sm').forEach(btn => {
 
 if (window.api.onCronStatus) {
   window.api.onCronStatus((data) => {
-    cronStatusRunning = data.isRunning;
+    cronEngineRunning = data.isRunning;
     updateCronStatusUI();
   });
 }
@@ -3473,6 +3461,6 @@ showPage = function(pageName) {
   _origShowPage(pageName);
   if (pageName === 'cron') {
     loadCronJobs();
-    loadCronStatus();
+    updateCronStatusUI();
   }
 };
