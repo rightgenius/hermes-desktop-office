@@ -3,6 +3,45 @@ const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+// Simple YAML merge helper for skills.external_dirs (avoids full YAML dependency)
+function ensureExternalSkillsDirInConfig(hermesHome, skillsPath) {
+  const configPath = path.join(hermesHome, 'config.yaml');
+  const normalizedSkillsPath = skillsPath.replace(/\\/g, '/');
+
+  try {
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf-8');
+      if (content.includes(normalizedSkillsPath)) {
+        return; // Already configured
+      }
+      // Check if skills section exists with any nested keys
+      const skillsSectionMatch = content.match(/^(skills:\n(?:  .+\n)*)/m);
+      if (skillsSectionMatch) {
+        // Insert external_dirs at the end of the skills section
+        const insertPoint = skillsSectionMatch[0].length;
+        const before = content.substring(0, insertPoint);
+        const after = content.substring(insertPoint);
+        const updated = before + `  external_dirs:\n    - "${normalizedSkillsPath}"\n` + after;
+        fs.writeFileSync(configPath, updated, 'utf-8');
+      } else {
+        // Append skills section
+        fs.writeFileSync(configPath,
+          content + `\nskills:\n  external_dirs:\n    - "${normalizedSkillsPath}"\n`,
+          'utf-8'
+        );
+      }
+    } else {
+      // Create new config
+      fs.writeFileSync(configPath,
+        `skills:\n  external_dirs:\n    - "${normalizedSkillsPath}"\n`,
+        'utf-8'
+      );
+    }
+  } catch (err) {
+    console.error('Failed to configure external skills dir:', err.message);
+  }
+}
+
 class AgentManager {
   constructor(mainWindow) {
     this.mainWindow = mainWindow;
@@ -117,6 +156,20 @@ class AgentManager {
     // Set PYTHONPATH for production builds
     if (pythonPathEnv) {
       env.PYTHONPATH = pythonPathEnv;
+    }
+
+    // Set HERMES_BUNDLED_SKILLS to include office skills
+    // This ensures the Agent can discover skills bundled with the desktop app
+    const officeSkillsPath = this._resolveOfficeSkillsPath(resourcesDir, isProduction);
+    if (officeSkillsPath) {
+      env.HERMES_BUNDLED_SKILLS = officeSkillsPath;
+      // Also configure skills.external_dirs in ~/.hermes/config.yaml so the
+      // Agent's skill discovery finds office skills at runtime
+      const hermesHome = path.join(app.getPath('home'), '.hermes');
+      if (!fs.existsSync(hermesHome)) {
+        fs.mkdirSync(hermesHome, { recursive: true });
+      }
+      ensureExternalSkillsDirInConfig(hermesHome, officeSkillsPath);
     }
 
     try {
@@ -373,6 +426,24 @@ class AgentManager {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('agent-status', { running: this.running });
     }
+  }
+
+  _resolveOfficeSkillsPath(resourcesDir, isProduction) {
+    const appDir = path.join(__dirname, '..');
+    const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked');
+
+    // Try multiple possible locations for office skills
+    const candidates = [
+      path.join(unpackedDir, 'skills'),           // Production: Resources/app.asar.unpacked/skills
+      path.join(resourcesDir, 'skills'),          // Alternative: Resources/skills
+      path.join(appDir, '..', 'skills'),          // Development: project root/skills
+    ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
   }
 }
 
