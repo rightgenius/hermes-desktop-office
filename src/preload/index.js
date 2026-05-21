@@ -75,4 +75,21 @@ contextBridge.exposeInMainWorld('api', {
   skillsGetFile: (filePath) => ipcRenderer.invoke('skills:get-file', filePath),
   skillsWriteFile: (filePath, content) => ipcRenderer.invoke('skills:write-file', { filePath, content }),
   skillsListFiles: (skillPath) => ipcRenderer.invoke('skills:list-files', skillPath),
+
+  // Cron (定时任务)
+  cronList: (includeDisabled) => ipcRenderer.invoke('cron:list', includeDisabled),
+  cronCreate: (data) => ipcRenderer.invoke('cron:create', data),
+  cronUpdate: (jobId, updates) => ipcRenderer.invoke('cron:update', jobId, updates),
+  cronDelete: (jobId) => ipcRenderer.invoke('cron:delete', jobId),
+  cronPause: (jobId) => ipcRenderer.invoke('cron:pause', jobId),
+  cronResume: (jobId) => ipcRenderer.invoke('cron:resume', jobId),
+  cronTrigger: (jobId) => ipcRenderer.invoke('cron:trigger', jobId),
+  cronStatus: () => ipcRenderer.invoke('cron:status'),
+  cronStart: () => ipcRenderer.invoke('cron:start'),
+  cronStop: () => ipcRenderer.invoke('cron:stop'),
+  onCronStatus: (fn) => {
+    const handler = (_, data) => fn(data);
+    ipcRenderer.on('cron-status', handler);
+    return () => ipcRenderer.removeListener('cron-status', handler);
+  },
 });
