@@ -277,7 +277,8 @@ function setupIPCHandlers(mainWindow) {
 
   // Test API connection from main process (no CORS issues)
   // Supports both OpenAI-compatible (/chat/completions) and Anthropic (/v1/messages) formats
-  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat }) => {
+  // Simulates Agent behavior by using the same request format
+  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat, provider }) => {
     const https = require('https');
     const http = require('http');
     // Only trim whitespace — do NOT strip characters from the key.
@@ -300,6 +301,7 @@ function setupIPCHandlers(mainWindow) {
         'Content-Type': 'application/json',
         'x-api-key': cleanApiKey,
         'anthropic-version': '2023-06-01',
+        'User-Agent': 'hermes-agent/1.0',
       };
       payload = JSON.stringify({
         model: model || 'claude-sonnet-4.6',
@@ -313,9 +315,12 @@ function setupIPCHandlers(mainWindow) {
       headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cleanApiKey}`,
+        'User-Agent': 'hermes-agent/1.0',
       };
+      // Use provider-specific model selection like Agent does
+      const testModel = model || 'gpt-4o-mini';
       payload = JSON.stringify({
-        model: model || 'gpt-4o-mini',
+        model: testModel,
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 10,
       });
@@ -335,6 +340,7 @@ function setupIPCHandlers(mainWindow) {
         : `Authorization: Bearer ${keyPreview}`,
       authLength: cleanApiKey.length,
       keyHex: keyHex,
+      model: format === 'anthropic' ? (model || 'claude-sonnet-4.6') : (model || 'gpt-4o-mini'),
       body: payload,
     };
 
