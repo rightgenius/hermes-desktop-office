@@ -43,6 +43,9 @@
         <button class="rail-btn" data-page="logs" title="日志">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
         </button>
+        <button class="rail-btn" data-page="cron" title="定时任务">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
       </nav>
 
       <!-- Middle Panel -->
@@ -331,6 +334,92 @@
           </div>
         </div>
       </main>
+
+      <!-- Cron Page -->
+      <div class="page" id="page-cron">
+        <div class="page-header">
+          <h2>定时任务</h2>
+          <div class="cron-header-actions">
+            <span class="cron-status-badge" id="cron-status-badge">未启动</span>
+            <button class="btn btn-secondary" id="cron-toggle-btn">启动</button>
+            <button class="btn btn-primary" id="new-cron-btn">新建任务</button>
+          </div>
+        </div>
+        <div class="content-scroll">
+          <div class="cron-list" id="cron-list">
+            <div class="empty-state-text">暂无定时任务</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cron Create/Edit Modal -->
+      <div class="modal-overlay" id="cron-modal" style="display:none">
+        <div class="modal-content cron-modal">
+          <div class="modal-header">
+            <h3 id="cron-modal-title">新建定时任务</h3>
+            <button class="modal-close" id="cron-modal-close">×</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="cron-name">任务名称</label>
+              <input type="text" id="cron-name" placeholder="可选，默认使用提示词前50字符">
+            </div>
+            <div class="form-group">
+              <label>调度方式</label>
+              <div class="cron-schedule-type">
+                <label><input type="radio" name="cron-schedule-type" value="interval" checked> 间隔执行</label>
+                <label><input type="radio" name="cron-schedule-type" value="cron"> Cron 表达式</label>
+                <label><input type="radio" name="cron-schedule-type" value="once"> 一次性执行</label>
+              </div>
+            </div>
+            <div class="form-group" id="cron-schedule-interval-group">
+              <label>间隔</label>
+              <div class="cron-interval-inputs">
+                <input type="number" id="cron-schedule-value" min="1" value="30" style="width:80px">
+                <select id="cron-schedule-unit">
+                  <option value="m">分钟</option>
+                  <option value="h">小时</option>
+                  <option value="d">天</option>
+                </select>
+                <label class="cron-recurring-label"><input type="checkbox" id="cron-recurring" checked> 重复执行</label>
+              </div>
+            </div>
+            <div class="form-group" id="cron-schedule-cron-group" style="display:none">
+              <label for="cron-schedule-cron">Cron 表达式</label>
+              <input type="text" id="cron-schedule-cron" placeholder="如: 0 9 * * *">
+              <small class="form-hint">5位cron表达式，如 0 9 * * * 表示每天9点执行</small>
+            </div>
+            <div class="form-group" id="cron-schedule-once-group" style="display:none">
+              <label for="cron-schedule-once">执行时间</label>
+              <input type="datetime-local" id="cron-schedule-once">
+              <div class="cron-quick-times">
+                <button type="button" class="btn btn-sm" data-minutes="30">30分钟后</button>
+                <button type="button" class="btn btn-sm" data-minutes="60">1小时后</button>
+                <button type="button" class="btn btn-sm" data-minutes="1440">明天</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="cron-prompt">提示词 <span class="required">*</span></label>
+              <textarea id="cron-prompt" rows="4" placeholder="任务执行内容，如：检查邮件并总结未回复的邮件"></textarea>
+            </div>
+            <div class="form-group">
+              <label for="cron-repeat">重复次数</label>
+              <input type="number" id="cron-repeat" min="1" placeholder="留空表示无限">
+            </div>
+            <div class="form-group">
+              <label for="cron-workdir">工作目录</label>
+              <div class="input-with-action">
+                <input type="text" id="cron-workdir" placeholder="可选，任务运行的工作目录">
+                <button type="button" id="cron-browse-workdir" class="btn btn-secondary">浏览</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary" id="cron-modal-cancel">取消</button>
+            <button class="btn btn-primary" id="cron-modal-save">保存</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Workspace Panel -->
       <aside class="workspace-panel" id="workspace-panel">
