@@ -301,7 +301,6 @@ function setupIPCHandlers(mainWindow) {
         'Content-Type': 'application/json',
         'x-api-key': cleanApiKey,
         'anthropic-version': '2023-06-01',
-        'User-Agent': 'hermes-agent/1.0',
       };
       payload = JSON.stringify({
         model: model || 'claude-sonnet-4.6',
@@ -309,15 +308,16 @@ function setupIPCHandlers(mainWindow) {
         max_tokens: 10,
       });
     } else {
+      // OpenAI-compatible format - simulate Agent behavior
+      // Agent uses OPENROUTER_BASE_URL env var, so we match that behavior
       const cleanBase = baseUrl.replace(/\/$/, '');
       const completionsPath = cleanBase.includes('/chat/completions') ? cleanBase : cleanBase + '/chat/completions';
       requestUrl = new URL(completionsPath);
       headers = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cleanApiKey}`,
-        'User-Agent': 'hermes-agent/1.0',
       };
-      // Use provider-specific model selection like Agent does
+      // Use the model from config, or fall back to provider's default
       const testModel = model || 'gpt-4o-mini';
       payload = JSON.stringify({
         model: testModel,
@@ -330,8 +330,6 @@ function setupIPCHandlers(mainWindow) {
     const keyPreview = cleanApiKey.length > 20
       ? cleanApiKey.substring(0, 8) + '...' + cleanApiKey.substring(cleanApiKey.length - 4)
       : cleanApiKey;
-    // Hex dump of first 64 bytes to detect hidden characters
-    const keyHex = Buffer.from(cleanApiKey).slice(0, 64).toString('hex').match(/.{2}/g)?.join(' ') || '';
     const debugInfo = {
       fullUrl: requestUrl.href,
       method: 'POST',
@@ -339,7 +337,6 @@ function setupIPCHandlers(mainWindow) {
         ? `x-api-key: ${keyPreview}`
         : `Authorization: Bearer ${keyPreview}`,
       authLength: cleanApiKey.length,
-      keyHex: keyHex,
       model: format === 'anthropic' ? (model || 'claude-sonnet-4.6') : (model || 'gpt-4o-mini'),
       body: payload,
     };
