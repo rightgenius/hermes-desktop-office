@@ -319,19 +319,19 @@ function updateProviderUI() {
     els.apiKeyHint.textContent = provider.envLabel || '';
   }
 
+  // Only auto-fill base URL when a region is explicitly selected
   const regionKey = els.providerRegion?.value;
-  let baseUrl = provider.baseUrl;
   if (provider.regions && regionKey) {
     const region = provider.regions.find(r => r.key === regionKey);
     if (region) {
-      baseUrl = region.baseUrl;
+      els.baseUrl.value = region.baseUrl;
       if (region.envVar && els.apiKeyHint) {
         els.apiKeyHint.textContent = `需要 ${region.envVar}`;
       }
     }
-  }
-  if (baseUrl && !provider.isCustom) {
-    els.baseUrl.value = baseUrl;
+  } else if (!provider.regions && provider.baseUrl && !provider.isCustom) {
+    // For providers without regions, still auto-fill
+    els.baseUrl.value = provider.baseUrl;
   }
 
   updateRegionOptions();
@@ -340,6 +340,8 @@ function updateProviderUI() {
   if (provider.isCustom) {
     els.baseUrl.placeholder = 'https://your-api-endpoint/v1';
     els.apiKeyHint.textContent = '需要自定义 API Key';
+  } else if (provider.regions) {
+    els.baseUrl.placeholder = '选择区域/套餐后自动填充';
   } else {
     els.baseUrl.placeholder = '选择服务商后自动填充';
   }
@@ -2320,6 +2322,7 @@ function showWizard() {
     const group = document.getElementById('wizard-region-group');
     const select = document.getElementById('wizard-provider-region');
     const hint = document.getElementById('wizard-region-hint');
+    const baseUrlInput = document.getElementById('wizard-base-url') || document.getElementById('wizard-api-key')?.closest('.wizard-modal')?.querySelector('[data-base-url]');
     if (provider && provider.regions && provider.regions.length > 0) {
       select.innerHTML = provider.regions.map(r =>
         `<option value="${r.key}">${r.label}</option>`
