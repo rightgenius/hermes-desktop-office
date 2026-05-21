@@ -463,6 +463,7 @@ async function loadConfig() {
 // Test API connection
 async function testApiConnection() {
   const provider = findProviderByKey(els.provider.value);
+  const apiFormat = els.apiFormat?.value || provider?.format || 'openai';
   let baseUrl = els.baseUrl.value.trim();
   if (!baseUrl && provider && provider.baseUrl) {
     baseUrl = provider.baseUrl;
@@ -476,10 +477,11 @@ async function testApiConnection() {
     alert('请先填写 API Key');
     return;
   }
-  const model = els.model.value.trim() || 'gpt-4o-mini';
+  const defaultModel = apiFormat === 'anthropic' ? 'claude-sonnet-4.6' : 'gpt-4o-mini';
+  const model = els.model.value.trim() || (provider?.models?.[0]) || defaultModel;
 
   try {
-    const result = await window.api.testApiConnection({ baseUrl, apiKey, model });
+    const result = await window.api.testApiConnection({ baseUrl, apiKey, model, apiFormat });
     if (result.success) {
       alert(`API 连接成功！\n\n模型: ${result.model || '未知'}\n响应: ${result.response || '(无内容)'}\n\n原始响应 (前500字符):\n${result.raw || ''}`);
     } else {
@@ -2397,11 +2399,13 @@ function showWizard() {
     btn.disabled = true; btn.textContent = '测试中...';
     const statusEl = document.getElementById('wizard-test-status');
     collectWizardConfig();
+    const defaultModel = wizardConfig.apiFormat === 'anthropic' ? 'claude-sonnet-4.6' : 'gpt-4o-mini';
     try {
       const result = await window.api.testApiConnection({
         baseUrl: wizardConfig.baseUrl,
         apiKey: wizardConfig.apiKey,
-        model: wizardConfig.model || 'gpt-4o-mini',
+        model: wizardConfig.model || defaultModel,
+        apiFormat: wizardConfig.apiFormat || 'openai',
       });
       if (result.success) {
         statusEl.className = 'wizard-status success';

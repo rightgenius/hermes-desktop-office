@@ -276,31 +276,68 @@ function setupIPCHandlers(mainWindow) {
   ipcMain.handle('agent-respond', (_, { sessionId, requestId, answer }) => agentManager.respondToPrompt(sessionId, requestId, answer));
 
   // Test API connection from main process (no CORS issues)
-  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model }) => {
+  // Supports both OpenAI-compatible (/chat/completions) and Anthropic (/v1/messages) formats
+  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat }) => {
     const https = require('https');
-    const url = new URL(baseUrl + '/chat/completions');
+    const http = require('http');
     const cleanApiKey = (apiKey || '').trim().replace(/[^\x20-\x7E]/g, '');
     if (!cleanApiKey) {
       return { success: false, error: 'API Key 为空或包含无效字符', hint: '请确保只包含 ASCII 可见字符' };
     }
-    const payload = JSON.stringify({
-      model: model || 'gpt-4o-mini',
-      messages: [{ role: 'user', content: 'Hi' }],
-      max_tokens: 10
-    });
+
+    const format = apiFormat || 'openai';
+    let requestUrl, headers, payload;
+
+    if (format === 'anthropic') {
+      // Anthropic format: POST /v1/messages with x-api-key header
+      const cleanBase = baseUrl.replace(/\/$/, '');
+      const urlObj = new URL(cleanBase);
+      // If base URL already has a path (e.g., /apps/anthropic, /anthropic, /v1), append /messages
+      // If it's just the domain (e.g., https://api.anthropic.com), append /v1/messages
+      const messagesPath = urlObj.pathname && urlObj.pathname !== '/'
+        ? cleanBase + '/messages'
+        : cleanBase + '/v1/messages';
+      requestUrl = new URL(messagesPath);
+      headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': cleanApiKey,
+        'anthropic-version': '2023-06-01',
+      };
+      payload = JSON.stringify({
+        model: model || 'claude-sonnet-4.6',
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 10,
+      });
+    } else {
+      // OpenAI-compatible format: POST /chat/completions with Bearer auth
+      const cleanBase = baseUrl.replace(/\/$/, '');
+      const completionsPath = cleanBase.includes('/chat/completions') ? cleanBase : cleanBase + '/chat/completions';
+      requestUrl = new URL(completionsPath);
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cleanApiKey}`,
+      };
+      payload = JSON.stringify({
+        model: model || 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 10,
+      });
+    }
+
+    const isHttp = requestUrl.protocol === 'http:';
+    const requestLib = isHttp ? http : https;
 
     return new Promise((resolve) => {
-      const req = https.request({
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname,
+      const req = requestLib.request({
+        hostname: requestUrl.hostname,
+        port: requestUrl.port || (isHttp ? 80 : 443),
+        path: requestUrl.pathname + requestUrl.search,
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...headers,
           'Content-Length': Buffer.byteLength(payload),
-          'Authorization': `Bearer ${cleanApiKey}`
         },
-        timeout: 15000
+        timeout: 15000,
       }, (res) => {
         let body = '';
         res.on('data', chunk => body += chunk);
@@ -308,11 +345,17 @@ function setupIPCHandlers(mainWindow) {
           if (res.statusCode >= 200 && res.statusCode < 300) {
             try {
               const data = JSON.parse(body);
+              let responseText = '';
+              if (format === 'anthropic') {
+                responseText = data.content?.[0]?.text || '(no content)';
+              } else {
+                responseText = data.choices?.[0]?.message?.content || '(no content)';
+              }
               resolve({
                 success: true,
-                model: data.model || 'unknown',
-                response: data.choices?.[0]?.message?.content || '(no content)',
-                raw: body.substring(0, 500)
+                model: data.model || data.id?.split('-')[0] || 'unknown',
+                response: responseText,
+                raw: body.substring(0, 500),
               });
             } catch {
               resolve({ success: true, raw: body.substring(0, 500) });
@@ -323,7 +366,7 @@ function setupIPCHandlers(mainWindow) {
               statusCode: res.statusCode,
               statusMessage: res.statusMessage,
               error: body.substring(0, 1000),
-              headers: Object.fromEntries(Object.entries(res.headers).slice(0, 5))
+              headers: Object.fromEntries(Object.entries(res.headers).slice(0, 5)),
             });
           }
         });
@@ -334,7 +377,7 @@ function setupIPCHandlers(mainWindow) {
       });
       req.on('timeout', () => {
         req.destroy();
-        resolve({ success: false, error: 'Request timed out after 15s' });
+        resolve({ success: false, error: '请求超时 (15s)' });
       });
       req.write(payload);
       req.end();
