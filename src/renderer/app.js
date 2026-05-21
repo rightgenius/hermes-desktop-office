@@ -284,10 +284,15 @@ function updateProviderOptions() {
 function updateRegionOptions() {
   if (!els.providerRegion || !els.providerRegionGroup) return;
   const provider = findProviderByKey(els.provider.value);
+  const savedValue = els.providerRegion.value;
   if (provider && provider.regions && provider.regions.length > 0) {
     els.providerRegion.innerHTML = provider.regions.map(r =>
       `<option value="${r.key}">${r.label}</option>`
     ).join('');
+    // Restore selection if it still exists
+    if (savedValue && [...els.providerRegion.options].some(o => o.value === savedValue)) {
+      els.providerRegion.value = savedValue;
+    }
     els.providerRegionGroup.style.display = '';
     if (els.providerRegionHint) {
       els.providerRegionHint.textContent = '不同套餐对应不同 API Key，请确认选择了正确的区域';
@@ -303,9 +308,14 @@ function updateRegionOptions() {
 function updateModelOptions() {
   if (!els.modelSelect) return;
   const provider = findProviderByKey(els.provider.value);
+  const savedValue = els.modelSelect.value;
   if (provider && provider.models && provider.models.length > 0) {
     els.modelSelect.innerHTML = '<option value="">留空自动选择</option>' +
       provider.models.map(m => `<option value="${m}">${m}</option>`).join('');
+    // Restore selection if it still exists
+    if (savedValue && [...els.modelSelect.options].some(o => o.value === savedValue)) {
+      els.modelSelect.value = savedValue;
+    }
   } else {
     els.modelSelect.innerHTML = '<option value="">留空自动选择</option>';
   }
