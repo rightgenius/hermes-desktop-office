@@ -1389,7 +1389,7 @@ async function initWorkspace() {
   // Load default workspace path from config
   try {
     const config = await window.api.configGet();
-    const defaultPath = config.defaultWorkspacePath || config.workspacePath;
+    const defaultPath = config.workspacePath || config.defaultWorkspacePath;
     if (defaultPath) {
       workspaceState.currentPath = defaultPath;
       document.getElementById('workspace-path-value').textContent = defaultPath;
@@ -1409,6 +1409,17 @@ async function initWorkspace() {
     if (dirPath) {
       workspaceState.treeData = {};
       loadWorkspaceTree(dirPath);
+      // Save to config so it persists across agent restarts
+      try {
+        await window.api.configSave({ workspacePath: dirPath });
+      } catch (err) {
+        console.error('Failed to save workspace path to config:', err);
+      }
+      // Update settings form if visible
+      const settingsWorkspaceInput = document.getElementById('workspace-path');
+      if (settingsWorkspaceInput) {
+        settingsWorkspaceInput.value = dirPath;
+      }
       // Update agent workspace path
       if (window.api.agentSetWorkspace) {
         window.api.agentSetWorkspace(currentSessionId || 'default', dirPath);
@@ -1500,13 +1511,15 @@ function loadSession(sessionId) {
 
 function syncWorkspacePath(sessionWorkspacePath) {
   const targetPath = sessionWorkspacePath || workspaceState.currentPath;
-  if (targetPath && targetPath !== workspaceState.currentPath) {
+  if (!targetPath) return;
+
+  if (targetPath !== workspaceState.currentPath) {
     workspaceState.treeData = {};
     loadWorkspaceTree(targetPath);
-    // Update agent workspace path
-    if (currentSessionId && window.api.agentSetWorkspace) {
-      window.api.agentSetWorkspace(currentSessionId, targetPath);
-    }
+  }
+  // Always update agent workspace path for the current session
+  if (currentSessionId && window.api.agentSetWorkspace) {
+    window.api.agentSetWorkspace(currentSessionId, targetPath);
   }
 }
 
