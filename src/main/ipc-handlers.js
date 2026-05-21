@@ -281,7 +281,6 @@ function setupIPCHandlers(mainWindow) {
     const https = require('https');
     const http = require('http');
     // Only trim whitespace — do NOT strip characters from the key.
-    // The agent passes the key as-is via env var, so the test should do the same.
     const cleanApiKey = (apiKey || '').trim();
     if (!cleanApiKey) {
       return { success: false, error: 'API Key 为空', hint: '请输入你的 API Key' };
@@ -291,11 +290,8 @@ function setupIPCHandlers(mainWindow) {
     let requestUrl, headers, payload;
 
     if (format === 'anthropic') {
-      // Anthropic format: POST /v1/messages with x-api-key header
       const cleanBase = baseUrl.replace(/\/$/, '');
       const urlObj = new URL(cleanBase);
-      // If base URL already has a path (e.g., /apps/anthropic, /anthropic, /v1), append /messages
-      // If it's just the domain (e.g., https://api.anthropic.com), append /v1/messages
       const messagesPath = urlObj.pathname && urlObj.pathname !== '/'
         ? cleanBase + '/messages'
         : cleanBase + '/v1/messages';
@@ -311,7 +307,6 @@ function setupIPCHandlers(mainWindow) {
         max_tokens: 10,
       });
     } else {
-      // OpenAI-compatible format: POST /chat/completions with Bearer auth
       const cleanBase = baseUrl.replace(/\/$/, '');
       const completionsPath = cleanBase.includes('/chat/completions') ? cleanBase : cleanBase + '/chat/completions';
       requestUrl = new URL(completionsPath);
@@ -325,6 +320,17 @@ function setupIPCHandlers(mainWindow) {
         max_tokens: 10,
       });
     }
+
+    // Debug info — show exactly what's being sent
+    const debugInfo = {
+      fullUrl: requestUrl.href,
+      method: 'POST',
+      authHeader: format === 'anthropic'
+        ? `x-api-key: ${cleanApiKey.substring(0, 6)}...${cleanApiKey.substring(cleanApiKey.length - 4)}`
+        : `Authorization: Bearer ${cleanApiKey.substring(0, 6)}...${cleanApiKey.substring(cleanApiKey.length - 4)}`,
+      authLength: cleanApiKey.length,
+      body: payload,
+    };
 
     const isHttp = requestUrl.protocol === 'http:';
     const requestLib = isHttp ? http : https;
@@ -358,9 +364,10 @@ function setupIPCHandlers(mainWindow) {
                 model: data.model || data.id?.split('-')[0] || 'unknown',
                 response: responseText,
                 raw: body.substring(0, 500),
+                debug: debugInfo,
               });
             } catch {
-              resolve({ success: true, raw: body.substring(0, 500) });
+              resolve({ success: true, raw: body.substring(0, 500), debug: debugInfo });
             }
           } else {
             resolve({
@@ -368,18 +375,19 @@ function setupIPCHandlers(mainWindow) {
               statusCode: res.statusCode,
               statusMessage: res.statusMessage,
               error: body.substring(0, 1000),
-              headers: Object.fromEntries(Object.entries(res.headers).slice(0, 5)),
+              headers: Object.fromEntries(Object.entries(res.headers).slice(0, 8)),
+              debug: debugInfo,
             });
           }
         });
       });
 
       req.on('error', (err) => {
-        resolve({ success: false, error: err.message, code: err.code });
+        resolve({ success: false, error: err.message, code: err.code, debug: debugInfo });
       });
       req.on('timeout', () => {
         req.destroy();
-        resolve({ success: false, error: '请求超时 (15s)' });
+        resolve({ success: false, error: '请求超时 (15s)', debug: debugInfo });
       });
       req.write(payload);
       req.end();

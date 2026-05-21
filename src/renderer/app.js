@@ -496,6 +496,14 @@ async function testApiConnection() {
       if (result.headers && Object.keys(result.headers).length) {
         msg += `\n\n响应头:\n${JSON.stringify(result.headers, null, 2)}`;
       }
+      // Debug info
+      if (result.debug) {
+        msg += `\n\n=== 调试信息 ===\n`;
+        msg += `请求 URL: ${result.debug.fullUrl}\n`;
+        msg += `认证头: ${result.debug.authHeader}\n`;
+        msg += `Key 长度: ${result.debug.authLength}\n`;
+        msg += `请求体: ${result.debug.body}`;
+      }
       alert(msg);
     }
   } catch (err) {
@@ -2412,7 +2420,11 @@ function showWizard() {
         statusEl.textContent = `✓ 连接成功！模型: ${result.model || '未知'}`;
       } else {
         statusEl.className = 'wizard-status error';
-        statusEl.textContent = `✗ 连接失败: ${result.error || '未知错误'}`;
+        let errMsg = `✗ 连接失败: ${result.error || '未知错误'}`;
+        if (result.debug) {
+          errMsg += `\nURL: ${result.debug.fullUrl}\nKey长度: ${result.debug.authLength}\n认证: ${result.debug.authHeader}`;
+        }
+        statusEl.textContent = errMsg;
       }
     } catch (err) {
       statusEl.className = 'wizard-status error';
