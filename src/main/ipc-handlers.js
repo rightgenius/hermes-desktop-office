@@ -322,13 +322,19 @@ function setupIPCHandlers(mainWindow) {
     }
 
     // Debug info — show exactly what's being sent
+    const keyPreview = cleanApiKey.length > 20
+      ? cleanApiKey.substring(0, 8) + '...' + cleanApiKey.substring(cleanApiKey.length - 4)
+      : cleanApiKey;
+    // Hex dump of first 64 bytes to detect hidden characters
+    const keyHex = Buffer.from(cleanApiKey).slice(0, 64).toString('hex').match(/.{2}/g)?.join(' ') || '';
     const debugInfo = {
       fullUrl: requestUrl.href,
       method: 'POST',
       authHeader: format === 'anthropic'
-        ? `x-api-key: ${cleanApiKey.substring(0, 6)}...${cleanApiKey.substring(cleanApiKey.length - 4)}`
-        : `Authorization: Bearer ${cleanApiKey.substring(0, 6)}...${cleanApiKey.substring(cleanApiKey.length - 4)}`,
+        ? `x-api-key: ${keyPreview}`
+        : `Authorization: Bearer ${keyPreview}`,
       authLength: cleanApiKey.length,
+      keyHex: keyHex,
       body: payload,
     };
 

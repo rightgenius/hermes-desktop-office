@@ -502,6 +502,9 @@ async function testApiConnection() {
         msg += `请求 URL: ${result.debug.fullUrl}\n`;
         msg += `认证头: ${result.debug.authHeader}\n`;
         msg += `Key 长度: ${result.debug.authLength}\n`;
+        if (result.debug.keyHex) {
+          msg += `Key HEX: ${result.debug.keyHex}\n`;
+        }
         msg += `请求体: ${result.debug.body}`;
       }
       alert(msg);
