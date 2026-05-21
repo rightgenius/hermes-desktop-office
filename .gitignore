@@ -56,3 +56,7 @@ opencode.json
 
 # Old plan files
 docs/superpowers/plans/*-plan.md
+
+# Playwright
+test-results/
+playwright-report/

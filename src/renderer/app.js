@@ -2406,14 +2406,16 @@ function showWizard() {
     return wizardConfig;
   }
 
-  overlay.querySelector('.wizard-next').addEventListener('click', async () => {
-    if (currentStep === 1) {
-      collectWizardConfig();
-      await window.api.configSave(wizardConfig);
-      goToStep(2);
-    } else if (currentStep === 2) { goToStep(3); }
-    else if (currentStep === 3) { goToStep(4); }
-    else if (currentStep === 4) { goToStep(5); }
+  overlay.querySelectorAll('.wizard-next').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (currentStep === 1) {
+        collectWizardConfig();
+        await window.api.configSave(wizardConfig);
+        goToStep(2);
+      } else if (currentStep === 2) { goToStep(3); }
+      else if (currentStep === 3) { goToStep(4); }
+      else if (currentStep === 4) { goToStep(5); }
+    });
   });
 
   overlay.querySelector('.wizard-prev')?.addEventListener('click', () => goToStep(currentStep - 1));
@@ -2484,7 +2486,7 @@ function showWizard() {
     btn.disabled = false; btn.textContent = '开始授权';
   });
 
-  overlay.querySelector('.wizard-done').addEventListener('click', () => { overlay.remove(); checkAuthStatus(); loadConfig(); });
+  overlay.querySelector('.wizard-done').addEventListener('click', async () => { overlay.remove(); checkAuthStatus(); loadConfig(); await agentAction('start'); });
 }
 
 // ============================
@@ -2508,17 +2510,17 @@ function initSkillsPage() {
   loadSkillsList();
 }
 
-function setupSkillsTabs() {
-  document.querySelectorAll('.skills-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      skillsState.currentTab = tab.dataset.tab;
-      renderSkillsTable();
-      updateToolbarActions();
+  function setupSkillsTabs() {
+    document.querySelectorAll('.skills-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.skills-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        skillsState.currentTab = tab.dataset.tab;
+        loadSkillsList();
+        updateToolbarActions();
+      });
     });
-  });
-}
+  }
 
 function updateToolbarActions() {
   const newBtn = document.getElementById('new-skill-btn');
@@ -2888,23 +2890,35 @@ function showNewSkillDialog() {
 }
 
 async function loadSkillsList() {
-  const result = await window.api.skillsList();
-  if (!result.success) {
-    console.error('Failed to load skills:', result.error);
-    return;
-  }
+  try {
+    const result = await window.api.skillsList();
+    if (!result || !result.success) {
+      console.error('Failed to load skills:', result?.error || 'Unknown error');
+      skillsState.skills = { builtin: [], user: [], agent: [] };
+      renderSkillsTable();
+      return;
+    }
 
-  skillsState.skills = result;
+    skillsState.skills = {
+      builtin: Array.isArray(result.builtin) ? result.builtin : [],
+      user: Array.isArray(result.user) ? result.user : [],
+      agent: Array.isArray(result.agent) ? result.agent : [],
+    };
 
-  skillsState.categories = new Set();
-  ['builtin', 'user', 'agent'].forEach(source => {
-    result[source].forEach(skill => {
-      if (skill.category) skillsState.categories.add(skill.category);
+    skillsState.categories = new Set();
+    ['builtin', 'user', 'agent'].forEach(source => {
+      skillsState.skills[source].forEach(skill => {
+        if (skill.category) skillsState.categories.add(skill.category);
+      });
     });
-  });
 
-  updateCategoryFilter();
-  renderSkillsTable();
+    updateCategoryFilter();
+    renderSkillsTable();
+  } catch (err) {
+    console.error('loadSkillsList error:', err);
+    skillsState.skills = { builtin: [], user: [], agent: [] };
+    renderSkillsTable();
+  }
 }
 
 function updateCategoryFilter() {
@@ -3014,7 +3028,7 @@ function formatSkillPath(fullPath, tab) {
       if (idx !== -1) {
         displayPath = dirPath.substring(idx + 14);
       } else {
-        displayPath = path.basename(dirPath);
+        displayPath = dirPath.split('/').pop() || dirPath;
       }
     }
   } else if (tab === 'user' || tab === 'agent') {

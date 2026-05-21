@@ -16,7 +16,9 @@
     "prebuild:win": "npm run setup:agent && npm run bundle:python && npm run bundle:deps",
     "prebuild:linux": "npm run setup:agent && npm run bundle:python && npm run bundle:deps",
     "bundle:deps": "bash scripts/bundle-agent-deps.sh",
-    "bundle:python": "bash scripts/bundle-python.sh"
+    "bundle:python": "bash scripts/bundle-python.sh",
+    "test:scanner": "node test-skill-scanner.js",
+    "test:e2e": "playwright test tests/skills-e2e.spec.js"
   },
   "build": {
     "appId": "ai.hermes.desktop.office",
@@ -50,7 +52,11 @@
       {
         "from": "assets/python-runtime",
         "to": "python-runtime",
-        "filter": ["**/*", "!**/test/**", "!**/Tests/**"]
+        "filter": [
+          "**/*",
+          "!**/test/**",
+          "!**/Tests/**"
+        ]
       },
       {
         "from": "src/hermes-agent",
@@ -104,9 +110,11 @@
     "ai-agent"
   ],
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "cross-env": "^7.0.3",
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "playwright": "^1.60.0"
   },
   "dependencies": {
     "marked": "^18.0.3"
