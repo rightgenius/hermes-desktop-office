@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
-const { setupIPCHandlers, getAgentManager } = require('./ipc-handlers');
+const { setupIPCHandlers, getAgentManager, getCronManager } = require('./ipc-handlers');
 
 let mainWindow = null;
 
@@ -39,11 +39,15 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Graceful shutdown: stop Agent before quitting
+// Graceful shutdown: stop Agent and Cron before quitting
 app.on('before-quit', async () => {
   const agent = getAgentManager();
   if (agent && agent.running) {
     try { await agent.stop(); } catch (_) { /* best effort */ }
+  }
+  const cron = getCronManager();
+  if (cron && cron.isRunning) {
+    try { await cron.stop(); } catch (_) { /* best effort */ }
   }
 });
 

@@ -4,12 +4,14 @@ const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const ConfigStore = require('./config-store');
 const { AgentManager } = require('./agent-manager');
+const { CronManager } = require('./cron-manager');
 const skillScanner = require('./skill-scanner');
 
 const fsPromises = fs.promises;
 
 const configStore = new ConfigStore();
 let agentManager = null;
+let cronManager = null;
 
 function getCLIBinaryPath(cliName) {
   const platform = process.platform;
@@ -99,6 +101,7 @@ function runCLISpawn(cliName, args, timeout = 30000) {
 
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
+  cronManager = new CronManager(agentManager, mainWindow);
 
   ipcMain.handle('config-get', () => configStore.get());
   ipcMain.handle('config-save', (_, data) => configStore.save(data));
@@ -777,7 +780,93 @@ function setupIPCHandlers(mainWindow) {
       return { success: false, error: err.message };
     }
   });
+
+  // Cron IPC handlers
+  ipcMain.handle('cron:list', async (_, includeDisabled = false) => {
+    try {
+      const jobs = await cronManager.listJobs(includeDisabled);
+      return { success: true, jobs };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:create', async (_, data) => {
+    try {
+      const job = await cronManager.createJob(data);
+      return { success: true, job };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:update', async (_, jobId, updates) => {
+    try {
+      const job = await cronManager.updateJob(jobId, updates);
+      return { success: true, job };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:delete', async (_, jobId) => {
+    try {
+      const ok = await cronManager.deleteJob(jobId);
+      return { success: ok };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:pause', async (_, jobId) => {
+    try {
+      const job = await cronManager.pauseJob(jobId);
+      return { success: true, job };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:resume', async (_, jobId) => {
+    try {
+      const job = await cronManager.resumeJob(jobId);
+      return { success: true, job };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:trigger', async (_, jobId) => {
+    try {
+      const job = await cronManager.triggerJob(jobId);
+      return { success: true, job };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:status', async () => {
+    return { success: true, isRunning: cronManager.isRunning };
+  });
+
+  ipcMain.handle('cron:start', async () => {
+    try {
+      await cronManager.start();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:stop', async () => {
+    try {
+      await cronManager.stop();
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 // Expose agentManager for graceful shutdown on app quit
-module.exports = { setupIPCHandlers, getAgentManager: () => agentManager };
+module.exports = { setupIPCHandlers, getAgentManager: () => agentManager, getCronManager: () => cronManager };
