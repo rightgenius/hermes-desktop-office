@@ -249,6 +249,7 @@ const els = {
   provider: document.getElementById('provider'),
   providerRegion: document.getElementById('provider-region'),
   providerRegionGroup: document.getElementById('provider-region-group'),
+  providerRegionHint: document.getElementById('provider-region-hint'),
   apiKey: document.getElementById('api-key'),
   baseUrl: document.getElementById('base-url'),
   modelSelect: document.getElementById('model-select'),
@@ -288,8 +289,14 @@ function updateRegionOptions() {
       `<option value="${r.key}">${r.label}</option>`
     ).join('');
     els.providerRegionGroup.style.display = '';
+    if (els.providerRegionHint) {
+      els.providerRegionHint.textContent = '不同套餐对应不同 API Key，请确认选择了正确的区域';
+    }
   } else {
     els.providerRegionGroup.style.display = 'none';
+    if (els.providerRegionHint) {
+      els.providerRegionHint.textContent = '';
+    }
   }
 }
 
@@ -2230,6 +2237,7 @@ function showWizard() {
         <div class="form-group" id="wizard-region-group" style="display: none;">
           <label for="wizard-provider-region">区域 / 套餐</label>
           <select id="wizard-provider-region"></select>
+          <small class="form-hint" id="wizard-region-hint"></small>
         </div>
         <div class="form-group">
           <label for="wizard-api-key">API Key</label>
@@ -2311,13 +2319,16 @@ function showWizard() {
     const provider = findProviderByKey(document.getElementById('wizard-provider').value);
     const group = document.getElementById('wizard-region-group');
     const select = document.getElementById('wizard-provider-region');
+    const hint = document.getElementById('wizard-region-hint');
     if (provider && provider.regions && provider.regions.length > 0) {
       select.innerHTML = provider.regions.map(r =>
         `<option value="${r.key}">${r.label}</option>`
       ).join('');
       group.style.display = '';
+      if (hint) hint.textContent = '不同套餐对应不同 API Key，请确认选择了正确的区域';
     } else {
       group.style.display = 'none';
+      if (hint) hint.textContent = '';
     }
   }
 
