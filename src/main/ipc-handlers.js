@@ -277,11 +277,10 @@ function setupIPCHandlers(mainWindow) {
 
   // Test API connection from main process (no CORS issues)
   // Supports both OpenAI-compatible (/chat/completions) and Anthropic (/v1/messages) formats
-  // Simulates Agent behavior by using the same request format
+  // Simulates Agent behavior by using the same request format and provider-specific headers
   ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat, provider }) => {
     const https = require('https');
     const http = require('http');
-    // Only trim whitespace — do NOT strip characters from the key.
     const cleanApiKey = (apiKey || '').trim();
     if (!cleanApiKey) {
       return { success: false, error: 'API Key 为空', hint: '请输入你的 API Key' };
@@ -309,7 +308,6 @@ function setupIPCHandlers(mainWindow) {
       });
     } else {
       // OpenAI-compatible format - simulate Agent behavior
-      // Agent uses OPENROUTER_BASE_URL env var, so we match that behavior
       const cleanBase = baseUrl.replace(/\/$/, '');
       const completionsPath = cleanBase.includes('/chat/completions') ? cleanBase : cleanBase + '/chat/completions';
       requestUrl = new URL(completionsPath);
@@ -317,16 +315,46 @@ function setupIPCHandlers(mainWindow) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${cleanApiKey}`,
       };
-      // Use the model from config, or fall back to provider's default
+
+      // Add provider-specific headers like hermes-agent does
+      const baseUrlLower = baseUrl.toLowerCase();
+
+      // DashScope / Qwen headers
+      if (baseUrlLower.includes('dashscope') || baseUrlLower.includes('qwen')) {
+        headers['User-Agent'] = 'HermesAgent/1.0.0';
+        headers['X-DashScope-CacheControl'] = 'enable';
+        headers['X-DashScope-UserAgent'] = 'HermesAgent/1.0.0';
+        headers['X-DashScope-AuthType'] = 'api-key';
+      }
+
+      // OpenRouter attribution headers
+      if (baseUrlLower.includes('openrouter.ai')) {
+        headers['HTTP-Referer'] = 'https://hermes-agent.nousresearch.com';
+        headers['X-Title'] = 'Hermes Agent';
+        headers['X-OpenRouter-Categories'] = 'productivity,cli-agent';
+      }
+
+      // Kimi headers
+      if (baseUrlLower.includes('api.kimi.com')) {
+        headers['User-Agent'] = 'claude-code/0.1.0';
+      }
+
       const testModel = model || 'gpt-4o-mini';
       payload = JSON.stringify({
         model: testModel,
         messages: [{ role: 'user', content: 'Hi' }],
         max_tokens: 10,
       });
+
+      // Add extra_body for providers that need it
+      if (baseUrlLower.includes('openrouter.ai')) {
+        payload.extra_body = {
+          reasoning: { enabled: true, effort: 'medium' },
+        };
+      }
     }
 
-    // Debug info — show exactly what's being sent
+    // Debug info
     const keyPreview = cleanApiKey.length > 20
       ? cleanApiKey.substring(0, 8) + '...' + cleanApiKey.substring(cleanApiKey.length - 4)
       : cleanApiKey;
@@ -338,6 +366,7 @@ function setupIPCHandlers(mainWindow) {
         : `Authorization: Bearer ${keyPreview}`,
       authLength: cleanApiKey.length,
       model: format === 'anthropic' ? (model || 'claude-sonnet-4.6') : (model || 'gpt-4o-mini'),
+      extraHeaders: Object.keys(headers).filter(k => !['Content-Type', 'Authorization', 'x-api-key'].includes(k)),
       body: payload,
     };
 
