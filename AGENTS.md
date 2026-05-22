@@ -119,7 +119,7 @@ hermes-desktop-office/
 - **extraResources**: `hermes-agent/` (from submodule), `python-runtime/` (standalone Python 3.13)
 - CLI binaries and python-runtime are gitignored, downloaded during build
 - Office skills (`skills/office/`) are version controlled and bundled via `files` in package.json
-- **ci.yml** (`.github/workflows/ci.yml`): triggers on `push: branches: [main]` + PRs. Jobs use `if: github.ref_type != 'tag'` to skip on tag push. Builds and tests all platforms, uploads artifacts (30-day retention). No release publishing.
+- **ci.yml** (`.github/workflows/ci.yml`): triggers on `push: branches: [main]` + PRs. Builds and tests all platforms, uploads artifacts (30-day retention). No release publishing. Does not run on tag pushes.
 - **release.yml** (`.github/workflows/release.yml`): triggers only on `push: tags: ['v*']`. Full build + test + GitHub Release publishing. Self-contained, no dependency on CI workflow.
 
 ## Rules

@@ -3,7 +3,6 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -18,7 +17,6 @@ jobs:
   build-macos:
     name: Build macOS (arm64)
     runs-on: macos-latest
-    if: github.ref_type != 'tag'
 
     steps:
       - name: Checkout
@@ -69,7 +67,6 @@ jobs:
   build-windows:
     name: Build Windows
     runs-on: windows-latest
-    if: github.ref_type != 'tag'
 
     steps:
       - name: Checkout
@@ -142,7 +139,6 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
-    if: github.ref_type != 'tag'
 
     steps:
       - name: Checkout
