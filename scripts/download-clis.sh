@@ -12,7 +12,7 @@ LARK_CLI_VERSION="1.0.26"
 DWS_CLI_VERSION="1.0.29"
 
 # Determine platforms
-PLATFORMS=("darwin-arm64" "darwin-amd64" "linux-amd64" "windows-amd64")
+PLATFORMS=("darwin-arm64" "linux-amd64" "windows-amd64")
 
 clean_assets() {
     echo "Cleaning assets directory..."
