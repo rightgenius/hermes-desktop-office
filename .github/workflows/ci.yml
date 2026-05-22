@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-macos:
+    name: Build macOS (arm64)
+    runs-on: macos-latest
+    if: github.ref_type != 'tag'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run download-clis && npx electron-builder --mac --publish never
+
+      - name: Locate packaged app
+        shell: bash
+        run: |
+          APP_PATH="$(find dist -path '*/Contents/MacOS/*' -type f | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Packaged macOS executable not found"
+            find dist -maxdepth 3 -print
+            exit 1
+          fi
+          echo "PACKAGED_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Using packaged app: $APP_PATH"
+
+      - name: Smoke test packaged app
+        run: npm run test:packaged
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-macos-arm64
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          retention-days: 30
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    if: github.ref_type != 'tag'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        shell: pwsh
+        run: powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download CLI binaries
+        shell: bash
+        run: npm run download-clis
+
+      - name: Bundle Python runtime
+        shell: bash
+        run: bash scripts/bundle-python.sh windows
+
+      - name: Bundle agent deps
+        shell: bash
+        run: bash scripts/bundle-agent-deps.sh windows
+
+      - name: Setup agent venv
+        shell: bash
+        run: bash scripts/setup-agent.sh || true
+
+      - name: Build
+        shell: bash
+        run: npx electron-builder --win --publish never
+
+      - name: Locate packaged app
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "dist/win-unpacked" -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) {
+            Write-Error "Packaged Windows executable not found"
+            Get-ChildItem -Path dist -Recurse | Select-Object -First 200
+            exit 1
+          }
+          "PACKAGED_APP_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using packaged app: $($exe.FullName)"
+
+      - name: Smoke test packaged app
+        run: npm run test:packaged
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-windows
+          path: |
+            dist/*.exe
+          retention-days: 30
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    if: github.ref_type != 'tag'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download CLI binaries
+        run: npm run download-clis
+
+      - name: Bundle Python runtime
+        run: bash scripts/bundle-python.sh linux
+
+      - name: Bundle agent deps
+        run: bash scripts/bundle-agent-deps.sh linux
+
+      - name: Setup agent venv
+        run: bash scripts/setup-agent.sh || true
+
+      - name: Build
+        run: npx electron-builder --linux --publish never
+
+      - name: Locate packaged app
+        run: |
+          APP_PATH="$(find dist/linux-unpacked -maxdepth 1 -type f -executable | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Packaged Linux executable not found"
+            find dist -maxdepth 3 -print
+            exit 1
+          fi
+          echo "PACKAGED_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Using packaged app: $APP_PATH"
+
+      - name: Smoke test packaged app
+        run: xvfb-run -a npm run test:packaged
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermes-desktop-linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+          retention-days: 30
