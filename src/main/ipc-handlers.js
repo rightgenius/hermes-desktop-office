@@ -483,6 +483,16 @@ function setupIPCHandlers(mainWindow) {
     return { success: true, filePath: result.filePath };
   });
 
+  ipcMain.handle('select-attachments', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择附件',
+      properties: ['openFile', 'multiSelections']
+    });
+    if (result.canceled) return { success: true, filePaths: [] };
+    return { success: true, filePaths: result.filePaths || [] };
+  });
+
   const TEXT_EXTENSIONS = new Set([
     'txt', 'md', 'json', 'yaml', 'yml', 'py', 'js', 'ts', 'tsx', 'jsx',
     'html', 'css', 'scss', 'xml', 'sql', 'sh', 'bash', 'zsh', 'gitignore',

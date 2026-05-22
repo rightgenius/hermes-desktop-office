@@ -775,12 +775,15 @@ const chatInput = document.getElementById('chat-input');
 const sendBtn = document.getElementById('send-message');
 const stopBtn = document.getElementById('stop-generation');
 const chatMessages = document.getElementById('chat-messages');
+const attachBtn = document.getElementById('attach-file');
+const attachmentList = document.getElementById('attachment-list');
 const sessionList = document.querySelector('.session-list');
 
 let currentSessionId = null;
 let currentAgentMessageEl = null;
 let agentRunning = false;
 let pendingPrompt = null;
+let selectedAttachments = [];
 
 // In-memory storage for streaming messages per session
 const streamingSessions = {};
@@ -2013,9 +2016,51 @@ function renderMarkdown(text) {
   return html;
 }
 
+function getAttachmentName(filePath) {
+  if (!filePath) return '';
+  const normalized = filePath.replace(/\\/g, '/');
+  return normalized.split('/').filter(Boolean).pop() || filePath;
+}
+
+function renderSelectedAttachments() {
+  if (!attachmentList) return;
+  attachmentList.classList.toggle('has-attachments', selectedAttachments.length > 0);
+  attachmentList.innerHTML = selectedAttachments.map((filePath, index) => `
+    <div class="attachment-chip" title="${escapeHtml(filePath)}">
+      <span class="attachment-chip-path">${escapeHtml(getAttachmentName(filePath))}</span>
+      <button class="attachment-chip-remove" type="button" data-attachment-index="${index}" aria-label="移除附件">×</button>
+    </div>
+  `).join('');
+}
+
+function buildMessageWithAttachments(text, attachments) {
+  if (!attachments.length) return text;
+  const attachmentLines = attachments.map((filePath, index) => `${index + 1}. ${filePath}`).join('\n');
+  const messageText = text || '请处理以下本机附件。';
+  return `${messageText}\n\n附件路径（文件已经在本机，不需要上传，请直接按路径读取）：\n${attachmentLines}`;
+}
+
+async function selectAttachments() {
+  if (!window.api.selectAttachments) return;
+  try {
+    const result = await window.api.selectAttachments();
+    if (!result?.success) {
+      addMessage(result?.error || '选择附件失败', 'agent');
+      return;
+    }
+    const filePaths = Array.isArray(result.filePaths) ? result.filePaths : [];
+    selectedAttachments = [...new Set([...selectedAttachments, ...filePaths])];
+    renderSelectedAttachments();
+    chatInput?.focus();
+  } catch (err) {
+    addMessage(`选择附件异常: ${err.message}`, 'agent');
+  }
+}
+
 async function sendMessage() {
   const text = chatInput.value.trim();
-  if (!text) return;
+  const attachments = [...selectedAttachments];
+  if (!text && attachments.length === 0) return;
   if (!agentRunning) {
     addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent');
     return;
@@ -2026,10 +2071,13 @@ async function sendMessage() {
     currentSessionId = createNewSession();
   }
 
-  addMessage(text, 'user');
-  addMessageToSession(text, 'user');
+  const messageForAgent = buildMessageWithAttachments(text, attachments);
+  addMessage(messageForAgent, 'user');
+  addMessageToSession(messageForAgent, 'user');
   chatInput.value = '';
   chatInput.style.height = 'auto';
+  selectedAttachments = [];
+  renderSelectedAttachments();
   updateChatLayout();
 
   sendBtn.disabled = true;
@@ -2040,7 +2088,7 @@ async function sendMessage() {
   const history = buildConversationHistory();
 
   try {
-    const result = await window.api.agentSendMessage(currentSessionId, text, history);
+    const result = await window.api.agentSendMessage(currentSessionId, messageForAgent, history);
     if (!result.success) {
       addMessage(result.error || '发送失败', 'agent');
     }
@@ -2069,6 +2117,17 @@ async function stopGeneration() {
 
 if (sendBtn) sendBtn.addEventListener('click', sendMessage);
 if (stopBtn) stopBtn.addEventListener('click', stopGeneration);
+if (attachBtn) attachBtn.addEventListener('click', selectAttachments);
+if (attachmentList) {
+  attachmentList.addEventListener('click', (e) => {
+    const removeBtn = e.target.closest('.attachment-chip-remove');
+    if (!removeBtn) return;
+    const index = Number(removeBtn.dataset.attachmentIndex);
+    if (!Number.isInteger(index)) return;
+    selectedAttachments.splice(index, 1);
+    renderSelectedAttachments();
+  });
+}
 if (chatInput) {
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
