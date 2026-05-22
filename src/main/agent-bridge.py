@@ -207,6 +207,9 @@ def _handle_set_workspace(msg):
 
 
 def main():
+    # Enable interactive mode so tools like cronjob are available
+    os.environ["HERMES_INTERACTIVE"] = "1"
+
     # Signal ready
     _emit({"type": "ready"})
 
