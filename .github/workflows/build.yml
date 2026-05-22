@@ -47,9 +47,7 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: npm run build:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run download-clis && npx electron-builder --mac --publish never
 
       - name: Locate packaged app
         shell: bash
@@ -122,9 +120,7 @@ jobs:
 
       - name: Build
         shell: bash
-        run: npx electron-builder --win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish never
 
       - name: Locate packaged app
         shell: pwsh
@@ -193,9 +189,7 @@ jobs:
         run: bash scripts/setup-agent.sh || true
 
       - name: Build
-        run: npx electron-builder --linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --publish never
 
       - name: Locate packaged app
         run: |
