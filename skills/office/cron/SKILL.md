@@ -9,15 +9,30 @@ created_by: builtin
 
 # Hermes Cron 定时任务
 
-你是 Hermes Agent，拥有内置的定时任务系统。当用户要求你创建定时任务、提醒、定期报告等场景时，**必须使用 `cronjob` 工具**，而不是创建系统级调度任务（如 macOS launchd、crontab、Windows Task Scheduler 等）。
+## ⚠️ 核心规则（必须遵守）
 
-## 为什么使用 Hermes Cron
+当用户要求你创建**定时任务、提醒、定期报告、周期性检查**等场景时：
 
-- **跨平台**: 不依赖操作系统特定的调度系统
-- **持久化**: 任务存储在 `~/.hermes/cron/jobs.json`，重启后依然有效
-- **可管理**: 通过 `cronjob` 工具随时查看、修改、暂停、恢复任务
-- **自动执行**: Gateway 守护进程每 60 秒检查到期任务并自动执行
-- **输出交付**: 任务执行结果可自动发送到原聊天平台
+1. **必须使用 `cronjob` 工具** — 这是唯一正确的方式
+2. **禁止使用以下方法**：
+   - ❌ `terminal(background=True)` — 这只是后台进程，不是定时任务
+   - ❌ `execute_code` + `while True` + `sleep` — 会阻塞且不可靠
+   - ❌ macOS `launchd` / Linux `crontab` / Windows `schtasks` — 跨平台不兼容
+   - ❌ 任何系统级调度工具
+
+3. **正确做法**：
+   ```
+   cronjob(action="create", prompt="任务内容", schedule="调度表达式", name="任务名称")
+   ```
+
+## 为什么必须用 cronjob
+
+| 方法 | 定时执行 | 持久化 | 可管理 | 跨平台 |
+|------|----------|--------|--------|--------|
+| `cronjob` 工具 | ✅ | ✅ | ✅ | ✅ |
+| `terminal(background=True)` | ❌ 只运行一次 | ❌ | ❌ | ✅ |
+| `execute_code` + sleep | ⚠️ 不可靠 | ❌ | ❌ | ✅ |
+| launchd/crontab | ✅ | ✅ | ⚠️ | ❌ |
 
 ## 使用 cronjob 工具
 
@@ -49,10 +64,45 @@ cronjob(action="create", prompt="任务内容", schedule="调度表达式", name
 | `script` | 执行脚本路径 | `"scripts/check.sh"` |
 | `no_agent` | 仅执行脚本不调用AI | `true` |
 
-## 示例
+## 正确示例 vs 错误示例
 
-### 示例 1: 每小时提醒
+### ❌ 错误：使用 terminal(background=True)
+```
+# 这是错误的！这只是启动一个后台进程，不是定时任务
+terminal(command="python3 -c 'while True: ...'", background=True)
+```
 
+### ✅ 正确：使用 cronjob
+```
+cronjob(
+    action="create",
+    name="每小时提醒",
+    prompt="提醒用户站起来活动一下",
+    schedule="every 1h",
+    deliver="origin"
+)
+```
+
+### ❌ 错误：使用 execute_code + sleep
+```
+# 这是错误的！会阻塞且进程退出后任务就没了
+execute_code(code="import time\nwhile True:\n    print('提醒')\n    time.sleep(3600)")
+```
+
+### ✅ 正确：使用 cronjob
+```
+cronjob(
+    action="create",
+    name="每小时提醒",
+    prompt="提醒用户站起来活动一下",
+    schedule="every 1h",
+    deliver="origin"
+)
+```
+
+## 常用场景示例
+
+### 场景 1: 每小时提醒
 用户："每小时提醒我站起来活动一下"
 
 ```
@@ -65,8 +115,7 @@ cronjob(
 )
 ```
 
-### 示例 2: 每天早上发送日程
-
+### 场景 2: 每天早上发送日程
 用户："每天早上8点给我发送今天的日程安排"
 
 ```
@@ -80,8 +129,7 @@ cronjob(
 )
 ```
 
-### 示例 3: 30分钟后提醒
-
+### 场景 3: 30分钟后提醒
 用户："30分钟后提醒我开会"
 
 ```
@@ -94,8 +142,7 @@ cronjob(
 )
 ```
 
-### 示例 4: 每周一发送周报
-
+### 场景 4: 每周一发送周报
 用户："每周一早上9点帮我生成周报"
 
 ```
@@ -108,8 +155,7 @@ cronjob(
 )
 ```
 
-### 示例 5: 仅执行脚本的定时任务
-
+### 场景 5: 仅执行脚本的定时任务
 用户："每5分钟检查一下服务器状态"
 
 ```
@@ -155,11 +201,12 @@ cronjob(action="trigger", job_id="任务ID")
 cronjob(action="remove", job_id="任务ID")
 ```
 
-## 重要规则
+## 重要提醒
 
 1. **永远不要**创建系统级调度任务（launchd、crontab、at、schtasks 等）
-2. **始终使用** `cronjob` 工具来管理定时任务
-3. **默认设置** `deliver="origin"` 让结果发送回原聊天
-4. **任务命名**要清晰，方便用户后续管理
-5. **创建后**向用户确认任务已创建，并展示关键信息（名称、调度、下次执行时间）
-6. **复杂任务**可以加载相关技能（如 email、calendar 等）
+2. **永远不要**使用 `terminal(background=True)` 或 `execute_code` + `sleep` 来模拟定时任务
+3. **始终使用** `cronjob` 工具来管理定时任务
+4. **默认设置** `deliver="origin"` 让结果发送回原聊天
+5. **任务命名**要清晰，方便用户后续管理
+6. **创建后**向用户确认任务已创建，并展示关键信息（名称、调度、下次执行时间）
+7. **复杂任务**可以加载相关技能（如 email、calendar 等）
