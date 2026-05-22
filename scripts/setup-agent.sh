@@ -32,15 +32,25 @@ fi
 
 # Check if venv already exists (clear if broken)
 for VENV_DIR in "venv" ".venv"; do
-  if [ -d "$VENV_DIR" ] && [ -f "$VENV_DIR/bin/python3" ]; then
-    echo "✅ Checking existing $VENV_DIR..."
-    if "$VENV_DIR/bin/python3" -c "import yaml" 2>/dev/null; then
-      echo "✅ Dependencies verified. Agent is ready."
-      exit 0
-    else
-      echo "⚠️  $VENV_DIR exists but dependencies incomplete. Clearing..."
-      rm -rf "$VENV_DIR"
-      break
+  if [ -d "$VENV_DIR" ]; then
+    # Platform-specific python binary check
+    PYTHON_BIN=""
+    if [ -f "$VENV_DIR/bin/python3" ]; then
+      PYTHON_BIN="$VENV_DIR/bin/python3"
+    elif [ -f "$VENV_DIR/Scripts/python.exe" ]; then
+      PYTHON_BIN="$VENV_DIR/Scripts/python.exe"
+    fi
+
+    if [ -n "$PYTHON_BIN" ]; then
+      echo "✅ Checking existing $VENV_DIR..."
+      if "$PYTHON_BIN" -c "import yaml" 2>/dev/null; then
+        echo "✅ Dependencies verified. Agent is ready."
+        exit 0
+      else
+        echo "⚠️  $VENV_DIR exists but dependencies incomplete. Clearing..."
+        rm -rf "$VENV_DIR"
+        break
+      fi
     fi
   fi
 done
@@ -61,4 +71,9 @@ echo "✅ Hermes Agent setup complete!"
 echo "   venv: src/hermes-agent/venv"
 echo ""
 echo "To verify:"
-echo "   src/hermes-agent/venv/bin/python3 -c 'import yaml; print(\"OK\")'"
+# Platform-specific verification command
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+  echo "   src/hermes-agent/venv/Scripts/python.exe -c 'import yaml; print(\"OK\")'"
+else
+  echo "   src/hermes-agent/venv/bin/python3 -c 'import yaml; print(\"OK\")'"
+fi

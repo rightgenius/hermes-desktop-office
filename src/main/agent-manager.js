@@ -73,11 +73,12 @@ class AgentManager {
   async installSkillDeps(packages) {
     if (!this._pythonCmd) {
       const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
-      const bundledPython = path.join(resourcesDir, 'python-runtime', 'bin', 'python3');
+      const isWin = process.platform === 'win32';
+      const bundledPython = path.join(resourcesDir, 'python-runtime', isWin ? 'python.exe' : path.join('bin', 'python3'));
       if (fs.existsSync(bundledPython)) {
         this._pythonCmd = bundledPython;
       } else {
-        this._pythonCmd = 'python3';
+        this._pythonCmd = isWin ? 'python' : 'python3';
       }
     }
     if (!this._userDepsPath) {
@@ -123,7 +124,8 @@ class AgentManager {
 
     if (isProduction) {
       // Production: use bundled Python runtime
-      const bundledPython = path.join(resourcesDir, 'python-runtime', 'bin', 'python3');
+      const isWin = process.platform === 'win32';
+      const bundledPython = path.join(resourcesDir, 'python-runtime', isWin ? 'python.exe' : path.join('bin', 'python3'));
       if (fs.existsSync(bundledPython)) {
         pythonCmd = bundledPython;
         const bundledDeps = path.join(hermesPath, 'deps');
@@ -137,8 +139,11 @@ class AgentManager {
       }
     } else {
       // Development: use venv python
-      const venvPython = path.join(hermesPath, 'venv', 'bin', 'python3');
-      const dotVenvPython = path.join(hermesPath, '.venv', 'bin', 'python3');
+      const isWin = process.platform === 'win32';
+      const pythonExe = isWin ? 'python.exe' : 'python3';
+      const scriptsDir = isWin ? 'Scripts' : 'bin';
+      const venvPython = path.join(hermesPath, 'venv', scriptsDir, pythonExe);
+      const dotVenvPython = path.join(hermesPath, '.venv', scriptsDir, pythonExe);
       pythonCmd = fs.existsSync(venvPython) ? venvPython
                 : fs.existsSync(dotVenvPython) ? dotVenvPython
                 : null;
@@ -252,10 +257,21 @@ class AgentManager {
         this.emitLog('info', 'Agent 已停止'); this.sendStatusUpdate();
         resolve({ success: true });
       });
-      this.process.kill('SIGTERM');
+      // Windows doesn't support SIGTERM, use process.kill() which sends
+      // SIGTERM on POSIX and terminates on Windows
+      if (process.platform === 'win32') {
+        this.process.kill();
+      } else {
+        this.process.kill('SIGTERM');
+      }
       setTimeout(() => {
         if (this.process) {
-          this.process.kill('SIGKILL'); this.running = false; this.process = null;
+          if (process.platform === 'win32') {
+            spawn('taskkill', ['/pid', this.process.pid, '/f', '/t']);
+          } else {
+            this.process.kill('SIGKILL');
+          }
+          this.running = false; this.process = null;
           this.sessionStates.clear();
           this.emitLog('info', 'Agent 已强制停止'); this.sendStatusUpdate();
           resolve({ success: true });

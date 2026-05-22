@@ -5,7 +5,9 @@
 # Installs hermes-agent and all dependencies into a portable deps/ directory
 # using pip install --target. This directory is then bundled with the app.
 #
-# Usage: bash scripts/bundle-agent-deps.sh
+# Usage: bash scripts/bundle-agent-deps.sh [platform]
+#   platform: auto (default) — uses current system Python
+#             macos, windows, linux — downloads platform-specific wheels
 # ============================================================================
 
 set -e
@@ -20,26 +22,64 @@ if [ ! -f "$HERMES_DIR/cli.py" ]; then
   exit 1
 fi
 
-# Check for Python3
-if ! command -v python3 &> /dev/null; then
-  echo "❌ python3 not found."
-  exit 1
+# Determine target platform
+TARGET_PLATFORM="${1:-auto}"
+if [ "$TARGET_PLATFORM" = "auto" ]; then
+  OS_NAME=$(uname -s)
+  case "$OS_NAME" in
+    Darwin)  TARGET_PLATFORM="macos" ;;
+    MINGW*|MSYS*|CYGWIN*) TARGET_PLATFORM="windows" ;;
+    Linux) TARGET_PLATFORM="linux" ;;
+    *) echo "❌ Unsupported OS: $OS_NAME"; exit 1 ;;
+  esac
 fi
+
+# Map platform to pip --platform values
+PIP_PLATFORM=""
+PIP_ONLY_BINARY=""
+PYTHON_CMD="python3"
+
+case "$TARGET_PLATFORM" in
+  macos)
+    # Native build — no platform override needed
+    ;;
+  windows)
+    PIP_PLATFORM="win_amd64"
+    PIP_ONLY_BINARY=":all:"
+    ;;
+  linux)
+    PIP_PLATFORM="manylinux2014_x86_64"
+    PIP_ONLY_BINARY=":all:"
+    ;;
+  auto)
+    # Native install — no platform override
+    ;;
+esac
 
 echo "→ Installing hermes-agent dependencies to deps/ ..."
 echo "  (this may take a few minutes)"
+echo "  platform: $TARGET_PLATFORM"
 
 # Clean existing deps
 rm -rf "$DEPS_DIR"
 
-# Install to target directory
-python3 -m pip install --target "$DEPS_DIR" --upgrade pip setuptools wheel
-python3 -m pip install --target "$DEPS_DIR" "$HERMES_DIR"
+# Install base deps
+$PYTHON_CMD -m pip install --target "$DEPS_DIR" --upgrade pip setuptools wheel
+
+if [ -n "$PIP_PLATFORM" ]; then
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "$HERMES_DIR"
+else
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" "$HERMES_DIR"
+fi
 
 echo ""
 echo "→ Installing office skills dependencies (markitdown, Pillow, openpyxl, pandas) ..."
-python3 -m pip install --target "$DEPS_DIR" "markitdown[pptx]" Pillow openpyxl pandas
+if [ -n "$PIP_PLATFORM" ]; then
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "markitdown[pptx]" Pillow openpyxl pandas
+else
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" "markitdown[pptx]" Pillow openpyxl pandas
+fi
 
 echo ""
-echo "✅ Dependencies bundled to src/hermes-agent/deps/"
+echo "✅ Dependencies bundled to src/hermes-agent/deps/ ($TARGET_PLATFORM)"
 echo "   $(ls "$DEPS_DIR" | wc -l | tr -d ' ') packages installed"
