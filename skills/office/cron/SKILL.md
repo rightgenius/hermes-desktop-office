@@ -1,29 +1,42 @@
 ---
 name: cron
-description: 使用 Hermes 内置 cron 系统创建和管理定时任务。当用户要求创建定时任务、提醒、定期报告等场景时使用此技能。
+description: ⚠️ 创建定时任务时MUST使用cronjob工具，禁止使用terminal/launchd/crontab。用于定时任务、提醒、定期报告等场景。
 version: 1.0.0
 author: Hermes
 license: MIT
 created_by: builtin
+tags: ["cron", "schedule", "timer", "reminder", "periodic", "定时任务", "调度"]
+category: productivity
+metadata:
+  hermes:
+    tags: ["cron", "schedule", "timer", "reminder", "periodic"]
+    category: productivity
+    config:
+      skills.cron.enabled: true
 ---
 
-# Hermes Cron 定时任务
+# ⏰ Hermes Cron 定时任务技能
 
-## ⚠️ 核心规则（必须遵守）
+## 🚨 最高优先级规则（必须遵守）
 
-当用户要求你创建**定时任务、提醒、定期报告、周期性检查**等场景时：
+当用户要求你创建**定时任务、提醒、定期报告、周期性检查、每隔 X 时间执行**等场景时：
 
-1. **必须使用 `cronjob` 工具** — 这是唯一正确的方式
-2. **禁止使用以下方法**：
-   - ❌ `terminal(background=True)` — 这只是后台进程，不是定时任务
-   - ❌ `execute_code` + `while True` + `sleep` — 会阻塞且不可靠
-   - ❌ macOS `launchd` / Linux `crontab` / Windows `schtasks` — 跨平台不兼容
-   - ❌ 任何系统级调度工具
+### ✅ 唯一正确的方法
 
-3. **正确做法**：
-   ```
-   cronjob(action="create", prompt="任务内容", schedule="调度表达式", name="任务名称")
-   ```
+```
+cronjob(action="create", prompt="任务内容", schedule="调度表达式", name="任务名称")
+```
+
+### ❌ 绝对禁止的方法
+
+| 错误方法 | 为什么错误 |
+|----------|------------|
+| `terminal(background=True)` | 这只是启动一个后台进程，不是定时任务 |
+| `execute_code` + `while True` + `sleep` | 会阻塞且进程退出后任务就没了 |
+| macOS `launchd` / `launchctl` | 跨平台不兼容，且不是 Hermes 的标准方式 |
+| Linux `crontab` | 跨平台不兼容，且不是 Hermes 的标准方式 |
+| Windows `schtasks` | 跨平台不兼容，且不是 Hermes 的标准方式 |
+| 任何系统级调度工具 | 不是 Hermes 的标准方式 |
 
 ## 为什么必须用 cronjob
 
@@ -87,6 +100,23 @@ cronjob(
 ```
 # 这是错误的！会阻塞且进程退出后任务就没了
 execute_code(code="import time\nwhile True:\n    print('提醒')\n    time.sleep(3600)")
+```
+
+### ✅ 正确：使用 cronjob
+```
+cronjob(
+    action="create",
+    name="每小时提醒",
+    prompt="提醒用户站起来活动一下",
+    schedule="every 1h",
+    deliver="origin"
+)
+```
+
+### ❌ 错误：使用 launchd/crontab
+```
+# 这是错误的！跨平台不兼容，且不是 Hermes 的标准方式
+terminal(command="launchctl load ~/Library/LaunchAgents/com.example.task.plist")
 ```
 
 ### ✅ 正确：使用 cronjob

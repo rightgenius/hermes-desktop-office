@@ -9,31 +9,46 @@ function ensureExternalSkillsDirInConfig(hermesHome, skillsPath) {
   const normalizedSkillsPath = skillsPath.replace(/\\/g, '/');
 
   try {
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, 'utf-8');
-      if (content.includes(normalizedSkillsPath)) {
-        return; // Already configured
-      }
-      // Check if skills section exists with any nested keys
-      const skillsSectionMatch = content.match(/^(skills:\n(?:  .+\n)*)/m);
-      if (skillsSectionMatch) {
-        // Insert external_dirs at the end of the skills section
-        const insertPoint = skillsSectionMatch[0].length;
-        const before = content.substring(0, insertPoint);
-        const after = content.substring(insertPoint);
-        const updated = before + `  external_dirs:\n    - "${normalizedSkillsPath}"\n` + after;
-        fs.writeFileSync(configPath, updated, 'utf-8');
-      } else {
-        // Append skills section
-        fs.writeFileSync(configPath,
-          content + `\nskills:\n  external_dirs:\n    - "${normalizedSkillsPath}"\n`,
-          'utf-8'
-        );
-      }
-    } else {
-      // Create new config
+    if (!fs.existsSync(configPath)) {
       fs.writeFileSync(configPath,
         `skills:\n  external_dirs:\n    - "${normalizedSkillsPath}"\n`,
+        'utf-8'
+      );
+      return;
+    }
+
+    const content = fs.readFileSync(configPath, 'utf-8');
+
+    // Already configured with this exact path
+    if (content.includes(normalizedSkillsPath)) {
+      return;
+    }
+
+    // Check if external_dirs section exists but is empty or doesn't contain our path
+    const externalDirsMatch = content.match(/(  external_dirs:\s*\n)((?:\s+- .+\n)*)/);
+    if (externalDirsMatch) {
+      // external_dirs exists but doesn't have our path - add it
+      const insertPoint = externalDirsMatch.index + externalDirsMatch[0].length;
+      const before = content.substring(0, insertPoint);
+      const after = content.substring(insertPoint);
+      const updated = before + `    - "${normalizedSkillsPath}"\n` + after;
+      fs.writeFileSync(configPath, updated, 'utf-8');
+      return;
+    }
+
+    // Check if skills section exists with any nested keys
+    const skillsSectionMatch = content.match(/^(skills:\n(?:  .+\n)*)/m);
+    if (skillsSectionMatch) {
+      // Insert external_dirs at the end of the skills section
+      const insertPoint = skillsSectionMatch[0].length;
+      const before = content.substring(0, insertPoint);
+      const after = content.substring(insertPoint);
+      const updated = before + `  external_dirs:\n    - "${normalizedSkillsPath}"\n` + after;
+      fs.writeFileSync(configPath, updated, 'utf-8');
+    } else {
+      // Append skills section
+      fs.writeFileSync(configPath,
+        content + `\nskills:\n  external_dirs:\n    - "${normalizedSkillsPath}"\n`,
         'utf-8'
       );
     }
