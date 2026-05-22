@@ -67,7 +67,19 @@ rm -rf "$DEPS_DIR"
 $PYTHON_CMD -m pip install --target "$DEPS_DIR" --upgrade pip setuptools wheel
 
 if [ -n "$PIP_PLATFORM" ]; then
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "$HERMES_DIR"
+  # For cross-platform builds, we can't install a local directory with --only-binary.
+  # Build a wheel first, then install it with platform constraints.
+  echo "  Building hermes-agent wheel for $TARGET_PLATFORM..."
+  WHEEL_DIR=$(mktemp -d)
+  $PYTHON_CMD -m pip wheel --no-deps --wheel-dir "$WHEEL_DIR" "$HERMES_DIR"
+  WHEEL_FILE=$(find "$WHEEL_DIR" -name "*.whl" | head -1)
+  if [ -z "$WHEEL_FILE" ]; then
+    echo "❌ Failed to build hermes-agent wheel"
+    rm -rf "$WHEEL_DIR"
+    exit 1
+  fi
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "$WHEEL_FILE"
+  rm -rf "$WHEEL_DIR"
 else
   $PYTHON_CMD -m pip install --target "$DEPS_DIR" "$HERMES_DIR"
 fi
