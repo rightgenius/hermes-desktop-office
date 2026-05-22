@@ -24,7 +24,8 @@
     "bundle:python:windows": "bash scripts/bundle-python.sh windows",
     "bundle:python:linux": "bash scripts/bundle-python.sh linux",
     "test:scanner": "node test-skill-scanner.js",
-    "test:e2e": "playwright test tests/skills-e2e.spec.js"
+    "test:e2e": "playwright test tests/skills-e2e.spec.js",
+    "test:packaged": "playwright test tests/packaged-smoke.spec.js"
   },
   "build": {
     "appId": "ai.hermes.desktop.office",

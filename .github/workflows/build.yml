@@ -50,6 +50,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Locate packaged app
+        shell: bash
+        run: |
+          APP_PATH="$(find dist -path '*/Contents/MacOS/*' -type f | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Packaged macOS executable not found"
+            find dist -maxdepth 3 -print
+            exit 1
+          fi
+          echo "PACKAGED_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Using packaged app: $APP_PATH"
+
+      - name: Smoke test packaged app
+        run: npm run test:packaged
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -110,6 +125,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Locate packaged app
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "dist/win-unpacked" -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) {
+            Write-Error "Packaged Windows executable not found"
+            Get-ChildItem -Path dist -Recurse | Select-Object -First 200
+            exit 1
+          }
+          "PACKAGED_APP_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using packaged app: $($exe.FullName)"
+
+      - name: Smoke test packaged app
+        run: npm run test:packaged
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -144,7 +174,7 @@ jobs:
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
 
       - name: Install system deps
-        run: sudo apt-get update && sudo apt-get install -y libfuse2
+        run: sudo apt-get update && sudo apt-get install -y libfuse2 xvfb
 
       - name: Install dependencies
         run: npm ci
@@ -165,6 +195,20 @@ jobs:
         run: npx electron-builder --linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Locate packaged app
+        run: |
+          APP_PATH="$(find dist/linux-unpacked -maxdepth 1 -type f -executable | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Packaged Linux executable not found"
+            find dist -maxdepth 3 -print
+            exit 1
+          fi
+          echo "PACKAGED_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Using packaged app: $APP_PATH"
+
+      - name: Smoke test packaged app
+        run: xvfb-run -a npm run test:packaged
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
