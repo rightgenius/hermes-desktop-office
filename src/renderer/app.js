@@ -834,6 +834,7 @@ function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
   if (!currentSessionId) return;
   const sessions = loadSessions();
   if (sessions[currentSessionId]) {
+    const messageIndex = sessions[currentSessionId].messages.length;
     sessions[currentSessionId].messages.push({ 
       text, 
       sender, 
@@ -849,6 +850,7 @@ function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
     }
     saveSessions(sessions);
     renderSessionList();
+    return messageIndex;
   }
 }
 
@@ -964,13 +966,59 @@ function deleteSession(sessionId) {
   if (sessionId === currentSessionId) {
     currentSessionId = null;
     chatMessages.innerHTML = '';
-    const emptyState = document.getElementById('chat-empty-state');
-    if (emptyState) chatMessages.appendChild(emptyState);
+    restoreChatEmptyState();
     updateChatLayout();
     syncInputAreaState(null);
   }
   
   renderSessionList();
+}
+
+function closeMessageContextMenu() {
+  const existing = document.getElementById('message-context-menu-active');
+  if (existing) existing.remove();
+}
+
+function openMessageContextMenu(messageEl, event) {
+  const sessionId = currentSessionId;
+  const messageIndex = Number(messageEl.dataset.messageIndex);
+  if (!sessionId || !Number.isInteger(messageIndex)) return;
+  event.preventDefault();
+  closeMessageContextMenu();
+  closeSessionMenu();
+
+  const menu = document.createElement('div');
+  menu.className = 'message-context-menu';
+  menu.id = 'message-context-menu-active';
+  menu.innerHTML = '<button class="session-menu-item danger" data-action="delete-message">删除这条消息</button>';
+  document.body.appendChild(menu);
+
+  const padding = 8;
+  const rect = menu.getBoundingClientRect();
+  const left = Math.min(event.clientX, window.innerWidth - rect.width - padding);
+  const top = Math.min(event.clientY, window.innerHeight - rect.height - padding);
+  menu.style.left = `${Math.max(padding, left)}px`;
+  menu.style.top = `${Math.max(padding, top)}px`;
+
+  menu.querySelector('[data-action="delete-message"]').addEventListener('click', () => {
+    deleteMessageAtIndex(sessionId, messageIndex);
+    closeMessageContextMenu();
+  });
+}
+
+function deleteMessageAtIndex(sessionId, messageIndex) {
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session || !Array.isArray(session.messages) || !session.messages[messageIndex]) return;
+
+  session.messages.splice(messageIndex, 1);
+  saveSessions(sessions);
+
+  if (sessionId === currentSessionId) {
+    loadSession(sessionId);
+  } else {
+    renderSessionList();
+  }
 }
 
 function formatSessionMarkdown(session) {
@@ -1496,12 +1544,14 @@ function loadSession(sessionId) {
   const session = sessions[sessionId];
   chatMessages.innerHTML = '';
   if (!session) {
+    restoreChatEmptyState();
     updateChatLayout();
     restoreStreamingState();
     syncInputAreaState(sessionId);
     return;
   }
-  session.messages.forEach(m => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || []));
+  session.messages.forEach((m, index) => addMessage(m.text, m.sender, false, m.reasoning || '', m.toolCalls || [], '', index));
+  if (session.messages.length === 0) restoreChatEmptyState();
   
   restoreStreamingState();
   
@@ -1510,6 +1560,21 @@ function loadSession(sessionId) {
   syncWorkspacePath(session.workspacePath);
   
   renderSessionList();
+}
+
+function restoreChatEmptyState() {
+  if (!chatMessages) return;
+  let emptyState = document.getElementById('chat-empty-state');
+  if (!emptyState) {
+    emptyState = document.createElement('div');
+    emptyState.className = 'chat-empty-state';
+    emptyState.id = 'chat-empty-state';
+    emptyState.innerHTML = `
+      <div class="chat-empty-icon">⚡</div>
+      <h2 class="chat-empty-title">使用 Hermes 开始对话</h2>
+    `;
+  }
+  if (!chatMessages.contains(emptyState)) chatMessages.appendChild(emptyState);
 }
 
 function syncWorkspacePath(sessionWorkspacePath) {
@@ -1531,11 +1596,12 @@ function formatTime(timestamp) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', toolCalls = [], sessionId = '') {
+function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', toolCalls = [], sessionId = '', messageIndex = null) {
   const msg = document.createElement('div');
   msg.className = `message ${sender}`;
   if (isStreaming) msg.classList.add('streaming');
   if (sessionId) msg.dataset.sessionId = sessionId;
+  if (Number.isInteger(messageIndex)) msg.dataset.messageIndex = String(messageIndex);
 
   let innerHTML = '';
   if (sender === 'agent') {
@@ -1909,7 +1975,8 @@ function finalizeStreamingMessage(sessionId, errorText = null) {
   const text = errorText !== null ? errorText : (bubble._rawText || bubble.textContent);
   const reasoning = bubble._rawReasoning || '';
   const toolCalls = bubble._toolCalls || {};
-  addMessageToSession(text, 'agent', reasoning, toolCalls);
+  const agentMessageIndex = addMessageToSession(text, 'agent', reasoning, toolCalls);
+  if (Number.isInteger(agentMessageIndex)) msg.dataset.messageIndex = String(agentMessageIndex);
   
   // Clean up in-memory state
   delete streamingSessions[sessionId];
@@ -2072,8 +2139,8 @@ async function sendMessage() {
   }
 
   const messageForAgent = buildMessageWithAttachments(text, attachments);
-  addMessage(messageForAgent, 'user');
-  addMessageToSession(messageForAgent, 'user');
+  const userMessageIndex = addMessageToSession(messageForAgent, 'user');
+  addMessage(messageForAgent, 'user', false, '', [], '', userMessageIndex);
   chatInput.value = '';
   chatInput.style.height = 'auto';
   selectedAttachments = [];
@@ -2128,6 +2195,19 @@ if (attachmentList) {
     renderSelectedAttachments();
   });
 }
+if (chatMessages) {
+  chatMessages.addEventListener('contextmenu', (e) => {
+    const messageEl = e.target.closest('.message');
+    if (!messageEl || !chatMessages.contains(messageEl)) return;
+    openMessageContextMenu(messageEl, e);
+  });
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#message-context-menu-active')) closeMessageContextMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMessageContextMenu();
+});
 if (chatInput) {
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -3195,10 +3275,7 @@ function getTabRowHTML(tab, skill) {
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
   currentSessionId = null;
   chatMessages.innerHTML = '';
-  const emptyState = document.getElementById('chat-empty-state');
-  if (emptyState) {
-    chatMessages.appendChild(emptyState);
-  }
+  restoreChatEmptyState();
   updateChatLayout();
   renderSessionList();
 });
