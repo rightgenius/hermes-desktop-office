@@ -1,6 +1,6 @@
 {
   "name": "hermes-desktop-office",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hermes Desktop for Office — bundled AI agent with Feishu & DingTalk CLI",
   "main": "src/main/index.js",
   "scripts": {
@@ -104,9 +104,13 @@
       ]
     }
   },
+  "author": {
+    "name": "rightgenius",
+    "email": "rightgenius@users.noreply.github.com"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/nousresearch/hermes-desktop-office.git"
+    "url": "https://github.com/rightgenius/hermes-desktop-office.git"
   },
   "license": "MIT",
   "keywords": [
