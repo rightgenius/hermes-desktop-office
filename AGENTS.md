@@ -38,9 +38,12 @@ hermes-desktop-office/
 │   ├── dingtalk-cli-messaging/   # DingTalk messaging skill
 │   └── dws/                      # DingTalk full skill with references + scripts
 ├── src/hermes-agent/             # Git submodule — Hermes Agent (DO NOT modify)
+├── .github/workflows/
+│   ├── ci.yml                    # CI: main push + PR, build+test, skip on tag push
+│   └── release.yml               # Release: tag push only, build+test+GitHub Release
 ├── scripts/
 │   ├── setup-agent.sh            # Create venv + install hermes-agent deps
-│   ├── download-clis.sh          # Download CLI binaries for all platforms (lark-cli + dws-cli)
+│   ├── download-clis.sh          # Download CLI binaries (darwin-arm64, linux-amd64, windows-amd64)
 │   ├── bundle-agent-deps.sh      # Bundle Python deps to hermes-agent/deps/ (incl. office deps)
 │   └── bundle-python.sh          # Download standalone Python 3.13 from python-build-standalone
 └── docs/
@@ -106,15 +109,18 @@ hermes-desktop-office/
 - **DingTalk (dws)**: Device flow auth via `--device` flag. URL output to stderr. Token stored in `~/.lark-cli/` (shared config dir). No granular permissions — only `authenticated` status with `corp_id`.
 - **Permissions table**: 3 columns (name/description/status). Feishu has 100+ scoped permissions with Chinese descriptions mapped in `app.js`. DingTalk shows single "认证访问" entry.
 - **CLI versions**: Displayed via `--version` flag (e.g., `v1.0.26`). Fetched at startup and after auth.
-- **download-clis.sh**: Downloads from GitHub releases — lark-cli from `larksuite/cli`, dws-cli from `DingTalk-Real-AI/dingtalk-workspace-cli`. Archive extraction uses `find` to locate binary by name, skipping documentation files.
+- **download-clis.sh**: Downloads from GitHub releases — lark-cli from `larksuite/cli`, dws-cli from `DingTalk-Real-AI/dingtalk-workspace-cli`. Platforms: `darwin-arm64`, `linux-amd64`, `windows-amd64` (`darwin-amd64` removed in v0.3.0). Archive extraction uses `find` to locate binary by name, skipping documentation files.
 
-### Build
+### Build & CI/CD
 - `npm run dev` — development with DevTools
 - `npm run build:mac` — prebuild bundles Python runtime + agent deps, then electron-builder
+- **Supported platforms**: macOS arm64, Windows x64, Linux x64 (macOS x64 dropped in v0.3.0)
 - **asarUnpack**: `agent-bridge.py`, CLI binaries (`lark-cli`, `dws`), and `skills/` are unpacked from asar for external process access
 - **extraResources**: `hermes-agent/` (from submodule), `python-runtime/` (standalone Python 3.13)
 - CLI binaries and python-runtime are gitignored, downloaded during build
 - Office skills (`skills/office/`) are version controlled and bundled via `files` in package.json
+- **ci.yml** (`.github/workflows/ci.yml`): triggers on `push: branches: [main]` + PRs. Jobs use `if: github.ref_type != 'tag'` to skip on tag push. Builds and tests all platforms, uploads artifacts (30-day retention). No release publishing.
+- **release.yml** (`.github/workflows/release.yml`): triggers only on `push: tags: ['v*']`. Full build + test + GitHub Release publishing. Self-contained, no dependency on CI workflow.
 
 ## Rules
 

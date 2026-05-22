@@ -8,7 +8,7 @@ A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingT
 - **Feishu CLI bundled**: One-click browser authorization
 - **DingTalk CLI bundled**: One-click browser authorization
 - **Simple API Token configuration**: Configure your AI provider in the GUI
-- **Cross-platform**: macOS and Windows support
+- **Cross-platform**: macOS (Apple Silicon), Windows, and Linux
 
 ## Architecture
 
@@ -35,8 +35,8 @@ A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingT
 | Component | Source | Method |
 |-----------|--------|--------|
 | Hermes Agent | `src/hermes-agent` (git submodule) | Source code |
-| lark-cli | `assets/feishu-cli/` | Prebuilt binary (v1.0.24) |
-| dws | `assets/dws-cli/` | Prebuilt binary (v1.0.21) |
+| lark-cli | `assets/feishu-cli/` | Prebuilt binary (v1.0.26) |
+| dws | `assets/dws-cli/` | Prebuilt binary (v1.0.29) |
 
 ## Development
 
@@ -44,17 +44,37 @@ A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingT
 # Install deps
 npm install
 
-# Download CLI binaries
-npm run download-clis
+# Setup hermes-agent venv
+bash scripts/setup-agent.sh
+
+# Download CLI binaries (darwin-arm64, linux-amd64, windows-amd64)
+bash scripts/download-clis.sh
 
 # Run in development
 npm run dev
 
-# Build for macOS
+# Build for macOS (Apple Silicon)
 npm run build:mac
 
 # Build for Windows
 npm run build:win
+
+# Build for Linux
+npm run build:linux
+```
+
+## CI/CD
+
+| Workflow | Trigger | Purpose |
+|----------|---------|---------|
+| `ci.yml` | `push: main` + PRs | Build + test all platforms, upload artifacts |
+| `release.yml` | `push: tag (v*)` | Build + test + publish GitHub Release |
+
+Push a tag to release:
+```bash
+npm version patch  # bumps version
+git tag v0.3.1
+git push origin main --tags
 ```
 
 ## Project Structure
@@ -70,9 +90,16 @@ hermes-desktop-office/
 │   ├── feishu-cli/        # lark-cli binaries per platform
 │   └── dws-cli/           # dws-cli binaries per platform
 ├── scripts/
-│   └── download-clis.sh   # CLI binary downloader
+│   ├── download-clis.sh      # CLI binary downloader (darwin-arm64, linux-amd64, windows-amd64)
+│   ├── setup-agent.sh        # Create venv + install hermes-agent deps
+│   ├── bundle-agent-deps.sh  # Bundle Python deps for production
+│   └── bundle-python.sh      # Bundle standalone Python 3.13
+├── .github/workflows/
+│   ├── ci.yml                # CI on main branch + PRs
+│   └── release.yml           # Release on tag push
 ├── docs/
-│   └── development-plan.md
+│   ├── tasks.md
+│   └── phase-10-ui-plan.md
 └── package.json
 ```
 

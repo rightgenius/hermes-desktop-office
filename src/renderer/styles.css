@@ -1724,6 +1724,85 @@ body {
   border-left-color: var(--error);
 }
 
+.message-tool-call-group {
+  max-width: 70%;
+  margin: var(--space-sm) 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+
+.message-tool-call-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-md);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition);
+  min-height: 32px;
+}
+
+.message-tool-call-group-header:hover {
+  background: var(--bg-hover);
+}
+
+.message-tool-call-group-summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message-tool-call-group-breakdown {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.message-tool-call-group .message-tool-call-chevron {
+  width: 12px;
+  height: 12px;
+}
+
+.message-tool-call-group.expanded .message-tool-call-chevron {
+  transform: rotate(90deg);
+}
+
+.message-tool-call-group-body {
+  display: none;
+  border-top: 1px solid var(--border-color);
+  padding: var(--space-xs);
+}
+
+.message-tool-call-group.expanded .message-tool-call-group-body {
+  display: block;
+}
+
+.message-tool-call-group-body .message-tool-call {
+  max-width: 100%;
+  margin: var(--space-xs) 0;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+}
+
+.message-tool-call-group-body .message-tool-call:first-child {
+  margin-top: 0;
+}
+
+.message-tool-call-group-body .message-tool-call:last-child {
+  margin-bottom: 0;
+}
+
+/* Running tool calls stand out visually */
+.message-tool-calls > .message-tool-call {
+  max-width: 70%;
+  border-left: 3px solid var(--warning);
+}
+
 /* Prompt Overlay (clarify/approval/sudo/secret) */
 .prompt-overlay {
   position: fixed;

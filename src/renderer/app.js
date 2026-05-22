@@ -788,6 +788,55 @@ let selectedAttachments = [];
 // In-memory storage for streaming messages per session
 const streamingSessions = {};
 
+const TOOL_NAME_MAP = {
+  terminal: '执行命令',
+  read_file: '读取文件',
+  write_file: '写入文件',
+  patch: '编辑文件',
+  search_files: '搜索文件',
+  skill_view: '查看技能',
+  skills_list: '技能列表',
+  todo: '任务清单',
+  delegate_task: '分派子任务',
+  clarify: '请求确认',
+  web_search: '网络搜索',
+  fetch_url: '抓取网页',
+  execute_code: '执行代码',
+  cronjob: '定时任务',
+  send_message: '发送消息',
+  image_gen: '生成图片',
+  tts: '语音合成',
+  vision_screenshot: '截图分析',
+  vision_describe: '图片描述',
+  memory: '记忆管理',
+  browser_navigate: '浏览器导航',
+  browser_click: '浏览器点击',
+  browser_type: '浏览器输入',
+  browser_screenshot: '浏览器截图',
+  browser_scroll: '浏览器滚动',
+  browser_read: '浏览器读取',
+  browser_evaluate: '浏览器执行',
+  browser_close: '关闭浏览器',
+  browser_back: '浏览器返回',
+  browser_forward: '浏览器前进',
+  browser_open: '打开浏览器',
+};
+
+function getToolDisplayName(name) {
+  if (!name) return '工具调用';
+  if (TOOL_NAME_MAP[name]) return TOOL_NAME_MAP[name];
+  if (name.startsWith('mcp_')) {
+    const parts = name.split('_').slice(1);
+    return parts.join('_') || name;
+  }
+  if (name.startsWith('ha_')) return `家居控制`;
+  if (name.startsWith('browser_')) return `浏览器操作`;
+  if (name.startsWith('feishu_')) return `飞书操作`;
+  if (name.startsWith('kanban_')) return `看板操作`;
+  if (name.startsWith('rl_')) return `强化学习`;
+  return name.replace(/_/g, ' ');
+}
+
 const SESSIONS_KEY = 'hermes-chat-sessions';
 
 function loadSessions() {
@@ -1044,7 +1093,7 @@ function formatSessionMarkdown(session) {
       }
       if (msg.toolCalls && msg.toolCalls.length > 0) {
         msg.toolCalls.forEach(tc => {
-          lines.push(`<details><summary>Tool: ${escapeHtml(tc.name || 'unknown')}</summary>`);
+          lines.push(`<details><summary>${escapeHtml(getToolDisplayName(tc.name))}详情</summary>`);
           lines.push('');
           lines.push('```');
           lines.push(escapeHtml(tc.result || ''));
@@ -1808,6 +1857,32 @@ function updateToolCall(sessionId, toolId, result) {
   }
 }
 
+function renderToolCallCard(toolId, tc) {
+  const statusClass = tc.status === 'running' ? 'running' : (tc.result && tc.result.startsWith('ERROR') ? 'error' : 'done');
+  const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
+  const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
+  const statusText = tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成');
+  return `<div class="message-tool-call" data-tool-id="${toolId}">
+    <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
+      <span class="message-tool-call-name">${escapeHtml(getToolDisplayName(tc.name))}</span>
+      <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${statusText}</span>
+      <svg class="message-tool-call-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="message-tool-call-body">
+      <div class="message-tool-call-body-inner">
+        <div class="message-tool-call-args">
+          <div class="message-tool-call-args-label">参数</div>
+          <pre>${escapeHtml(tc.args || '{}')}</pre>
+        </div>
+        ${tc.result !== null ? `<div class="message-tool-call-result">
+          <div class="message-tool-call-result-label">结果</div>
+          <pre class="${resultClass}">${escapeHtml(tc.result)}</pre>
+        </div>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderToolCalls(bubble) {
   const toolCalls = bubble._toolCalls || {};
   const entries = Object.entries(toolCalls);
@@ -1820,31 +1895,47 @@ function renderToolCalls(bubble) {
     bubble.insertBefore(existingContainer, bubble.firstChild);
   }
 
-  existingContainer.innerHTML = entries.map(([toolId, tc]) => {
-    const statusClass = tc.status === 'running' ? 'running' : (tc.result && tc.result.startsWith('ERROR') ? 'error' : 'done');
-    const spinnerHtml = tc.status === 'running' ? '<span class="spinner"></span>' : '';
-    const resultClass = tc.result && tc.result.startsWith('ERROR') ? 'error' : '';
-    const statusText = tc.status === 'running' ? '执行中...' : (tc.result && tc.result.startsWith('ERROR') ? '失败' : '完成');
-    return `<div class="message-tool-call" data-tool-id="${toolId}">
-      <div class="message-tool-call-header" onclick="this.parentElement.classList.toggle('expanded')">
-        <span class="message-tool-call-name">${escapeHtml(tc.name)}</span>
-        <span class="message-tool-call-status ${statusClass}">${spinnerHtml}${statusText}</span>
+  const running = entries.filter(([, tc]) => tc.status === 'running');
+  const done = entries.filter(([, tc]) => tc.status !== 'running');
+
+  const parts = [];
+
+  if (done.length > 0) {
+    const counts = {};
+    let errorCount = 0;
+    done.forEach(([, tc]) => {
+      const key = getToolDisplayName(tc.name);
+      counts[key] = (counts[key] || 0) + 1;
+      if (tc.result && tc.result.startsWith('ERROR')) errorCount++;
+    });
+    const summaryBreakdown = Object.entries(counts)
+      .map(([displayName, n]) => `${n} ${escapeHtml(displayName)}`)
+      .join(', ');
+    const successCount = done.length - errorCount;
+    let summaryText = '';
+    if (errorCount === 0) {
+      summaryText = `✓ ${done.length} 个工具完成`;
+    } else if (successCount === 0) {
+      summaryText = `✕ ${done.length} 个工具失败`;
+    } else {
+      summaryText = `✓ ${successCount} 完成, ✕ ${errorCount} 失败`;
+    }
+    const groupId = 'tcg-' + Math.random().toString(36).slice(2, 8);
+    const groupCards = done.map(([toolId, tc]) => renderToolCallCard(toolId, tc)).join('');
+    parts.push(`<div class="message-tool-call-group collapsed" id="${groupId}">
+      <div class="message-tool-call-group-header" onclick="this.parentElement.classList.toggle('expanded')">
+        <span class="message-tool-call-group-summary">${summaryText} <span class="message-tool-call-group-breakdown">(${summaryBreakdown})</span></span>
         <svg class="message-tool-call-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div class="message-tool-call-body">
-        <div class="message-tool-call-body-inner">
-          <div class="message-tool-call-args">
-            <div class="message-tool-call-args-label">参数</div>
-            <pre>${escapeHtml(tc.args || '{}')}</pre>
-          </div>
-          ${tc.result !== null ? `<div class="message-tool-call-result">
-            <div class="message-tool-call-result-label">结果</div>
-            <pre class="${resultClass}">${escapeHtml(tc.result)}</pre>
-          </div>` : ''}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+      <div class="message-tool-call-group-body">${groupCards}</div>
+    </div>`);
+  }
+
+  running.forEach(([toolId, tc]) => {
+    parts.push(renderToolCallCard(toolId, tc));
+  });
+
+  existingContainer.innerHTML = parts.join('');
 }
 
 function showPromptOverlay(type, data) {
