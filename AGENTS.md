@@ -42,10 +42,11 @@ hermes-desktop-office/
 │   ├── ci.yml                    # CI: main push + PR, build+test, skip on tag push
 │   └── release.yml               # Release: tag push only, build+test+GitHub Release
 ├── scripts/
-│   ├── setup-agent.sh            # Create venv + install hermes-agent deps
-│   ├── download-clis.sh          # Download CLI binaries (darwin-arm64, linux-amd64, windows-amd64)
-│   ├── bundle-agent-deps.sh      # Bundle Python deps to hermes-agent/deps/ (incl. office deps)
-│   └── bundle-python.sh          # Download standalone Python 3.13 from python-build-standalone
+│   ├── setup-agent.sh               # Create venv + install hermes-agent deps
+│   ├── download-clis.sh             # Download CLI binaries (darwin-arm64, linux-amd64, windows-amd64)
+│   ├── bundle-agent-deps.sh         # Bundle Python deps to hermes-agent/deps/ (incl. office deps)
+│   ├── bundle-python.sh             # Download standalone Python 3.13 from python-build-standalone
+│   └── sync-release-to-gitee.sh     # Sync GitHub Release notes/assets to Gitee Release (API v5)
 └── docs/
     ├── tasks.md                  # Development task checklist (Phases 1-10)
     └── phase-10-ui-plan.md       # UI redesign plan
@@ -121,6 +122,16 @@ hermes-desktop-office/
 - Office skills (`skills/office/`) are version controlled and bundled via `files` in package.json
 - **ci.yml** (`.github/workflows/ci.yml`): triggers on `push: branches: [main]` + PRs. Builds and tests all platforms, uploads artifacts (30-day retention). No release publishing. Does not run on tag pushes.
 - **release.yml** (`.github/workflows/release.yml`): triggers only on `push: tags: ['v*']`. Full build + test + GitHub Release publishing. Self-contained, no dependency on CI workflow.
+
+### GitHub + Gitee Dual Push
+- **Remotes**: `origin` has dual push URLs (GitHub + Gitee). `github` and `gitee` remotes are available for single-repo operations.
+- **Code sync**: `git push` sends to both platforms. `git fetch github` / `git fetch gitee` for pulling from a specific platform.
+- **CI/CD**: Only GitHub Actions runs the workflows. Gitee is a code mirror with no CI runners configured (Gitee Go requires paid plan).
+- **Release sync**: `scripts/sync-release-to-gitee.sh` syncs release notes from GitHub Release to Gitee Release via Gitee API v5. Requires `GITEE_TOKEN` env var (personal access token with `projects` scope).
+  - GitHub installers (140~364MB) exceed Gitee's 100MB per-file attachment limit, so only release notes + link to GitHub are synced.
+  - Supports GitHub API rate-limit fallback (HTML scraping) when `GH_TOKEN` is not set.
+  - Run: `GITEE_TOKEN=xxx npm run sync:release v0.4.0` (or `--force` to overwrite).
+- Gitee auto-creates source archives (zip/tar.gz) on release creation.
 
 ## Rules
 

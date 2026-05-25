@@ -2,6 +2,8 @@
 
 A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingTalk CLI, providing a unified GUI for AI-powered office automation.
 
+**Mirror**: [GitHub](https://github.com/rightgenius/hermes-desktop-office) | [Gitee](https://gitee.com/nius/hermes-desktop-office)
+
 ## Features
 
 - **Built-in Hermes Agent**: Powered by [hermes-agent](https://github.com/nousresearch/hermes-agent)
@@ -70,11 +72,34 @@ npm run build:linux
 | `ci.yml` | `push: main` + PRs | Build + test all platforms, upload artifacts |
 | `release.yml` | `push: tag (v*)` | Build + test + publish GitHub Release |
 
-Push a tag to release:
+This repo is dual-published to **GitHub** and **Gitee** (code mirror). Git remotes are configured with dual push URLs — `git push` sends to both platforms at once.
+
+### Release workflow
+
 ```bash
-npm version patch  # bumps version
-git tag v0.3.1
-git push origin main --tags
+# 1. Bump version and tag
+npm version patch
+git push origin --follow-tags
+
+# 2. GitHub Actions builds and publishes to GitHub Release
+# 3. Sync release notes to Gitee Release (Gitee has 100MB asset limit, so installers link to GitHub)
+GITEE_TOKEN=your_gitee_access_token npm run sync:release v0.4.0
+```
+
+See [Release Sync Script](scripts/sync-release-to-gitee.sh) for details.
+
+> **Note**: Gitee Release assets are limited to 100MB per file. All installers (140~364MB) link to GitHub; Gitee auto-attaches source archive only.
+
+### Gitee Remote Setup
+
+```bash
+# Verify remotes (origin has dual push, github/gitee for single-repo ops)
+git remote -v
+# origin  git@github.com:rightgenius/hermes-desktop-office.git (fetch)
+# origin  git@github.com:rightgenius/hermes-desktop-office.git (push)
+# origin  git@gitee.com:nius/hermes-desktop-office.git (push)
+# github  git@github.com:rightgenius/hermes-desktop-office.git (fetch/push)
+# gitee   git@gitee.com:nius/hermes-desktop-office.git (fetch/push)
 ```
 
 ## Project Structure
@@ -90,10 +115,11 @@ hermes-desktop-office/
 │   ├── feishu-cli/        # lark-cli binaries per platform
 │   └── dws-cli/           # dws-cli binaries per platform
 ├── scripts/
-│   ├── download-clis.sh      # CLI binary downloader (darwin-arm64, linux-amd64, windows-amd64)
-│   ├── setup-agent.sh        # Create venv + install hermes-agent deps
-│   ├── bundle-agent-deps.sh  # Bundle Python deps for production
-│   └── bundle-python.sh      # Bundle standalone Python 3.13
+│   ├── download-clis.sh             # CLI binary downloader (darwin-arm64, linux-amd64, windows-amd64)
+│   ├── setup-agent.sh               # Create venv + install hermes-agent deps
+│   ├── bundle-agent-deps.sh         # Bundle Python deps for production
+│   ├── bundle-python.sh             # Bundle standalone Python 3.13
+│   └── sync-release-to-gitee.sh     # Sync GitHub Release notes to Gitee Release
 ├── .github/workflows/
 │   ├── ci.yml                # CI on main branch + PRs
 │   └── release.yml           # Release on tag push
