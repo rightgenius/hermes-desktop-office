@@ -13,9 +13,10 @@ hermes-desktop-office/
 ├── src/
 │   ├── main/
 │   │   ├── index.js              # Electron entry, window lifecycle, graceful shutdown
-│   │   ├── ipc-handlers.js       # IPC channels (config, auth, agent, CLI tools, skills, API test)
+│   │   ├── ipc-handlers.js       # IPC channels (config, auth, agent, gateway, CLI tools, skills, API test)
 │   │   ├── agent-manager.js      # Spawn/stop Hermes Agent via bridge.py + runtime deps install
 │   │   ├── agent-bridge.py       # JSON stdin/stdout bridge for GUI ↔ Agent communication
+│   │   ├── gateway-manager.js    # Gateway lifecycle: detect external, start/stop, config, QR auth, channels
 │   │   ├── config-store.js       # JSON config read/write (Electron userData)
 │   │   └── skill-scanner.js      # Scan builtin/user/agent skills with production path resolution
 │   ├── preload/
@@ -82,11 +83,12 @@ hermes-desktop-office/
 - Markdown CSS uses semantic variables (`--bg-primary`, `--accent`, `--border-color`)
 
 ### Layout
-- Top titlebar: logo + status dots
-- Left rail: 3 SVG icon buttons (chat/settings/logs) — auth merged into settings page
+- Top titlebar: logo + status dots (Agent/Feishu/DingTalk/Gateway)
+- Left rail: SVG icon buttons (chat/settings/gateway/skills/logs/cron)
 - Middle sidebar: page-specific panels (session list + workspace tree)
 - Main area: page content
 - Settings page: card-stacked layout with workspace config + Feishu/DingTalk auth cards
+- Gateway page: status card + platform config (DingTalk/Feishu) + channel list + live logs
 
 ### Session Management
 - **Session list**: Horizontal layout with title/time on left, three-dot menu (⋮) on right
@@ -104,6 +106,15 @@ hermes-desktop-office/
 - **Row click**: Opens detail panel directly (no separate view button)
 - **Status sync**: Toggle switches synced to `~/.hermes/config.yaml` enabled/disabled lists
 - **Production path**: `skill-scanner.js` checks multiple locations: `app.asar.unpacked/skills` → `Resources/skills` → project root `skills`
+
+### Gateway Management
+- **External detection**: On startup, checks PID file → systemd/launchd → process scan. If external Gateway found, shows read-only status.
+- **GUI self-start**: Spawns `hermes gateway run` subprocess with bundled Python + hermes-agent path.
+- **Platform config**: DingTalk (client_id/client_secret) and Feishu (app_id/app_secret/verification_token) stored in `~/.hermes/.env` + `~/.hermes/config.yaml`.
+- **QR auth**: Calls Hermes Agent's `dingtalk_qr_auth()` / `feishu.qr_register()` via subprocess, displays QR code in modal, auto-saves credentials.
+- **Channel list**: Reads `~/.hermes/channel_directory.json` — auto-discovered by Gateway at runtime.
+- **Live logs**: Streams Gateway stderr/stdout to renderer via IPC events.
+- **Graceful shutdown**: Gateway stopped on app quit via `before-quit` handler.
 
 ### CLI Auth & Permissions
 - **Feishu (lark-cli)**: Device flow auth. `--no-wait` gets device_code, `--device-code` polls (single process, restart invalidates code). JSON output goes to **stderr**. Token stored in `~/.lark-cli/`. Auth status uses `scope` (space-separated string).

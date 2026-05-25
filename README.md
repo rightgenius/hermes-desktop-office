@@ -7,6 +7,7 @@ A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingT
 ## Features
 
 - **Built-in Hermes Agent**: Powered by [hermes-agent](https://github.com/nousresearch/hermes-agent)
+- **Gateway Management**: GUI for DingTalk/Feishu messaging platforms — auto-detect external Gateway, QR auth, channel list, live logs
 - **Feishu CLI bundled**: One-click browser authorization
 - **DingTalk CLI bundled**: One-click browser authorization
 - **Simple API Token configuration**: Configure your AI provider in the GUI
@@ -21,6 +22,10 @@ A desktop application that bundles Hermes Agent with Feishu (Lark) CLI and DingT
 │  │  API Key  │ │ CLI Auth  │ │ Agent │ │
 │  │  Config   │ │  Status   │ │ Log   │ │
 │  └───────────┘ └───────────┘ └───────┘ │
+│  ┌───────────────────────────────────┐ │
+│  │         Gateway Manager           │ │
+│  │  Detect │ Start │ Config │ Channels│ │
+│  └───────────────────────────────────┘ │
 └──────────────┬──────────────────────────┘
                │ IPC
 ┌──────────────▼──────────────────────────┐
@@ -54,6 +59,12 @@ bash scripts/download-clis.sh
 
 # Run in development
 npm run dev
+
+# Run unit tests
+npx mocha tests/main/test-gateway-manager.js --timeout 10000
+
+# Run E2E tests
+npm run test:e2e:gateway
 
 # Build for macOS (Apple Silicon)
 npm run build:mac
@@ -108,6 +119,9 @@ git remote -v
 hermes-desktop-office/
 ├── src/
 │   ├── main/              # Electron main process
+│   │   ├── gateway-manager.js  # Gateway lifecycle, config, QR auth, channels
+│   │   ├── agent-manager.js    # Agent subprocess management
+│   │   └── ipc-handlers.js     # All IPC channel handlers
 │   ├── renderer/          # Electron renderer (GUI)
 │   ├── preload/           # Electron preload scripts
 │   └── hermes-agent/      # Hermes agent source (git submodule)
@@ -120,6 +134,9 @@ hermes-desktop-office/
 │   ├── bundle-agent-deps.sh         # Bundle Python deps for production
 │   ├── bundle-python.sh             # Bundle standalone Python 3.13
 │   └── sync-release-to-gitee.sh     # Sync GitHub Release notes to Gitee Release
+├── tests/
+│   ├── main/              # Unit tests (GatewayManager, etc.)
+│   └── e2e/               # E2E tests (Playwright + Electron)
 ├── .github/workflows/
 │   ├── ci.yml                # CI on main branch + PRs
 │   └── release.yml           # Release on tag push
