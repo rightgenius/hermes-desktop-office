@@ -55,12 +55,18 @@ async function runE2ETests() {
 
     console.log('3. Testing initial Gateway status...');
     const badge = await mainWindow.textContent('#gateway-status-badge');
+    const statusText = await mainWindow.textContent('#gateway-status-text');
     // May detect external gateway if user has one running
     assert.ok(
-      badge.includes('未启动') || badge.includes('运行中') || badge.includes('外部') || badge.includes('Process') || badge.includes('launchd') || badge.includes('systemd'),
+      badge.includes('未启动') || badge.includes('运行中') || badge.includes('外部') || badge.includes('终端') || badge.includes('launchd') || badge.includes('systemd'),
       `Expected status badge text, got "${badge}"`
     );
-    console.log(`   ✓ Initial status: ${badge}\n`);
+    // Status text should show clear "运行中" or "未启动"
+    assert.ok(
+      statusText.includes('运行中') || statusText.includes('未启动'),
+      `Expected clear status text, got "${statusText}"`
+    );
+    console.log(`   ✓ Initial status: ${badge}, text: ${statusText}\n`);
 
     console.log('4. Testing platform config fields...');
     const dingtalkSection = await mainWindow.$('#gateway-dingtalk-section');
@@ -101,15 +107,16 @@ async function runE2ETests() {
     const stopBtn = await mainWindow.$('#gateway-stop-btn');
     const startVisible = await startBtn.isVisible();
     const stopVisible = await stopBtn.isVisible();
-    // If external gateway detected, both buttons hidden; otherwise start visible
-    if (badge.includes('Process') || badge.includes('launchd') || badge.includes('systemd') || badge.includes('外部')) {
+    // If external gateway detected (terminal, launchd, systemd, etc.), both buttons hidden
+    const isExternal = badge.includes('终端') || badge.includes('launchd') || badge.includes('systemd') || badge.includes('外部') || badge.includes('PID');
+    if (isExternal) {
       assert.ok(!startVisible, 'Start button should be hidden for external gateway');
       assert.ok(!stopVisible, 'Stop button should be hidden for external gateway');
     } else {
       assert.ok(startVisible, 'Start button should be visible when not running');
       assert.ok(!stopVisible, 'Stop button should be hidden when not running');
     }
-    console.log('   ✓ Button visibility correct\n');
+    console.log(`   ✓ Button visibility correct (external: ${isExternal})\n`);
 
     console.log('9. Testing QR auth buttons exist...');
     const dtQrBtn = await mainWindow.$('#dingtalk-qr-auth-btn');
@@ -122,6 +129,23 @@ async function runE2ETests() {
     const gatewayDot = await mainWindow.$('#status-gateway-dot');
     assert.ok(gatewayDot, 'Gateway status dot should exist in titlebar');
     console.log('   ✓ Gateway status dot exists\n');
+
+    console.log('11. Testing card width is responsive...');
+    const statusCard = await mainWindow.$('#gateway-status-card');
+    const cardBox = await statusCard.boundingBox();
+    const pageBox = await mainWindow.$('#page-gateway');
+    const pageBoundingBox = await pageBox.boundingBox();
+    // Card should take most of the page width (allowing for padding)
+    assert.ok(cardBox.width > pageBoundingBox.width * 0.8, `Card width ${cardBox.width} should be > 80% of page width ${pageBoundingBox.width}`);
+    console.log(`   ✓ Card width is responsive (${cardBox.width}px / ${pageBoundingBox.width}px)\n`);
+
+    console.log('12. Testing secret configured hint...');
+    // The hint element should exist in the DOM (even if hidden when no secret)
+    const dtSecretParent = await mainWindow.$('#dingtalk-client-secret');
+    const hintContainer = await dtSecretParent.evaluateHandle(el => el.parentElement.parentElement);
+    const hintElements = await hintContainer.$$('.secret-configured-hint');
+    assert.ok(hintElements.length > 0, 'Secret hint element should exist in DOM');
+    console.log('   ✓ Secret configured hint exists\n');
 
     console.log('=== All E2E tests passed! ===\n');
 

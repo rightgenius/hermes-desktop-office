@@ -3734,6 +3734,7 @@ async function initGatewayPage() {
 
 function updateGatewayStatus(status) {
   const badge = document.getElementById('gateway-status-badge');
+  const statusText = document.getElementById('gateway-status-text');
   const sourceEl = document.getElementById('gw-source');
   const pidEl = document.getElementById('gw-pid');
   const managerEl = document.getElementById('gw-manager');
@@ -3748,6 +3749,17 @@ function updateGatewayStatus(status) {
   if (status.running) {
     badge.textContent = status.source === 'external' ? `● ${status.sourceLabel || '外部 Gateway'}` : '● 运行中';
     badge.className = 'gateway-status-badge running' + (status.source === 'external' ? ' external' : '');
+
+    if (statusText) {
+      if (status.source === 'external') {
+        statusText.textContent = `Gateway 运行中（由 ${status.sourceLabel} 管理）`;
+        statusText.className = 'gateway-status-text running-external';
+      } else {
+        statusText.textContent = 'Gateway 运行中';
+        statusText.className = 'gateway-status-text running';
+      }
+    }
+
     if (sourceEl) {
       sourceEl.textContent = status.sourceLabel || '-';
       sourceEl.title = status.sourceLabel || '';
@@ -3775,6 +3787,10 @@ function updateGatewayStatus(status) {
   } else {
     badge.textContent = '未启动';
     badge.className = 'gateway-status-badge';
+    if (statusText) {
+      statusText.textContent = 'Gateway 未启动';
+      statusText.className = 'gateway-status-text';
+    }
     if (sourceEl) sourceEl.textContent = '-';
     if (pidEl) pidEl.textContent = '-';
     if (managerEl) managerEl.textContent = '-';

@@ -3094,6 +3094,28 @@ body {
   color: #60a5fa;
 }
 
+.gateway-status-text {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+.gateway-status-text.running {
+  color: var(--success);
+  border-color: rgba(46, 155, 90, 0.3);
+  background: rgba(46, 155, 90, 0.05);
+}
+
+.gateway-status-text.running-external {
+  color: #60a5fa;
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(96, 165, 250, 0.05);
+}
+
 .gateway-status-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -3103,11 +3125,19 @@ body {
 
 #page-gateway .card {
   width: 100%;
-  max-width: 100%;
+  max-width: none;
 }
 
 #page-gateway .content-scroll {
-  padding: var(--space-xl) calc(var(--space-xl) + 8px);
+  padding: var(--space-xl);
+}
+
+#page-gateway .gateway-status-grid,
+#page-gateway .gateway-platform-section,
+#page-gateway .gateway-channels-list,
+#page-gateway .log-viewer {
+  width: 100%;
+  max-width: none;
 }
 
 .gateway-status-item {
