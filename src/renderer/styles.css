@@ -3123,13 +3123,18 @@ body {
   margin-bottom: var(--space-md);
 }
 
-#page-gateway .card {
+#page-gateway {
   width: 100%;
-  max-width: none;
 }
 
 #page-gateway .content-scroll {
-  padding: var(--space-xl);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+#page-gateway .card {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 #page-gateway .gateway-status-grid,
@@ -3137,7 +3142,7 @@ body {
 #page-gateway .gateway-channels-list,
 #page-gateway .log-viewer {
   width: 100%;
-  max-width: none;
+  box-sizing: border-box;
 }
 
 .gateway-status-item {
