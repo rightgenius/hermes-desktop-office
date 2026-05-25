@@ -203,7 +203,7 @@ function showPage(pageName) {
   // Hide sidebar for settings, logs, and skills pages
   const midPanel = document.querySelector('.mid-panel');
   if (midPanel) {
-    midPanel.style.display = (pageName === 'settings' || pageName === 'logs' || pageName === 'skills' || pageName === 'cron') ? 'none' : '';
+    midPanel.style.display = (pageName === 'settings' || pageName === 'logs' || pageName === 'skills' || pageName === 'cron' || pageName === 'gateway') ? 'none' : '';
   }
 }
 
@@ -211,7 +211,7 @@ function showPage(pageName) {
 document.addEventListener('keydown', (e) => {
   if (e.metaKey && e.key >= '1' && e.key <= '4') {
     e.preventDefault();
-    const pages = ['chat', 'settings', 'skills', 'logs', 'cron'];
+    const pages = ['chat', 'settings', 'gateway', 'skills', 'logs', 'cron'];
     showPage(pages[parseInt(e.key) - 1]);
   }
 });
@@ -3690,4 +3690,344 @@ showPage = function(pageName) {
     loadCronJobs();
     updateCronStatusUI();
   }
+  if (pageName === 'gateway') {
+    initGatewayPage();
+  }
 };
+
+// ============================
+// Gateway Page
+// ============================
+let gatewayRunning = false;
+let gatewayStartTime = null;
+let gatewayUptimeInterval = null;
+
+async function initGatewayPage() {
+  try {
+    const status = await window.api.gatewayStatus();
+    updateGatewayStatus(status);
+  } catch (err) {
+    console.error('Failed to get gateway status:', err);
+  }
+
+  try {
+    const config = await window.api.gatewayConfigGet();
+    populateGatewayConfig(config);
+  } catch (err) {
+    console.error('Failed to get gateway config:', err);
+  }
+
+  try {
+    await loadGatewayChannels();
+  } catch (err) {
+    console.error('Failed to load channels:', err);
+  }
+
+  window.api.onGatewayStatusChange((status) => {
+    updateGatewayStatus(status);
+  });
+
+  window.api.onGatewayLog((data) => {
+    appendGatewayLog(data);
+  });
+}
+
+function updateGatewayStatus(status) {
+  const badge = document.getElementById('gateway-status-badge');
+  const sourceEl = document.getElementById('gw-source');
+  const pidEl = document.getElementById('gw-pid');
+  const managerEl = document.getElementById('gw-manager');
+  const startBtn = document.getElementById('gateway-start-btn');
+  const stopBtn = document.getElementById('gateway-stop-btn');
+  const restartBtn = document.getElementById('gateway-restart-btn');
+
+  if (!badge) return;
+
+  gatewayRunning = status.running;
+
+  if (status.running) {
+    badge.textContent = status.source === 'external' ? `● ${status.sourceLabel || '外部 Gateway'}` : '● 运行中';
+    badge.className = 'gateway-status-badge running' + (status.source === 'external' ? ' external' : '');
+    if (sourceEl) sourceEl.textContent = status.sourceLabel || '-';
+    if (pidEl) pidEl.textContent = status.pid || '-';
+    if (managerEl) managerEl.textContent = status.manager || '-';
+
+    if (status.source === 'external') {
+      if (startBtn) startBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = 'none';
+      if (restartBtn) restartBtn.style.display = 'none';
+    } else {
+      if (startBtn) startBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = '';
+      if (restartBtn) restartBtn.style.display = '';
+      gatewayStartTime = Date.now();
+      startUptimeCounter();
+    }
+  } else {
+    badge.textContent = '未启动';
+    badge.className = 'gateway-status-badge';
+    if (sourceEl) sourceEl.textContent = '-';
+    if (pidEl) pidEl.textContent = '-';
+    if (managerEl) managerEl.textContent = '-';
+    if (startBtn) startBtn.style.display = '';
+    if (stopBtn) stopBtn.style.display = 'none';
+    if (restartBtn) restartBtn.style.display = 'none';
+    stopUptimeCounter();
+  }
+
+  const dotEl = document.getElementById('status-gateway-dot');
+  if (dotEl) {
+    dotEl.className = 'status-dot' + (status.running ? ' success' : '');
+  }
+}
+
+function startUptimeCounter() {
+  stopUptimeCounter();
+  gatewayUptimeInterval = setInterval(() => {
+    if (!gatewayStartTime) return;
+    const elapsed = Date.now() - gatewayStartTime;
+    const hours = Math.floor(elapsed / 3600000);
+    const minutes = Math.floor((elapsed % 3600000) / 60000);
+    const seconds = Math.floor((elapsed % 60000) / 1000);
+    const uptimeEl = document.getElementById('gw-uptime');
+    if (uptimeEl) {
+      uptimeEl.textContent = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m ${seconds}s`;
+    }
+  }, 1000);
+}
+
+function stopUptimeCounter() {
+  if (gatewayUptimeInterval) {
+    clearInterval(gatewayUptimeInterval);
+    gatewayUptimeInterval = null;
+  }
+}
+
+function populateGatewayConfig(config) {
+  if (!config) return;
+
+  const dtEnable = document.getElementById('dingtalk-enable');
+  const dtClientId = document.getElementById('dingtalk-client-id');
+  const dtClientSecret = document.getElementById('dingtalk-client-secret');
+  if (dtEnable) dtEnable.checked = config.dingtalk?.enabled || false;
+  if (dtClientId) dtClientId.value = config.dingtalk?.clientId || '';
+  if (dtClientSecret) dtClientSecret.value = '';
+
+  const fsEnable = document.getElementById('feishu-enable');
+  const fsAppId = document.getElementById('feishu-app-id');
+  const fsAppSecret = document.getElementById('feishu-app-secret');
+  const fsToken = document.getElementById('feishu-verification-token');
+  const fsMode = document.getElementById('feishu-connection-mode');
+  if (fsEnable) fsEnable.checked = config.feishu?.enabled || false;
+  if (fsAppId) fsAppId.value = config.feishu?.appId || '';
+  if (fsAppSecret) fsAppSecret.value = '';
+  if (fsToken) fsToken.value = '';
+  if (fsMode) fsMode.value = config.feishu?.connectionMode || 'websocket';
+}
+
+async function loadGatewayChannels() {
+  const listEl = document.getElementById('gateway-channels-list');
+  if (!listEl) return;
+
+  try {
+    const result = await window.api.gatewayChannels();
+    if (!result.success || !result.platforms || Object.keys(result.platforms).length === 0) {
+      listEl.innerHTML = '<div class="empty-state-text">暂无 Channel，发送消息后自动发现</div>';
+      return;
+    }
+
+    let html = '';
+    for (const [platform, channels] of Object.entries(result.platforms)) {
+      if (!channels || channels.length === 0) continue;
+      for (const ch of channels) {
+        html += `<div class="gateway-channel-item">
+          <div class="gateway-channel-info">
+            <span class="gateway-channel-dot"></span>
+            <div>
+              <div class="gateway-channel-name">${escapeHtml(ch.name)}</div>
+              <div class="gateway-channel-meta">${escapeHtml(platform)} · ${escapeHtml(ch.id || '')}</div>
+            </div>
+          </div>
+        </div>`;
+      }
+    }
+
+    if (!html) {
+      listEl.innerHTML = '<div class="empty-state-text">暂无 Channel，发送消息后自动发现</div>';
+    } else {
+      listEl.innerHTML = html;
+    }
+  } catch (err) {
+    listEl.innerHTML = `<div class="empty-state-text">加载失败: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function appendGatewayLog(data) {
+  const viewer = document.getElementById('gateway-log-viewer');
+  if (!viewer) return;
+
+  const time = new Date().toLocaleTimeString();
+  const level = data.level || 'info';
+  const message = data.message || '';
+
+  const levelColor = level === 'error' ? 'var(--error)' : level === 'warn' ? 'var(--warning)' : 'var(--text-secondary)';
+
+  viewer.innerHTML += `<div><span style="color:${levelColor}">[${time}]</span> ${escapeHtml(message)}</div>`;
+  viewer.scrollTop = viewer.scrollHeight;
+}
+
+document.getElementById('gateway-start-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-start-btn');
+  btn.disabled = true;
+  btn.textContent = '启动中...';
+  try {
+    const result = await window.api.gatewayStart();
+    if (result.success) {
+      updateGatewayStatus({ running: true, source: 'gui', pid: result.pid, manager: 'gui', sourceLabel: 'GUI 自启' });
+    } else {
+      alert(`启动失败: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`启动异常: ${err.message}`);
+  }
+  btn.disabled = false;
+  btn.textContent = '启动';
+});
+
+document.getElementById('gateway-stop-btn')?.addEventListener('click', async () => {
+  try {
+    await window.api.gatewayStop();
+    updateGatewayStatus({ running: false, source: 'none' });
+  } catch (err) {
+    alert(`停止异常: ${err.message}`);
+  }
+});
+
+document.getElementById('gateway-restart-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-restart-btn');
+  btn.disabled = true;
+  btn.textContent = '重启中...';
+  try {
+    const result = await window.api.gatewayRestart();
+    if (result.success) {
+      updateGatewayStatus({ running: true, source: 'gui', pid: result.pid, manager: 'gui', sourceLabel: 'GUI 自启' });
+    } else {
+      alert(`重启失败: ${result.error}`);
+    }
+  } catch (err) {
+    alert(`重启异常: ${err.message}`);
+  }
+  btn.disabled = false;
+  btn.textContent = '重启';
+});
+
+document.getElementById('gateway-refresh-channels')?.addEventListener('click', () => loadGatewayChannels());
+
+document.getElementById('gateway-clear-logs')?.addEventListener('click', () => {
+  const viewer = document.getElementById('gateway-log-viewer');
+  if (viewer) viewer.innerHTML = '';
+});
+
+['dingtalk-client-id', 'dingtalk-client-secret', 'feishu-app-id', 'feishu-app-secret', 'feishu-verification-token'].forEach(id => {
+  const toggleBtn = document.getElementById(`toggle-${id}`);
+  const input = document.getElementById(id);
+  if (toggleBtn && input) {
+    toggleBtn.addEventListener('click', () => {
+      input.type = input.type === 'password' ? 'text' : 'password';
+      toggleBtn.textContent = input.type === 'password' ? '👁' : '👁‍🗨';
+    });
+  }
+});
+
+document.getElementById('gateway-save-config-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-save-config-btn');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+
+  try {
+    const dtEnabled = document.getElementById('dingtalk-enable')?.checked || false;
+    const dtClientId = document.getElementById('dingtalk-client-id')?.value || '';
+    const dtClientSecret = document.getElementById('dingtalk-client-secret')?.value || '';
+    if (dtEnabled && (dtClientId || dtClientSecret)) {
+      await window.api.gatewayConfigSave('dingtalk', {
+        enabled: true,
+        clientId: dtClientId,
+        clientSecret: dtClientSecret,
+      });
+    }
+
+    const fsEnabled = document.getElementById('feishu-enable')?.checked || false;
+    const fsAppId = document.getElementById('feishu-app-id')?.value || '';
+    const fsAppSecret = document.getElementById('feishu-app-secret')?.value || '';
+    const fsToken = document.getElementById('feishu-verification-token')?.value || '';
+    const fsMode = document.getElementById('feishu-connection-mode')?.value || 'websocket';
+    if (fsEnabled && (fsAppId || fsAppSecret)) {
+      await window.api.gatewayConfigSave('feishu', {
+        enabled: true,
+        appId: fsAppId,
+        appSecret: fsAppSecret,
+        verificationToken: fsToken,
+        connectionMode: fsMode,
+      });
+    }
+
+    if (gatewayRunning) {
+      await window.api.gatewayRestart();
+    }
+
+    setBtnState(btn, '已保存 ✓');
+  } catch (err) {
+    btn.textContent = `保存失败: ${err.message}`;
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('dingtalk-qr-auth-btn')?.addEventListener('click', async () => {
+  await startQrAuth('dingtalk');
+});
+
+document.getElementById('feishu-qr-auth-btn')?.addEventListener('click', async () => {
+  await startQrAuth('feishu');
+});
+
+async function startQrAuth(platform) {
+  const label = platform === 'dingtalk' ? '钉钉' : '飞书';
+  const overlay = document.createElement('div');
+  overlay.className = 'gateway-qr-modal-overlay';
+  overlay.innerHTML = `
+    <div class="gateway-qr-modal">
+      <h3>${label}扫码注册</h3>
+      <div class="gateway-qr-status waiting" id="qr-status">正在生成 QR 码...</div>
+      <div class="gateway-qr-hint" id="qr-hint">请使用${label}扫描下方二维码</div>
+      <div class="gateway-qr-url" id="qr-url"></div>
+      <button class="btn btn-secondary" id="qr-cancel-btn">取消</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  try {
+    const result = await window.api.gatewayQrAuth(platform);
+    const statusEl = document.getElementById('qr-status');
+
+    if (result.success) {
+      statusEl.className = 'gateway-qr-status success';
+      statusEl.textContent = '注册成功！凭证已自动保存';
+      setTimeout(() => {
+        overlay.remove();
+        window.api.gatewayConfigGet().then(populateGatewayConfig);
+      }, 2000);
+    } else {
+      statusEl.className = 'gateway-qr-status error';
+      statusEl.textContent = `注册失败: ${result.error || '未知错误'}`;
+    }
+  } catch (err) {
+    const statusEl = document.getElementById('qr-status');
+    statusEl.className = 'gateway-qr-status error';
+    statusEl.textContent = `注册异常: ${err.message}`;
+  }
+
+  document.getElementById('qr-cancel-btn')?.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}

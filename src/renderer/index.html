@@ -25,6 +25,7 @@
         <span class="status-dot" id="status-agent-dot" data-tooltip="Agent"></span>
         <span class="status-dot" id="status-feishu-dot" data-tooltip="飞书"></span>
         <span class="status-dot" id="status-dingtalk-dot" data-tooltip="钉钉"></span>
+        <span class="status-dot" id="status-gateway-dot" data-tooltip="Gateway"></span>
       </div>
     </header>
 
@@ -36,6 +37,9 @@
         </button>
         <button class="rail-btn" data-page="settings" title="设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="rail-btn" data-page="gateway" title="Gateway">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
         </button>
         <button class="rail-btn" data-page="skills" title="技能">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -342,6 +346,178 @@
           </div>
         </div>
       </main>
+
+      <!-- Gateway Page -->
+      <div class="page" id="page-gateway">
+        <div class="page-header">
+          <h2>Gateway</h2>
+          <div class="gateway-header-actions">
+            <span class="gateway-status-badge" id="gateway-status-badge">未启动</span>
+          </div>
+        </div>
+        <div class="content-scroll">
+          <!-- Status Card -->
+          <div class="card" id="gateway-status-card">
+            <h3>运行状态</h3>
+            <div class="gateway-status-grid" id="gateway-status-grid">
+              <div class="gateway-status-item"><span class="gateway-status-label">来源</span><span class="gateway-status-value" id="gw-source">-</span></div>
+              <div class="gateway-status-item"><span class="gateway-status-label">PID</span><span class="gateway-status-value" id="gw-pid">-</span></div>
+              <div class="gateway-status-item"><span class="gateway-status-label">管理器</span><span class="gateway-status-value" id="gw-manager">-</span></div>
+              <div class="gateway-status-item"><span class="gateway-status-label">运行时长</span><span class="gateway-status-value" id="gw-uptime">-</span></div>
+            </div>
+            <div class="form-actions" id="gateway-controls">
+              <button id="gateway-start-btn" class="btn btn-primary">启动</button>
+              <button id="gateway-stop-btn" class="btn btn-secondary" style="display:none">停止</button>
+              <button id="gateway-restart-btn" class="btn btn-secondary" style="display:none">重启</button>
+              <label class="toggle-label" style="margin-left:auto">
+                <input type="checkbox" id="gateway-auto-start">
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">开机自动启动</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Platform Config Card -->
+          <div class="card" id="gateway-platform-card">
+            <h3>平台配置</h3>
+
+            <!-- DingTalk Config -->
+            <div class="gateway-platform-section" id="gateway-dingtalk-section">
+              <div class="gateway-platform-header">
+                <div class="gateway-platform-title">
+                  <span class="gateway-platform-icon">📌</span>
+                  <span>钉钉 (DingTalk)</span>
+                </div>
+                <label class="toggle-label">
+                  <input type="checkbox" id="dingtalk-enable">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <!-- Guide Banner -->
+              <div class="gateway-guide-banner">
+                <span class="gateway-guide-icon">💡</span>
+                <div class="gateway-guide-content">
+                  <div class="gateway-guide-title">如何获取钉钉凭证？</div>
+                  <ol class="gateway-guide-steps">
+                    <li>登录 <a href="https://open-dev.dingtalk.com/" target="_blank" class="gateway-guide-link">钉钉开放平台</a> → 创建应用 → 选择"企业内部开发"</li>
+                    <li>在应用基本信息页面获取 <strong>AppKey</strong> 和 <strong>AppSecret</strong></li>
+                    <li>在应用功能 → 机器人 中开启机器人能力</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div class="gateway-platform-fields">
+                <div class="form-group">
+                  <label for="dingtalk-client-id">Client ID (App Key)</label>
+                  <div class="input-with-action">
+                    <input type="password" id="dingtalk-client-id" placeholder="请输入 Client ID">
+                    <button class="btn-icon" id="toggle-dingtalk-client-id" title="显示/隐藏">👁</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="dingtalk-client-secret">Client Secret (App Secret)</label>
+                  <div class="input-with-action">
+                    <input type="password" id="dingtalk-client-secret" placeholder="请输入 Client Secret">
+                    <button class="btn-icon" id="toggle-dingtalk-client-secret" title="显示/隐藏">👁</button>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button id="dingtalk-qr-auth-btn" class="btn btn-secondary">扫码自动注册</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Feishu Config -->
+            <div class="gateway-platform-section" id="gateway-feishu-section">
+              <div class="gateway-platform-header">
+                <div class="gateway-platform-title">
+                  <span class="gateway-platform-icon">🪶</span>
+                  <span>飞书 (Feishu)</span>
+                </div>
+                <label class="toggle-label">
+                  <input type="checkbox" id="feishu-enable">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <!-- Guide Banner -->
+              <div class="gateway-guide-banner">
+                <span class="gateway-guide-icon">💡</span>
+                <div class="gateway-guide-content">
+                  <div class="gateway-guide-title">如何获取飞书凭证？</div>
+                  <ol class="gateway-guide-steps">
+                    <li>登录 <a href="https://open.feishu.cn/app" target="_blank" class="gateway-guide-link">飞书开放平台</a> → 创建企业自建应用</li>
+                    <li>在应用凭证页面获取 <strong>App ID</strong> 和 <strong>App Secret</strong></li>
+                    <li>在应用功能 → 机器人 中添加机器人能力，复制 <strong>Verification Token</strong>（可选）</li>
+                    <li>推荐选择 <strong>WebSocket 长连接</strong> 模式，无需配置公网回调地址</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div class="gateway-platform-fields">
+                <div class="form-group">
+                  <label for="feishu-app-id">App ID</label>
+                  <div class="input-with-action">
+                    <input type="password" id="feishu-app-id" placeholder="cli_xxxxx">
+                    <button class="btn-icon" id="toggle-feishu-app-id" title="显示/隐藏">👁</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="feishu-app-secret">App Secret</label>
+                  <div class="input-with-action">
+                    <input type="password" id="feishu-app-secret" placeholder="请输入 App Secret">
+                    <button class="btn-icon" id="toggle-feishu-app-secret" title="显示/隐藏">👁</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="feishu-verification-token">Verification Token（可选）</label>
+                  <div class="input-with-action">
+                    <input type="password" id="feishu-verification-token" placeholder="请输入 Verification Token">
+                    <button class="btn-icon" id="toggle-feishu-verification-token" title="显示/隐藏">👁</button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="feishu-connection-mode">连接模式</label>
+                  <select id="feishu-connection-mode">
+                    <option value="websocket">WebSocket 长连接（推荐）</option>
+                    <option value="webhook">Webhook 模式</option>
+                  </select>
+                </div>
+                <div class="form-actions">
+                  <button id="feishu-qr-auth-btn" class="btn btn-secondary">扫码自动注册</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: 16px;">
+              <button id="gateway-save-config-btn" class="btn btn-primary" style="margin-left:auto">保存配置并重启 Gateway</button>
+            </div>
+          </div>
+
+          <!-- Channel List Card -->
+          <div class="card" id="gateway-channels-card">
+            <div class="gateway-channels-header">
+              <h3 style="margin-bottom:0">Channel 列表</h3>
+              <button id="gateway-refresh-channels" class="btn btn-secondary">刷新</button>
+            </div>
+            <div id="gateway-channels-list" class="gateway-channels-list">
+              <div class="empty-state-text">暂无 Channel，发送消息后自动发现</div>
+            </div>
+          </div>
+
+          <!-- Live Logs Card -->
+          <div class="card" id="gateway-logs-card">
+            <div class="gateway-logs-header">
+              <h3 style="margin-bottom:0">实时日志</h3>
+              <div style="display:flex;gap:6px">
+                <button id="gateway-clear-logs" class="btn btn-secondary">清空</button>
+              </div>
+            </div>
+            <div id="gateway-log-viewer" class="log-viewer" style="max-height:200px"></div>
+          </div>
+        </div>
+      </div>
 
       <!-- Cron Page -->
       <div class="page" id="page-cron">
