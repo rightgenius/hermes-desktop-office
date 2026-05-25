@@ -102,6 +102,24 @@ function runCLISpawn(cliName, args, timeout = 30000) {
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
   cronManager = new CronManager(agentManager, mainWindow);
+  const { GatewayManager } = require('./gateway-manager');
+  const gatewayManager = new GatewayManager(mainWindow);
+
+  // Auto-detect external gateway on startup
+  (async () => {
+    try {
+      const external = await gatewayManager.detectExternalGateway();
+      if (external) {
+        gatewayManager.emitStatusChange({
+          running: true,
+          source: 'external',
+          pid: external.pid,
+          manager: external.manager,
+          sourceLabel: external.source,
+        });
+      }
+    } catch { /* detection failed silently */ }
+  })();
 
   ipcMain.handle('config-get', () => configStore.get());
   ipcMain.handle('config-save', (_, data) => configStore.save(data));
@@ -886,7 +904,39 @@ function setupIPCHandlers(mainWindow) {
       return { success: false, error: err.message };
     }
   });
+
+  // Gateway IPC handlers
+  ipcMain.handle('gateway-status', async () => {
+    const external = gatewayManager.externalGateway;
+    if (external) {
+      return {
+        running: true,
+        source: 'external',
+        pid: external.pid,
+        manager: external.manager,
+        sourceLabel: external.source,
+      };
+    }
+    if (gatewayManager.running) {
+      return {
+        running: true,
+        source: 'gui',
+        pid: gatewayManager.process?.pid || null,
+        manager: 'gui',
+        sourceLabel: 'GUI 自启',
+      };
+    }
+    return { running: false, source: 'none', pid: null, manager: null, sourceLabel: '未启动' };
+  });
+
+  ipcMain.handle('gateway-start', async () => gatewayManager.start());
+  ipcMain.handle('gateway-stop', async () => gatewayManager.stop());
+  ipcMain.handle('gateway-restart', async () => gatewayManager.restart());
+  ipcMain.handle('gateway-config-get', async () => gatewayManager.getConfig());
+  ipcMain.handle('gateway-config-save', async (_, platform, config) => gatewayManager.saveConfig(platform, config));
+  ipcMain.handle('gateway-qr-auth', async (_, platform) => gatewayManager.qrAuth(platform));
+  ipcMain.handle('gateway-channels', async () => gatewayManager.getChannels());
 }
 
 // Expose agentManager for graceful shutdown on app quit
-module.exports = { setupIPCHandlers, getAgentManager: () => agentManager, getCronManager: () => cronManager };
+module.exports = { setupIPCHandlers, getAgentManager: () => agentManager, getCronManager: () => cronManager, getGatewayManager: () => gatewayManager };

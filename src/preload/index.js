@@ -93,4 +93,24 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('cron-status', handler);
     return () => ipcRenderer.removeListener('cron-status', handler);
   },
+
+  // Gateway
+  gatewayStatus: () => ipcRenderer.invoke('gateway-status'),
+  gatewayStart: () => ipcRenderer.invoke('gateway-start'),
+  gatewayStop: () => ipcRenderer.invoke('gateway-stop'),
+  gatewayRestart: () => ipcRenderer.invoke('gateway-restart'),
+  gatewayConfigGet: () => ipcRenderer.invoke('gateway-config-get'),
+  gatewayConfigSave: (platform, config) => ipcRenderer.invoke('gateway-config-save', platform, config),
+  gatewayQrAuth: (platform) => ipcRenderer.invoke('gateway-qr-auth', platform),
+  gatewayChannels: () => ipcRenderer.invoke('gateway-channels'),
+  onGatewayLog: (fn) => {
+    const handler = (_, data) => fn(data);
+    ipcRenderer.on('gateway-log', handler);
+    return () => ipcRenderer.removeListener('gateway-log', handler);
+  },
+  onGatewayStatusChange: (fn) => {
+    const handler = (_, data) => fn(data);
+    ipcRenderer.on('gateway-status-change', handler);
+    return () => ipcRenderer.removeListener('gateway-status-change', handler);
+  },
 });

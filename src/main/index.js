@@ -49,6 +49,11 @@ app.on('before-quit', async () => {
   if (cron && cron.isRunning) {
     try { await cron.stop(); } catch (_) { /* best effort */ }
   }
+  const { getGatewayManager } = require('./ipc-handlers');
+  const gateway = getGatewayManager();
+  if (gateway && gateway.running) {
+    try { await gateway.stop(); } catch (_) { /* best effort */ }
+  }
 });
 
 app.on('activate', () => {
