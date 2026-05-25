@@ -9,6 +9,13 @@
 #   platform: auto (default) — uses current system Python
 #             macos, windows, linux — downloads platform-specific wheels
 # ============================================================================
+#
+# Reproducible builds:
+#   A lock file (scripts/bundled-requirements-lock.txt) is generated after every
+#   native (macOS) install. Subsequent native builds use it via pip -r for
+#   deterministic dependency resolution. Cross-platform builds use a constraints
+#   file (scripts/bundled-constraints.txt) to pin critical transitive deps.
+#   Run with FORCE_RELOCK=1 to regenerate the lock file from scratch.
 
 set -e
 
@@ -16,6 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 HERMES_DIR="$PROJECT_DIR/src/hermes-agent"
 DEPS_DIR="$HERMES_DIR/deps"
+CONSTRAINTS_FILE="$PROJECT_DIR/scripts/bundled-constraints.txt"
+LOCK_FILE="$PROJECT_DIR/scripts/bundled-requirements-lock.txt"
 
 if [ ! -f "$HERMES_DIR/cli.py" ]; then
   echo "❌ hermes-agent submodule not found."
@@ -56,6 +65,12 @@ case "$TARGET_PLATFORM" in
     ;;
 esac
 
+# Build constraints argument (platform-independent version limits)
+CONSTRAINTS_ARG=""
+if [ -f "$CONSTRAINTS_FILE" ]; then
+  CONSTRAINTS_ARG="-c $CONSTRAINTS_FILE"
+fi
+
 echo "→ Installing hermes-agent dependencies to deps/ ..."
 echo "  (this may take a few minutes)"
 echo "  platform: $TARGET_PLATFORM"
@@ -78,20 +93,48 @@ if [ -n "$PIP_PLATFORM" ]; then
     rm -rf "$WHEEL_DIR"
     exit 1
   fi
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "$WHEEL_FILE"
+  # Use constraints file to pin critical transitive deps (e.g. websockets)
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp $CONSTRAINTS_ARG "$WHEEL_FILE"
   rm -rf "$WHEEL_DIR"
 else
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" "$HERMES_DIR"
+  # Native install: use lock file as constraint (pins versions but allows new deps)
+  if [ -f "$LOCK_FILE" ] && [ "${FORCE_RELOCK:-0}" != "1" ]; then
+    echo "  Using lock file as constraint: $LOCK_FILE"
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" -c "$LOCK_FILE" "$HERMES_DIR"
+  else
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" $CONSTRAINTS_ARG "$HERMES_DIR"
+  fi
 fi
 
 echo ""
 echo "→ Installing office skills dependencies (markitdown, Pillow, openpyxl, pandas) ..."
 if [ -n "$PIP_PLATFORM" ]; then
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp "markitdown[pptx]" Pillow openpyxl pandas
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp $CONSTRAINTS_ARG "markitdown[pptx]" Pillow openpyxl pandas
 else
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" "markitdown[pptx]" Pillow openpyxl pandas
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" $CONSTRAINTS_ARG "markitdown[pptx]" Pillow openpyxl pandas
 fi
 
 echo ""
 echo "✅ Dependencies bundled to src/hermes-agent/deps/ ($TARGET_PLATFORM)"
 echo "   $(ls "$DEPS_DIR" | wc -l | tr -d ' ') packages installed"
+
+# After native install, regenerate lock file from resolved versions
+# Exclude local packages (hermes-agent) and build tools (pip, setuptools, wheel)
+# since they come from the submodule or are installed separately.
+if [ -z "$PIP_PLATFORM" ]; then
+  echo "  Regenerating lock file: $LOCK_FILE"
+  $PYTHON_CMD -c "
+import sys
+sys.path.insert(0, '$DEPS_DIR')
+import pkg_resources
+import re
+with open('$LOCK_FILE', 'w') as f:
+    for dist in pkg_resources.working_set:
+        name = dist.project_name.lower().replace('-', '_')
+        # Skip local packages and build tools
+        if name in ('hermes_agent', 'pip', 'setuptools', 'wheel'):
+            continue
+        f.write(f'{dist.project_name}=={dist.version}\n')
+" 2>/dev/null || $PYTHON_CMD -m pip freeze --path "$DEPS_DIR" | grep -v -i "^hermes-agent\|^pip==\|^setuptools==\|^wheel==" > "$LOCK_FILE"
+  echo "  $(wc -l < "$LOCK_FILE" | tr -d ' ') packages frozen"
+fi
