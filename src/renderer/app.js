@@ -3748,9 +3748,18 @@ function updateGatewayStatus(status) {
   if (status.running) {
     badge.textContent = status.source === 'external' ? `● ${status.sourceLabel || '外部 Gateway'}` : '● 运行中';
     badge.className = 'gateway-status-badge running' + (status.source === 'external' ? ' external' : '');
-    if (sourceEl) sourceEl.textContent = status.sourceLabel || '-';
-    if (pidEl) pidEl.textContent = status.pid || '-';
-    if (managerEl) managerEl.textContent = status.manager || '-';
+    if (sourceEl) {
+      sourceEl.textContent = status.sourceLabel || '-';
+      sourceEl.title = status.sourceLabel || '';
+    }
+    if (pidEl) {
+      pidEl.textContent = status.pid || '-';
+      pidEl.title = 'Gateway 进程 ID';
+    }
+    if (managerEl) {
+      managerEl.textContent = status.managerLabel || status.manager || '-';
+      managerEl.title = status.managerLabel || '';
+    }
 
     if (status.source === 'external') {
       if (startBtn) startBtn.style.display = 'none';
@@ -3812,6 +3821,8 @@ function populateGatewayConfig(config) {
   if (dtEnable) dtEnable.checked = config.dingtalk?.enabled || false;
   if (dtClientId) dtClientId.value = config.dingtalk?.clientId || '';
   if (dtClientSecret) dtClientSecret.value = '';
+  // Show hint if secret is already configured
+  _updateSecretHint('dingtalk-client-secret', config.dingtalk?.clientSecretMasked);
 
   const fsEnable = document.getElementById('feishu-enable');
   const fsAppId = document.getElementById('feishu-app-id');
@@ -3823,6 +3834,26 @@ function populateGatewayConfig(config) {
   if (fsAppSecret) fsAppSecret.value = '';
   if (fsToken) fsToken.value = '';
   if (fsMode) fsMode.value = config.feishu?.connectionMode || 'websocket';
+  _updateSecretHint('feishu-app-secret', config.feishu?.appSecretMasked);
+  _updateSecretHint('feishu-verification-token', config.feishu?.verificationTokenMasked);
+}
+
+function _updateSecretHint(inputId, maskedValue) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let hint = input.parentElement.nextElementSibling;
+  if (!hint || !hint.classList.contains('secret-configured-hint')) {
+    hint = document.createElement('small');
+    hint.className = 'secret-configured-hint';
+    hint.style.cssText = 'display:block;font-size:11px;color:var(--success);margin-top:4px;';
+    input.parentElement.parentElement.appendChild(hint);
+  }
+  if (maskedValue && maskedValue.includes('•')) {
+    hint.textContent = `✓ 已配置 (${maskedValue})`;
+    hint.style.display = '';
+  } else {
+    hint.style.display = 'none';
+  }
 }
 
 async function loadGatewayChannels() {

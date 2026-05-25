@@ -3101,6 +3101,15 @@ body {
   margin-bottom: var(--space-md);
 }
 
+#page-gateway .card {
+  width: 100%;
+  max-width: 100%;
+}
+
+#page-gateway .content-scroll {
+  padding: var(--space-xl) calc(var(--space-xl) + 8px);
+}
+
 .gateway-status-item {
   display: flex;
   flex-direction: column;
@@ -3339,5 +3348,11 @@ body {
 @media (max-width: 768px) {
   .gateway-status-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .gateway-status-grid {
+    grid-template-columns: repeat(4, 1fr);
   }
 }

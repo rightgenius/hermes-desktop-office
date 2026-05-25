@@ -915,6 +915,10 @@ function setupIPCHandlers(mainWindow) {
         pid: external.pid,
         manager: external.manager,
         sourceLabel: external.source,
+        managerLabel: external.manager === 'launchd' ? 'launchd 服务'
+          : external.manager === 'systemd' ? 'systemd 服务'
+          : external.manager === 'pid-file' ? 'PID 文件'
+          : '终端进程',
       };
     }
     if (gatewayManager.running) {
@@ -924,9 +928,10 @@ function setupIPCHandlers(mainWindow) {
         pid: gatewayManager.process?.pid || null,
         manager: 'gui',
         sourceLabel: 'GUI 自启',
+        managerLabel: 'GUI 进程',
       };
     }
-    return { running: false, source: 'none', pid: null, manager: null, sourceLabel: '未启动' };
+    return { running: false, source: 'none', pid: null, manager: null, sourceLabel: '未启动', managerLabel: '-' };
   });
 
   ipcMain.handle('gateway-start', async () => gatewayManager.start());

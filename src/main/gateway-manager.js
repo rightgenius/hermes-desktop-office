@@ -34,7 +34,7 @@ class GatewayManager {
       try {
         const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
         if (pid > 0 && this._isProcessRunning(pid)) {
-          this.externalGateway = { pid, manager: 'pid-file', source: 'PID file' };
+          this.externalGateway = { pid, manager: 'pid-file', source: 'PID 文件' };
           return this.externalGateway;
         }
       } catch { /* stale PID file */ }
@@ -48,7 +48,7 @@ class GatewayManager {
 
     const scannedPid = this._scanGatewayProcesses();
     if (scannedPid) {
-      this.externalGateway = { pid: scannedPid, manager: 'manual', source: 'Process scan' };
+      this.externalGateway = { pid: scannedPid, manager: 'manual', source: '终端前台运行' };
       return this.externalGateway;
     }
 
@@ -79,7 +79,7 @@ class GatewayManager {
         if (result.ok) {
           const match = result.stdout.match(/^(\d+)/m);
           if (match) {
-            return { pid: parseInt(match[1], 10), manager: 'launchd', source: 'launchd service' };
+            return { pid: parseInt(match[1], 10), manager: 'launchd', source: 'launchd 后台服务' };
           }
         }
       } catch { /* service not installed */ }
@@ -99,7 +99,7 @@ class GatewayManager {
             });
           });
           if (pidResult > 0) {
-            return { pid: pidResult, manager: 'systemd', source: 'systemd user service' };
+            return { pid: pidResult, manager: 'systemd', source: 'systemd 后台服务' };
           }
         }
       } catch { /* service not installed */ }
