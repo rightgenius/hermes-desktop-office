@@ -43,7 +43,10 @@ for VENV_DIR in "venv" ".venv"; do
 
     if [ -n "$PYTHON_BIN" ]; then
       echo "✅ Checking existing $VENV_DIR..."
-      if "$PYTHON_BIN" -c "import yaml" 2>/dev/null; then
+      # Verify both core deps AND the messaging platform adapters. Missing
+      # adapters makes the gateway start but never connect to DingTalk/Feishu
+      # (the user-facing bug this guards against).
+      if "$PYTHON_BIN" -c "import yaml, dingtalk_stream, lark_oapi" 2>/dev/null; then
         echo "✅ Dependencies verified. Agent is ready."
         exit 0
       else
@@ -59,10 +62,15 @@ echo "→ Creating Python venv with uv..."
 uv venv
 
 echo "→ Installing hermes-agent dependencies (this may take a few minutes)..."
-uv pip install "." || {
+# Install with [dingtalk,feishu] extras so the GUI's spawned gateway can
+# actually load the DingTalk/Feishu adapters. Without these, the gateway
+# starts but prints "DINGTALK_CLIENT_ID/SECRET not set" / "lark-oapi not
+# installed" warnings and never connects to the messaging platforms — the
+# UI shows "running" but messages get no response.
+uv pip install ".[dingtalk,feishu]" || {
   echo ""
   echo "⚠️  Base install failed. Try manual install:"
-  echo "   cd src/hermes-agent && uv venv && uv pip install ."
+  echo "   cd src/hermes-agent && uv venv && uv pip install '.[dingtalk,feishu]'"
   exit 1
 }
 

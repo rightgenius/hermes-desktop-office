@@ -94,15 +94,15 @@ if [ -n "$PIP_PLATFORM" ]; then
     exit 1
   fi
   # Use constraints file to pin critical transitive deps (e.g. websockets)
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp $CONSTRAINTS_ARG "$WHEEL_FILE"
+  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp $CONSTRAINTS_ARG "$WHEEL_FILE[dingtalk,feishu]"
   rm -rf "$WHEEL_DIR"
 else
   # Native install: use lock file as constraint (pins versions but allows new deps)
   if [ -f "$LOCK_FILE" ] && [ "${FORCE_RELOCK:-0}" != "1" ]; then
     echo "  Using lock file as constraint: $LOCK_FILE"
-    $PYTHON_CMD -m pip install --target "$DEPS_DIR" -c "$LOCK_FILE" "$HERMES_DIR"
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" -c "$LOCK_FILE" "$HERMES_DIR[dingtalk,feishu]"
   else
-    $PYTHON_CMD -m pip install --target "$DEPS_DIR" $CONSTRAINTS_ARG "$HERMES_DIR"
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" $CONSTRAINTS_ARG "$HERMES_DIR[dingtalk,feishu]"
   fi
 fi
 

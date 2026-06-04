@@ -39,8 +39,14 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Graceful shutdown: stop Agent and Cron before quitting
+// Graceful shutdown: stop Agent, Cron, and Gateway before quitting
 app.on('before-quit', async () => {
+  const { getGatewayManager } = require('./ipc-handlers');
+  const gateway = getGatewayManager();
+  if (gateway) {
+    try { gateway.stopHealthCheck(); } catch (_) { /* best effort */ }
+  }
+
   const agent = getAgentManager();
   if (agent && agent.running) {
     try { await agent.stop(); } catch (_) { /* best effort */ }
@@ -49,8 +55,6 @@ app.on('before-quit', async () => {
   if (cron && cron.isRunning) {
     try { await cron.stop(); } catch (_) { /* best effort */ }
   }
-  const { getGatewayManager } = require('./ipc-handlers');
-  const gateway = getGatewayManager();
   if (gateway && gateway.running) {
     try { await gateway.stop(); } catch (_) { /* best effort */ }
   }

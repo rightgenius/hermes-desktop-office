@@ -99,10 +99,14 @@ contextBridge.exposeInMainWorld('api', {
   gatewayStart: () => ipcRenderer.invoke('gateway-start'),
   gatewayStop: () => ipcRenderer.invoke('gateway-stop'),
   gatewayRestart: () => ipcRenderer.invoke('gateway-restart'),
+  gatewayRecheck: () => ipcRenderer.invoke('gateway-recheck'),
+  gatewayRestartExternal: () => ipcRenderer.invoke('gateway-restart-external'),
+  gatewayTakeover: () => ipcRenderer.invoke('gateway-takeover'),
   gatewayConfigGet: () => ipcRenderer.invoke('gateway-config-get'),
   gatewayConfigSave: (platform, config) => ipcRenderer.invoke('gateway-config-save', platform, config),
   gatewayQrAuth: (platform) => ipcRenderer.invoke('gateway-qr-auth', platform),
   gatewayChannels: () => ipcRenderer.invoke('gateway-channels'),
+  gatewayRuntimeStatus: () => ipcRenderer.invoke('gateway-runtime-status'),
   onGatewayLog: (fn) => {
     const handler = (_, data) => fn(data);
     ipcRenderer.on('gateway-log', handler);

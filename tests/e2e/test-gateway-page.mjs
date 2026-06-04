@@ -105,16 +105,30 @@ async function runE2ETests() {
     console.log('8. Testing button visibility...');
     const startBtn = await mainWindow.$('#gateway-start-btn');
     const stopBtn = await mainWindow.$('#gateway-stop-btn');
+    const restartBtn = await mainWindow.$('#gateway-restart-btn');
+    const restartExternalBtn = await mainWindow.$('#gateway-restart-external-btn');
+    const takeoverBtn = await mainWindow.$('#gateway-takeover-btn');
+    const recheckBtn = await mainWindow.$('#gateway-recheck-btn');
     const startVisible = await startBtn.isVisible();
     const stopVisible = await stopBtn.isVisible();
-    // If external gateway detected (terminal, launchd, systemd, etc.), both buttons hidden
+    const restartVisible = restartBtn ? await restartBtn.isVisible() : false;
+    const restartExternalVisible = restartExternalBtn ? await restartExternalBtn.isVisible() : false;
+    const takeoverVisible = takeoverBtn ? await takeoverBtn.isVisible() : false;
+    const recheckVisible = recheckBtn ? await recheckBtn.isVisible() : false;
+    // If external gateway detected (terminal, launchd, systemd, etc.), show restart-external + takeover + recheck
     const isExternal = badge.includes('终端') || badge.includes('launchd') || badge.includes('systemd') || badge.includes('外部') || badge.includes('PID');
     if (isExternal) {
       assert.ok(!startVisible, 'Start button should be hidden for external gateway');
       assert.ok(!stopVisible, 'Stop button should be hidden for external gateway');
+      assert.ok(restartExternalVisible, 'Restart-external button should be visible for external gateway');
+      assert.ok(takeoverVisible, 'Takeover button should be visible for external gateway');
+      assert.ok(recheckVisible, 'Recheck button should be visible for external gateway');
     } else {
       assert.ok(startVisible, 'Start button should be visible when not running');
       assert.ok(!stopVisible, 'Stop button should be hidden when not running');
+      assert.ok(!restartExternalVisible, 'Restart-external button should be hidden when not running');
+      assert.ok(!takeoverVisible, 'Takeover button should be hidden when not running');
+      assert.ok(recheckVisible, 'Recheck button should always be visible');
     }
     console.log(`   ✓ Button visibility correct (external: ${isExternal})\n`);
 
@@ -146,6 +160,16 @@ async function runE2ETests() {
     const hintElements = await hintContainer.$$('.secret-configured-hint');
     assert.ok(hintElements.length > 0, 'Secret hint element should exist in DOM');
     console.log('   ✓ Secret configured hint exists\n');
+
+    console.log('13. Testing recheck button refreshes status...');
+    if (recheckBtn) {
+      const beforeText = await mainWindow.textContent('#gateway-status-badge');
+      await recheckBtn.click();
+      await new Promise(r => setTimeout(r, 1500));
+      const afterText = await mainWindow.textContent('#gateway-status-badge');
+      assert.ok(beforeText.length > 0 && afterText.length > 0, 'Status should still have text after recheck');
+      console.log(`   ✓ Recheck button works (badge: ${beforeText.trim()} -> ${afterText.trim()})\n`);
+    }
 
     console.log('=== All E2E tests passed! ===\n');
 

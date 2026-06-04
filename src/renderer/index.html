@@ -367,9 +367,15 @@
               <div class="gateway-status-item"><span class="gateway-status-label">运行时长</span><span class="gateway-status-value" id="gw-uptime">-</span></div>
             </div>
             <div class="form-actions" id="gateway-controls">
-              <button id="gateway-start-btn" class="btn btn-primary">启动</button>
+              <!-- Primary action (changes per state) -->
+              <button id="gateway-start-btn" class="btn btn-primary" style="display:none">启动 Gateway</button>
+              <button id="gateway-takeover-btn" class="btn btn-warning" style="display:none" title="停止外部 Gateway 并由 GUI 接管">由 GUI 接管</button>
+              <!-- Secondary actions (state-specific) -->
               <button id="gateway-stop-btn" class="btn btn-secondary" style="display:none">停止</button>
               <button id="gateway-restart-btn" class="btn btn-secondary" style="display:none">重启</button>
+              <button id="gateway-restart-external-btn" class="btn btn-secondary" style="display:none" title="运行 hermes gateway restart">重启外部</button>
+              <!-- Always-available utility -->
+              <button id="gateway-recheck-btn" class="btn btn-secondary" style="display:none" title="刷新状态并重新检测外部 Gateway">刷新状态</button>
               <label class="toggle-label" style="margin-left:auto">
                 <input type="checkbox" id="gateway-auto-start">
                 <span class="toggle-slider"></span>

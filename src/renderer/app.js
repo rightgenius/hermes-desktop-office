@@ -3741,25 +3741,60 @@ function updateGatewayStatus(status) {
   const startBtn = document.getElementById('gateway-start-btn');
   const stopBtn = document.getElementById('gateway-stop-btn');
   const restartBtn = document.getElementById('gateway-restart-btn');
+  const restartExternalBtn = document.getElementById('gateway-restart-external-btn');
+  const takeoverBtn = document.getElementById('gateway-takeover-btn');
+  const recheckBtn = document.getElementById('gateway-recheck-btn');
 
   if (!badge) return;
 
   gatewayRunning = status.running;
 
-  if (status.running) {
-    badge.textContent = status.source === 'external' ? `● ${status.sourceLabel || '外部 Gateway'}` : '● 运行中';
-    badge.className = 'gateway-status-badge running' + (status.source === 'external' ? ' external' : '');
+  // Three explicit states. Each gets a unique badge label, status text,
+  // and button set so the UI never mixes "GUI-managed" controls with
+  // "external" indicators.
+  const showButton = (el, visible) => { if (el) el.style.display = visible ? '' : 'none'; };
+  const hideAllActionButtons = () => {
+    showButton(startBtn, false);
+    showButton(stopBtn, false);
+    showButton(restartBtn, false);
+    showButton(restartExternalBtn, false);
+    showButton(takeoverBtn, false);
+  };
 
+  if (status.running && status.source === 'gui') {
+    // ── State A: GUI-managed gateway ──
+    badge.textContent = '● GUI 启动';
+    badge.className = 'gateway-status-badge running gui';
     if (statusText) {
-      if (status.source === 'external') {
-        statusText.textContent = `Gateway 运行中（由 ${status.sourceLabel} 管理）`;
-        statusText.className = 'gateway-status-text running-external';
-      } else {
-        statusText.textContent = 'Gateway 运行中';
-        statusText.className = 'gateway-status-text running';
-      }
+      statusText.textContent = 'Gateway 运行中（由 GUI 管理）';
+      statusText.className = 'gateway-status-text running';
     }
-
+    if (sourceEl) {
+      sourceEl.textContent = status.sourceLabel || 'GUI 启动';
+      sourceEl.title = status.sourceLabel || 'GUI 启动';
+    }
+    if (pidEl) {
+      pidEl.textContent = status.pid || '-';
+      pidEl.title = 'Gateway 进程 ID';
+    }
+    if (managerEl) {
+      managerEl.textContent = status.managerLabel || 'GUI 进程';
+      managerEl.title = status.managerLabel || 'GUI 进程';
+    }
+    hideAllActionButtons();
+    showButton(stopBtn, true);
+    showButton(restartBtn, true);
+    showButton(recheckBtn, true);
+    gatewayStartTime = Date.now();
+    startUptimeCounter();
+  } else if (status.running && status.source === 'external') {
+    // ── State B: external gateway (CLI / launchd / systemd / manual) ──
+    badge.textContent = `● ${status.sourceLabel || '外部 Gateway'}`;
+    badge.className = 'gateway-status-badge running external';
+    if (statusText) {
+      statusText.textContent = `Gateway 运行中（由 ${status.sourceLabel || '外部进程'} 管理）`;
+      statusText.className = 'gateway-status-text running-external';
+    }
     if (sourceEl) {
       sourceEl.textContent = status.sourceLabel || '-';
       sourceEl.title = status.sourceLabel || '';
@@ -3772,19 +3807,13 @@ function updateGatewayStatus(status) {
       managerEl.textContent = status.managerLabel || status.manager || '-';
       managerEl.title = status.managerLabel || '';
     }
-
-    if (status.source === 'external') {
-      if (startBtn) startBtn.style.display = 'none';
-      if (stopBtn) stopBtn.style.display = 'none';
-      if (restartBtn) restartBtn.style.display = 'none';
-    } else {
-      if (startBtn) startBtn.style.display = 'none';
-      if (stopBtn) stopBtn.style.display = '';
-      if (restartBtn) restartBtn.style.display = '';
-      gatewayStartTime = Date.now();
-      startUptimeCounter();
-    }
+    hideAllActionButtons();
+    showButton(restartExternalBtn, true);
+    showButton(takeoverBtn, true);
+    showButton(recheckBtn, true);
+    stopUptimeCounter();
   } else {
+    // ── State C: nothing running ──
     badge.textContent = '未启动';
     badge.className = 'gateway-status-badge';
     if (statusText) {
@@ -3794,9 +3823,9 @@ function updateGatewayStatus(status) {
     if (sourceEl) sourceEl.textContent = '-';
     if (pidEl) pidEl.textContent = '-';
     if (managerEl) managerEl.textContent = '-';
-    if (startBtn) startBtn.style.display = '';
-    if (stopBtn) stopBtn.style.display = 'none';
-    if (restartBtn) restartBtn.style.display = 'none';
+    hideAllActionButtons();
+    showButton(startBtn, true);
+    showButton(recheckBtn, true);
     stopUptimeCounter();
   }
 
@@ -3966,6 +3995,63 @@ document.getElementById('gateway-restart-btn')?.addEventListener('click', async 
   }
   btn.disabled = false;
   btn.textContent = '重启';
+});
+
+document.getElementById('gateway-restart-external-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-restart-external-btn');
+  if (!confirm('确定要重启外部 Gateway 吗？这会运行 hermes gateway restart。')) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '重启中...';
+  try {
+    const result = await window.api.gatewayRestartExternal();
+    if (!result.success) {
+      alert(`重启外部 Gateway 失败: ${result.error || '未知错误'}`);
+    }
+    await window.api.gatewayStatus().then(updateGatewayStatus).catch(() => {});
+  } catch (err) {
+    alert(`重启异常: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
+document.getElementById('gateway-takeover-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-takeover-btn');
+  if (!confirm('将由 GUI 接管 Gateway：\n\n1. 停止当前外部 Gateway 进程\n2. 由本应用启动并管理 Gateway\n\n继续？')) return;
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '接管中...';
+  try {
+    const result = await window.api.gatewayTakeover();
+    if (!result.success) {
+      alert(`接管失败: ${result.error || '未知错误'}`);
+    }
+    await window.api.gatewayStatus().then(updateGatewayStatus).catch(() => {});
+  } catch (err) {
+    alert(`接管异常: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
+});
+
+document.getElementById('gateway-recheck-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('gateway-recheck-btn');
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '检测中...';
+  try {
+    await window.api.gatewayRecheck();
+    const status = await window.api.gatewayStatus();
+    updateGatewayStatus(status);
+  } catch (err) {
+    alert(`刷新失败: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  }
 });
 
 document.getElementById('gateway-refresh-channels')?.addEventListener('click', () => loadGatewayChannels());

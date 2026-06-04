@@ -1052,6 +1052,16 @@ body {
   background: var(--border-color);
 }
 
+.btn-warning {
+  background: var(--warning, #f59e0b);
+  color: #1a1a1a;
+}
+
+.btn-warning:hover {
+  background: var(--warning-hover, #d97706);
+  color: #fff;
+}
+
 .btn-icon {
   padding: var(--space-sm);
   background: var(--bg-hover);

@@ -24,6 +24,7 @@
     "bundle:python:windows": "bash scripts/bundle-python.sh windows",
     "bundle:python:linux": "bash scripts/bundle-python.sh linux",
     "test:scanner": "node test-skill-scanner.js",
+    "test:main": "node --test tests/main/*.js",
     "test:e2e": "playwright test tests/skills-e2e.spec.js",
     "test:e2e:gateway": "node tests/e2e/test-gateway-page.mjs",
     "test:packaged": "playwright test tests/packaged-smoke.spec.js",

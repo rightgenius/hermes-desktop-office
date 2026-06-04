@@ -105,7 +105,7 @@ function setupIPCHandlers(mainWindow) {
   const { GatewayManager } = require('./gateway-manager');
   const gatewayManager = new GatewayManager(mainWindow);
 
-  // Auto-detect external gateway on startup
+  // Auto-detect external gateway on startup, then start periodic health checks
   (async () => {
     try {
       const external = await gatewayManager.detectExternalGateway();
@@ -119,6 +119,7 @@ function setupIPCHandlers(mainWindow) {
         });
       }
     } catch { /* detection failed silently */ }
+    gatewayManager.startHealthCheck();
   })();
 
   ipcMain.handle('config-get', () => configStore.get());
@@ -906,7 +907,21 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Gateway IPC handlers
-  ipcMain.handle('gateway-status', async () => {
+  // Build a status object from the current manager state. Order matters:
+  // GUI-managed MUST be checked first, otherwise the hermes-agent's own
+  // PID file (which our spawned gateway writes) would be misread as an
+  // external gateway on every refresh.
+  function buildGatewayStatus() {
+    if (gatewayManager.running) {
+      return {
+        running: true,
+        source: 'gui',
+        pid: gatewayManager.process?.pid || null,
+        manager: 'gui',
+        sourceLabel: 'GUI 启动',
+        managerLabel: 'GUI 进程',
+      };
+    }
     const external = gatewayManager.externalGateway;
     if (external) {
       return {
@@ -921,26 +936,43 @@ function setupIPCHandlers(mainWindow) {
           : '终端进程',
       };
     }
-    if (gatewayManager.running) {
-      return {
-        running: true,
-        source: 'gui',
-        pid: gatewayManager.process?.pid || null,
-        manager: 'gui',
-        sourceLabel: 'GUI 自启',
-        managerLabel: 'GUI 进程',
-      };
-    }
     return { running: false, source: 'none', pid: null, manager: null, sourceLabel: '未启动', managerLabel: '-' };
+  }
+
+  ipcMain.handle('gateway-status', async () => {
+    // Re-verify the current state on every status query so the UI never
+    // shows a stale "running" when the underlying process has died.
+    await gatewayManager._runHealthCheck();
+
+    // If we're in IDLE state, also try to detect an external gateway the
+    // user may have started in another terminal since the last check.
+    if (!gatewayManager.running && !gatewayManager.externalGateway) {
+      await gatewayManager.detectExternalGateway();
+    }
+
+    return buildGatewayStatus();
   });
 
   ipcMain.handle('gateway-start', async () => gatewayManager.start());
   ipcMain.handle('gateway-stop', async () => gatewayManager.stop());
   ipcMain.handle('gateway-restart', async () => gatewayManager.restart());
+  ipcMain.handle('gateway-recheck', async () => {
+    // Force a fresh look: clear external state, re-detect, run health check.
+    // This picks up external gateways started in another terminal since
+    // the last refresh. (The GUI's own PID is filtered out by
+    // detectExternalGateway via _isManagedPid.)
+    gatewayManager.externalGateway = null;
+    await gatewayManager.detectExternalGateway();
+    await gatewayManager._runHealthCheck();
+    return buildGatewayStatus();
+  });
+  ipcMain.handle('gateway-restart-external', async () => gatewayManager.restartExternal());
+  ipcMain.handle('gateway-takeover', async () => gatewayManager.takeover());
   ipcMain.handle('gateway-config-get', async () => gatewayManager.getConfig());
   ipcMain.handle('gateway-config-save', async (_, platform, config) => gatewayManager.saveConfig(platform, config));
   ipcMain.handle('gateway-qr-auth', async (_, platform) => gatewayManager.qrAuth(platform));
   ipcMain.handle('gateway-channels', async () => gatewayManager.getChannels());
+  ipcMain.handle('gateway-runtime-status', async () => gatewayManager.getGatewayRuntimeStatus());
 }
 
 // Expose agentManager for graceful shutdown on app quit
