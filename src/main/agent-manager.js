@@ -427,6 +427,27 @@ class AgentManager {
           choices: msg.choices ? JSON.parse(msg.choices) : null,
         }, sessionId);
         break;
+      case 'approval_request':
+        this.emitResponse('approval_request', {
+          request_id: msg.request_id,
+          command: msg.command || '',
+          description: msg.description || '',
+          allow_permanent: msg.allow_permanent !== false,
+        }, sessionId);
+        break;
+      case 'sudo_request':
+        this.emitResponse('sudo_request', {
+          request_id: msg.request_id,
+        }, sessionId);
+        break;
+      case 'secret_request':
+        this.emitResponse('secret_request', {
+          request_id: msg.request_id,
+          env_var: msg.env_var || '',
+          prompt: msg.prompt || '',
+          metadata: msg.metadata || null,
+        }, sessionId);
+        break;
       case 'status':
         this.emitResponse('status', { kind: msg.kind, text: msg.text }, sessionId);
         break;

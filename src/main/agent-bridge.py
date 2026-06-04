@@ -73,10 +73,75 @@ def _block_for_input(session_id, event_type, payload, timeout=300):
 
 
 def _get_or_create_agent(session_id):
-    """Get or create an AIAgent instance for the given session_id."""
+    """Get or create an AIAgent instance for the given session_id.
+
+    The interactive prompt callbacks (clarify / approval / sudo / secret) are
+    installed in three places:
+
+    1. The clarify callback is passed to AIAgent.__init__ because AIAgent
+       routes it through the clarify tool.
+    2. The approval, sudo, and secret callbacks are installed thread-locally
+       via set_approval_callback / set_sudo_password_callback /
+       set_secret_capture_callback so the dangerous-command, sudo-password,
+       and skills-tool paths in hermes-agent pick them up. They MUST be
+       installed in the same thread that calls agent.chat() because the
+       approval module stores them in a threading.local().
+    """
     with _sessions_lock:
         if session_id not in _sessions:
             hermes_logging.setup_logging(log_level="WARNING")
+
+            def approval_cb(command, description, *, allow_permanent=True):
+                return _block_for_input(
+                    session_id, "approval_request",
+                    {
+                        "command": command,
+                        "description": description,
+                        "allow_permanent": allow_permanent,
+                    },
+                    timeout=300,
+                )
+
+            def sudo_cb():
+                return _block_for_input(
+                    session_id, "sudo_request", {}, timeout=120,
+                )
+
+            def secret_cb(env_var, prompt, metadata=None):
+                payload = {"env_var": env_var, "prompt": prompt}
+                if metadata:
+                    payload["metadata"] = metadata
+                val = _block_for_input(
+                    session_id, "secret_request", payload, timeout=300,
+                )
+                if not val:
+                    return {
+                        "success": True,
+                        "stored_as": env_var,
+                        "validated": False,
+                        "skipped": True,
+                        "message": "skipped",
+                    }
+                from hermes_cli.config import save_env_value_secure
+                return {
+                    **save_env_value_secure(env_var, val),
+                    "skipped": False,
+                    "message": "ok",
+                }
+
+            try:
+                from tools.terminal_tool import (
+                    set_approval_callback,
+                    set_sudo_password_callback,
+                )
+                from tools.skills_tool import set_secret_capture_callback
+
+                set_approval_callback(approval_cb)
+                set_sudo_password_callback(sudo_cb)
+                set_secret_capture_callback(secret_cb)
+            except ImportError:
+                pass
+
             agent = AIAgent(
                 base_url=os.getenv("HERMES_BASE_URL") or os.getenv("OPENROUTER_BASE_URL"),
                 api_key=os.getenv("HERMES_API_TOKEN") or os.getenv("OPENAI_API_KEY"),
@@ -145,6 +210,13 @@ def _handle_message(msg):
             os.chdir(workspace_path)
         elif "TERMINAL_CWD" not in os.environ:
             os.environ["TERMINAL_CWD"] = os.getcwd()
+
+        # Bind HERMES_SESSION_KEY to this chat session so the dangerous-command
+        # approval system can scope session-level approvals to this chat.
+        # Per-chat session keys are required because the bridge handles
+        # multiple concurrent chats in this process.
+        if session_id:
+            os.environ["HERMES_SESSION_KEY"] = f"desktop-bridge:{session_id}"
 
         agent = _get_or_create_agent(session_id)
 
