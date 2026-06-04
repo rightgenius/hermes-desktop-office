@@ -21,6 +21,7 @@ const DEFAULT_CONFIG = {
   workspacePath: '',
   defaultWorkspacePath: getDefaultWorkspacePath(),
   autoStart: true,
+  gatewayAutoStart: false,
   apiFormat: '',
   providerRegion: '',
 };

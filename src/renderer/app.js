@@ -256,6 +256,7 @@ const els = {
   model: document.getElementById('model'),
   workspacePath: document.getElementById('workspace-path'),
   autoStart: document.getElementById('auto-start'),
+  gatewayAutoStart: document.getElementById('gateway-auto-start'),
   saveConfig: document.getElementById('save-config'),
   toggleApiKey: document.getElementById('toggle-api-key'),
   browseFolder: document.getElementById('browse-folder'),
@@ -474,6 +475,7 @@ async function loadConfig() {
     }
     els.workspacePath.value = config.workspacePath || '';
     els.autoStart.checked = config.autoStart !== false;
+    if (els.gatewayAutoStart) els.gatewayAutoStart.checked = config.gatewayAutoStart === true;
     
     updateProviderUI();
   } catch (err) { console.error('Load config failed:', err); }
@@ -4054,6 +4056,15 @@ document.getElementById('gateway-recheck-btn')?.addEventListener('click', async 
   }
 });
 
+els.gatewayAutoStart?.addEventListener('change', async () => {
+  try {
+    await window.api.configSave({ gatewayAutoStart: els.gatewayAutoStart.checked });
+  } catch (err) {
+    els.gatewayAutoStart.checked = !els.gatewayAutoStart.checked;
+    alert(`保存 Gateway 自动启动设置失败: ${err.message}`);
+  }
+});
+
 document.getElementById('gateway-refresh-channels')?.addEventListener('click', () => loadGatewayChannels());
 
 document.getElementById('gateway-clear-logs')?.addEventListener('click', () => {
@@ -4164,3 +4175,35 @@ async function startQrAuth(platform) {
     if (e.target === overlay) overlay.remove();
   });
 }
+
+async function autoStartGateway() {
+  try {
+    const config = await window.api.configGet();
+    if (config.gatewayAutoStart !== true) return;
+
+    const status = await window.api.gatewayStatus();
+    updateGatewayStatus(status);
+    if (status.running) return;
+
+    appendGatewayLog({ level: 'info', message: '打开程序自动启动 Gateway...' });
+    const result = await window.api.gatewayStart();
+    if (result?.success) {
+      updateGatewayStatus({
+        running: true,
+        source: 'gui',
+        pid: result.pid,
+        manager: 'gui',
+        sourceLabel: 'GUI 自启',
+        managerLabel: 'GUI 进程',
+      });
+      appendGatewayLog({ level: 'info', message: 'Gateway 已自动启动' });
+    } else {
+      appendGatewayLog({ level: 'error', message: `Gateway 自动启动失败: ${result?.error || '未知错误'}` });
+    }
+  } catch (err) {
+    appendGatewayLog({ level: 'error', message: `Gateway 自动启动失败: ${err.message}` });
+    console.warn('Auto-start Gateway failed:', err.message);
+  }
+}
+
+autoStartGateway();
