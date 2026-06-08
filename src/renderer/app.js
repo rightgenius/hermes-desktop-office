@@ -883,10 +883,15 @@ function createNewSession() {
 
 function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
   if (!currentSessionId) return;
+  return addMessageToSessionById(currentSessionId, text, sender, reasoning, toolCalls);
+}
+
+function addMessageToSessionById(sessionId, text, sender, reasoning = '', toolCalls = {}) {
+  if (!sessionId) return;
   const sessions = loadSessions();
-  if (sessions[currentSessionId]) {
-    const messageIndex = sessions[currentSessionId].messages.length;
-    sessions[currentSessionId].messages.push({ 
+  if (sessions[sessionId]) {
+    const messageIndex = sessions[sessionId].messages.length;
+    sessions[sessionId].messages.push({
       text, 
       sender, 
       timestamp: Date.now(),
@@ -896,8 +901,8 @@ function addMessageToSession(text, sender, reasoning = '', toolCalls = {}) {
         ...tc
       }))
     });
-    if (sender === 'user' && sessions[currentSessionId].messages.length <= 2) {
-      sessions[currentSessionId].title = text.slice(0, 30);
+    if (sender === 'user' && sessions[sessionId].messages.length <= 2) {
+      sessions[sessionId].title = text.slice(0, 30);
     }
     saveSessions(sessions);
     renderSessionList();
@@ -936,6 +941,33 @@ function openSessionMenu(sessionId, event) {
 function closeSessionMenu() {
   const existing = document.getElementById('session-menu-active');
   if (existing) existing.remove();
+}
+
+let activeSessionTitleTooltip = null;
+
+function hideSessionTitleTooltip() {
+  if (activeSessionTitleTooltip) {
+    activeSessionTitleTooltip.remove();
+    activeSessionTitleTooltip = null;
+  }
+}
+
+function showSessionTitleTooltip(title) {
+  hideSessionTitleTooltip();
+  if (!title?.dataset?.title) return;
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'session-title-tooltip';
+  tooltip.textContent = title.dataset.title;
+  document.body.appendChild(tooltip);
+
+  const rect = title.getBoundingClientRect();
+  const padding = 8;
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const left = Math.min(rect.left, window.innerWidth - tooltipRect.width - padding);
+  tooltip.style.top = `${rect.bottom + 4}px`;
+  tooltip.style.left = `${Math.max(padding, left)}px`;
+  activeSessionTitleTooltip = tooltip;
 }
 
 function renameSession(sessionId) {
@@ -1143,12 +1175,15 @@ async function exportSessionMarkdown(sessionId) {
 }
 
 document.addEventListener('click', (e) => {
+  hideSessionTitleTooltip();
   if (!e.target.closest('.session-menu-wrapper')) {
     closeSessionMenu();
   }
 });
 
 function renderSessionList() {
+  hideSessionTitleTooltip();
+
   const sessions = loadSessions();
   const sorted = Object.values(sessions).sort((a, b) => b.created - a.created);
   sessionList.innerHTML = sorted.length ? sorted.map(s => `
@@ -1168,26 +1203,8 @@ function renderSessionList() {
     const isOverflow = title.scrollWidth > title.clientWidth;
     if (isOverflow) {
       title.classList.add('has-overflow');
-      
-      let tooltip = null;
-      
-      title.addEventListener('mouseenter', (e) => {
-        tooltip = document.createElement('div');
-        tooltip.className = 'session-title-tooltip';
-        tooltip.textContent = title.dataset.title;
-        document.body.appendChild(tooltip);
-        
-        const rect = title.getBoundingClientRect();
-        tooltip.style.top = (rect.bottom + 4) + 'px';
-        tooltip.style.left = rect.left + 'px';
-      });
-      
-      title.addEventListener('mouseleave', () => {
-        if (tooltip) {
-          tooltip.remove();
-          tooltip = null;
-        }
-      });
+      title.addEventListener('mouseenter', () => showSessionTitleTooltip(title));
+      title.addEventListener('mouseleave', hideSessionTitleTooltip);
     }
   });
 
@@ -1206,6 +1223,9 @@ function renderSessionList() {
     });
   });
 }
+
+window.addEventListener('scroll', hideSessionTitleTooltip, true);
+window.addEventListener('resize', hideSessionTitleTooltip);
 
 function syncInputAreaState(sessionId) {
   const isStreaming = sessionId && streamingSessions[sessionId];
@@ -1655,7 +1675,9 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   if (Number.isInteger(messageIndex)) msg.dataset.messageIndex = String(messageIndex);
 
   let innerHTML = '';
-  if (sender === 'agent') {
+  if (sender === 'notice') {
+    innerHTML += `<div class="message-notice">${escapeHtml(text)}</div>`;
+  } else if (sender === 'agent') {
     if (text) {
       innerHTML += `<div class="message-bubble">${renderMarkdown(text)}</div>`;
     } else {
@@ -1666,6 +1688,12 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   }
   msg.innerHTML = innerHTML;
   const bubble = msg.querySelector('.message-bubble');
+  if (!bubble) {
+    chatMessages.appendChild(msg);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    updateChatLayout();
+    return msg;
+  }
   bubble._rawText = text || '';
   bubble._rawReasoning = reasoning || '';
   bubble._toolCalls = {};
@@ -1712,6 +1740,18 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
   updateChatLayout();
   
   return msg;
+}
+
+function showBackgroundReviewNotice(sessionId, text) {
+  const cleanText = (text || '').replace(/^💾\s*/, '').trim();
+  if (!cleanText) return;
+  const displayText = cleanText.startsWith('Self-improvement review:')
+    ? cleanText.replace(/^Self-improvement review:\s*/, 'Self-improvement: ')
+    : cleanText;
+  const messageIndex = addMessageToSessionById(sessionId, displayText, 'notice');
+  if (sessionId === currentSessionId) {
+    addMessage(displayText, 'notice', false, '', [], '', messageIndex);
+  }
 }
 
 // Helper to find streaming message element by sessionId
@@ -2401,6 +2441,9 @@ if (window.api) {
       case 'tool_progress':
         break;
       case 'tool_gen':
+        break;
+      case 'background_review':
+        showBackgroundReviewNotice(sessionId, data.data);
         break;
       case 'clarify_request':
         showPromptOverlay('clarify_request', {

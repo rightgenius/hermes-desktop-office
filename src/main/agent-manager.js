@@ -451,6 +451,12 @@ class AgentManager {
       case 'status':
         this.emitResponse('status', { kind: msg.kind, text: msg.text }, sessionId);
         break;
+      case 'background_review': {
+        const text = msg.text || '';
+        this.emitResponse('background_review', text, sessionId);
+        if (text) this.emitLog('info', text);
+        break;
+      }
       default:
         this.emitLog('info', `[bridge] ${JSON.stringify(msg)}`);
     }

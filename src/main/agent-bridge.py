@@ -185,6 +185,11 @@ def _get_or_create_agent(session_id):
                 }),
                 status_callback=lambda kind, text: _emit({"type": "status", "session_id": session_id, "kind": kind, "text": text}),
             )
+            agent.background_review_callback = lambda text: _emit({
+                "type": "background_review",
+                "session_id": session_id,
+                "text": text,
+            })
             _sessions[session_id] = agent
         return _sessions[session_id]
 
