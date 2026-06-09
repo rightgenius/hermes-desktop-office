@@ -1754,6 +1754,19 @@ function showBackgroundReviewNotice(sessionId, text) {
   }
 }
 
+function showAgentStatusNotice(sessionId, payload) {
+  const kind = payload && typeof payload === 'object' ? payload.kind : '';
+  const text = payload && typeof payload === 'object' ? payload.text : payload;
+  const displayText = (text || '').trim();
+  if (!displayText) return;
+  if (kind && !['lifecycle', 'warn'].includes(kind)) return;
+
+  const messageIndex = addMessageToSessionById(sessionId, displayText, 'notice');
+  if (sessionId === currentSessionId) {
+    addMessage(displayText, 'notice', false, '', [], '', messageIndex);
+  }
+}
+
 // Helper to find streaming message element by sessionId
 function getStreamingMessageEl(sessionId) {
   if (!sessionId) return null;
@@ -2444,6 +2457,9 @@ if (window.api) {
         break;
       case 'background_review':
         showBackgroundReviewNotice(sessionId, data.data);
+        break;
+      case 'status':
+        showAgentStatusNotice(sessionId, data.data);
         break;
       case 'clarify_request':
         showPromptOverlay('clarify_request', {
