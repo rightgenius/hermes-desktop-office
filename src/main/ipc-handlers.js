@@ -490,12 +490,12 @@ function setupIPCHandlers(mainWindow) {
   ipcMain.handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
   ipcMain.handle('agent-set-workspace', (_, { sessionId, workspacePath }) => agentManager.setWorkspacePath(sessionId, workspacePath));
 
-  ipcMain.handle('session-export', async (event, { filename, content }) => {
+  ipcMain.handle('session-export', async (event, { filename, content, options = {} }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showSaveDialog(win, {
-      title: '保存会话',
+      title: options.title || '保存会话',
       defaultPath: filename,
-      filters: [{ name: 'Markdown', extensions: ['md'] }]
+      filters: options.filters || [{ name: 'Markdown', extensions: ['md'] }]
     });
     if (result.canceled) return { success: false, cancelled: true };
     await fsPromises.writeFile(result.filePath, content, 'utf-8');

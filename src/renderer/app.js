@@ -2390,14 +2390,74 @@ updateChatLayout();
 // Logs Page
 // ============================
 const logViewer = document.getElementById('log-viewer');
+const logLevelFilter = document.getElementById('log-level-filter');
+const logSearchInput = document.getElementById('log-search');
+const logCounts = document.getElementById('log-counts');
+const logUtils = window.LogUtils || {};
+const logEntries = [];
+
+const createLogEntry = logUtils.createLogEntry || ((text) => ({ level: 'INFO', raw: String(text || ''), message: String(text || '') }));
+const filterLogEntries = logUtils.filterLogEntries || ((entries) => entries);
+const countLogLevels = logUtils.countLogLevels || ((entries) => ({ total: entries.length, INFO: 0, WARN: 0, ERROR: 0, DEBUG: 0 }));
+const formatLogExport = logUtils.formatLogExport || ((entries) => entries.map(entry => entry.raw).join('\n'));
+
+function renderLogs() {
+  if (!logViewer) return;
+  const level = logLevelFilter?.value || 'ALL';
+  const query = logSearchInput?.value || '';
+  const visibleEntries = filterLogEntries(logEntries, { level, query });
+  const shouldStickToBottom = logViewer.scrollTop + logViewer.clientHeight >= logViewer.scrollHeight - 8;
+
+  logViewer.innerHTML = visibleEntries.map(entry => (
+    `<div class="log-line ${entry.level.toLowerCase()}">` +
+      `<span class="log-line-level">[${entry.level}]</span> ` +
+      `<span class="log-line-message">${escapeHtml(entry.message)}</span>` +
+    '</div>'
+  )).join('');
+
+  const counts = countLogLevels(logEntries);
+  if (logCounts) {
+    logCounts.textContent = `${visibleEntries.length}/${counts.total} 行 | INFO ${counts.INFO} · WARN ${counts.WARN} · ERROR ${counts.ERROR} · DEBUG ${counts.DEBUG}`;
+  }
+
+  if (shouldStickToBottom) {
+    logViewer.scrollTop = logViewer.scrollHeight;
+  }
+}
 
 function appendLog(text) {
   if (!logViewer) return;
-  logViewer.textContent += text + '\n';
-  logViewer.scrollTop = logViewer.scrollHeight;
+  logEntries.push(createLogEntry(text));
+  renderLogs();
 }
 
-document.getElementById('clear-logs')?.addEventListener('click', () => { if (logViewer) logViewer.textContent = ''; });
+document.getElementById('clear-logs')?.addEventListener('click', () => {
+  logEntries.length = 0;
+  renderLogs();
+});
+
+logLevelFilter?.addEventListener('change', renderLogs);
+logSearchInput?.addEventListener('input', renderLogs);
+
+document.getElementById('export-logs')?.addEventListener('click', async () => {
+  const level = logLevelFilter?.value || 'ALL';
+  const query = logSearchInput?.value || '';
+  const visibleEntries = filterLogEntries(logEntries, { level, query });
+  const content = formatLogExport(visibleEntries);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  try {
+    if (window.api?.sessionExport) {
+      await window.api.sessionExport(`hermes-agent-logs-${stamp}.txt`, content, {
+        title: '导出日志',
+        filters: [{ name: 'Text', extensions: ['txt', 'log'] }]
+      });
+    }
+  } catch (err) {
+    appendLog(`[ERROR] 导出日志失败: ${err.message}`);
+  }
+});
+
+renderLogs();
 
 async function agentAction(action) {
   appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);

@@ -1,116 +1,128 @@
-# Hermes Desktop for Office — 安装指南
+# Hermes Desktop for Office — 安装与开发指南
 
-## 🟢 场景 A：普通用户安装（零依赖，推荐）
+## 普通用户安装
 
-**适用人群**：只需要使用软件，不关心代码
+适用系统：
+- macOS ARM64（Apple Silicon）
+- Windows x64
+- Linux x64
 
-**适用系统**：macOS ARM64 (Apple Silicon) / Windows (待发布)
+安装步骤：
+1. 从 GitHub Release 下载对应平台安装包。
+2. macOS：打开 `.dmg`，将应用拖入 Applications。
+3. Windows：运行 `.exe` 安装包，或使用 portable 版本。
+4. Linux：使用 `.AppImage` 或 `.deb`。
+5. 首次启动后按向导配置模型 API、工作区、飞书/钉钉授权。
 
-### 安装步骤
+安装包目标是零外部依赖：Electron、Hermes Agent、CLI 二进制、Python runtime 和 Office 技能依赖都应随应用打包。
 
-1. 获取安装包：
-   - 从 Release 页面下载 `Hermes Desktop for Office-x.x.x-arm64.dmg`
-   - 或从已构建电脑复制 `dist/` 目录下的 `.dmg` 文件
+## 开发环境
 
-2. 双击 `.dmg` 文件
+必需依赖：
 
-3. 将 `Hermes Desktop for Office.app` 拖入 Applications 文件夹
+| 依赖 | 建议版本 | 说明 |
+|------|----------|------|
+| Node.js | 20+ | Electron 与构建脚本 |
+| npm | 随 Node.js | 安装前端/构建依赖 |
+| Git | 2.30+ | submodule 与版本管理 |
+| Python | 3.13 优先 | 开发期 agent venv；生产包使用 bundled Python |
+| uv | 最新稳定版 | Hermes Agent 依赖安装 |
 
-4. 从 Applications 打开应用
+首次准备：
 
-5. 首次启动会自动弹出向导：
-   - 输入 Gateway URL 和 API Token
-   - 点击"授权飞书"→ 浏览器完成 OAuth
-   - 点击"授权钉钉"→ 浏览器完成 OAuth
-
-> **重要**：安装包已内置所有依赖（Electron 运行时、lark-cli、dws-cli），新电脑无需安装 Node.js、Python 或任何其他环境。
-
----
-
-## 🟡 场景 B：开发者运行源码
-
-**适用人群**：需要修改代码、调试、贡献代码
-
-### 前置要求
-
-| 依赖 | 版本 | 安装命令 |
-|------|------|----------|
-| Node.js | >= 20 | `brew install node` |
-| Git | >= 2.30 | `brew install git` |
-| Python 3 | >= 3.9 | `brew install python` (macOS 通常自带) |
-
-### 快速安装
-
-```bash
-# 1. 安装基础依赖（如果新电脑没有）
-brew install node git python
-
-# 2. 启用网络代理（如果需要访问 GitHub）
-export https_proxy=socks5://127.0.0.1:7897
-
-# 3. 克隆仓库
-git clone --recurse-submodules https://github.com/rightgenius/hermes-desktop-office.git
-cd hermes-desktop-office
-
-# 4. 安装 npm 依赖（国内镜像加速）
-npm install --registry=https://registry.npmmirror.com
-export ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/"
-
-# 5. 放置 CLI 二进制
-mkdir -p assets/feishu-cli/darwin-arm64
-mkdir -p assets/dws-cli/darwin-arm64
-npm install -g @larksuite/cli dingtalk-workspace-cli
-cp $(npm prefix -g)/lib/node_modules/@larksuite/cli/bin/lark-cli assets/feishu-cli/darwin-arm64/lark-cli
-cp $(find $(npm prefix -g)/lib/node_modules/dingtalk-workspace-cli -name "dws" -type f | head -1) assets/dws-cli/darwin-arm64/dws
-chmod +x assets/feishu-cli/darwin-arm64/lark-cli assets/dws-cli/darwin-arm64/dws
-
-# 6. 启动
-npx electron .
-```
-
-### 构建打包
-
-```bash
-# 下载各平台 CLI 二进制（自动）
-bash scripts/download-clis.sh --clean
-
-# 打包 macOS .dmg
-npx electron-builder --mac
-
-# 打包 Windows .exe
-npx electron-builder --win
-```
-
----
-
-## ❓ 常见问题
-
-### Q: 双击 .dmg 安装后打开白屏
-1. 检查是否从 Applications 打开（不要在 .dmg 中直接双击）
-2. macOS 安全提示：首次打开右键 → "打开" → 确认
-3. 如果仍然白屏，打开 Console.app 搜索 "Hermes" 查看日志
-
-### Q: 源码运行报错 "Cannot find module electron"
-```bash
-npm install
-```
-
-### Q: 源码运行报错 "Agent 未安装"
 ```bash
 git submodule update --init --recursive
+npm install
+npm run setup:agent
+npm run download-clis
 ```
 
-### Q: lark-cli 报错 MODULE_NOT_FOUND
-lark-cli 的实际二进制在 npm 包内部，需要复制 `bin/lark-cli` 而不是 npm wrapper 脚本。参考场景 B Step 5。
+如果 GitHub 访问慢，可在执行 submodule 或 CLI 下载前设置代理：
 
-### Q: dws 找不到
-```bash
-npm install -g dingtalk-workspace-cli
-```
-
-### Q: git clone 超时
-启用代理：
 ```bash
 export https_proxy=socks5://127.0.0.1:7897
-git clone --recurse-submodules https://github.com/rightgenius/hermes-desktop-office.git
+export all_proxy=socks5://127.0.0.1:7897
 ```
+
+## 开发运行
+
+```bash
+npm run dev
+```
+
+开发模式会使用：
+- `src/main/index.js` 作为 Electron 主进程入口。
+- `src/hermes-agent` submodule 作为 Hermes Agent 源码。
+- `assets/feishu-cli/<platform>/lark-cli` 和 `assets/dws-cli/<platform>/dws` 作为内置 CLI。
+- 本机 Python/venv 用于开发期 agent 依赖。
+
+## 打包构建
+
+macOS：
+
+```bash
+npm run prebuild:mac
+npm run build:mac
+```
+
+Windows：
+
+```bash
+npm run prebuild:win
+npm run build:win
+```
+
+Linux：
+
+```bash
+npm run prebuild:linux
+npm run build:linux
+```
+
+`prebuild:*` 会准备 Hermes Agent venv、standalone Python runtime 和 bundled agent deps。`build:*` 会下载 CLI 二进制并调用 `electron-builder` 产出安装包。
+
+## 常用维护命令
+
+```bash
+npm run download-clis:clean
+npm run bundle:python:macos
+npm run bundle:deps:macos
+npm run test:main
+npm run test:e2e:gateway
+npm run test:packaged
+```
+
+## 常见问题
+
+### Agent 未安装或启动失败
+
+```bash
+git submodule update --init --recursive
+npm run setup:agent
+```
+
+### CLI 不存在或不可执行
+
+```bash
+npm run download-clis:clean
+```
+
+确认当前平台目录下存在：
+- `assets/feishu-cli/<platform>/lark-cli`
+- `assets/dws-cli/<platform>/dws`
+
+Windows 对应文件带 `.exe` 后缀。
+
+### 打包后 Python 模块缺失
+
+重新运行对应平台的依赖打包：
+
+```bash
+npm run bundle:deps:macos
+```
+
+如果新增 Office skill Python 依赖，需要同步更新 `scripts/bundle-agent-deps.sh`。
+
+### macOS 首次打开被系统拦截
+
+在 Finder 中右键应用，选择“打开”，再确认启动。发布版本如启用签名和 notarization，应在 release checklist 中确认签名状态。

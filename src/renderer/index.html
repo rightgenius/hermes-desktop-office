@@ -267,8 +267,18 @@
               <button id="agent-start" class="btn btn-secondary">启动 Agent</button>
               <button id="agent-stop" class="btn btn-secondary">停止 Agent</button>
               <button id="agent-restart" class="btn btn-secondary">重启 Agent</button>
+              <select id="log-level-filter" class="log-filter-select" aria-label="日志级别过滤">
+                <option value="ALL">全部级别</option>
+                <option value="INFO">INFO</option>
+                <option value="WARN">WARN</option>
+                <option value="ERROR">ERROR</option>
+                <option value="DEBUG">DEBUG</option>
+              </select>
+              <input id="log-search" class="log-search-input" type="search" placeholder="搜索日志...">
+              <button id="export-logs" class="btn btn-secondary">导出日志</button>
               <button id="clear-logs" class="btn btn-secondary" style="margin-left:auto">清空日志</button>
             </div>
+            <div id="log-counts" class="log-counts">0 行</div>
             <div id="log-viewer" class="log-viewer"></div>
           </div>
         </div>
@@ -650,6 +660,7 @@
     </div>
   </div>
   <script src="llm-providers.js"></script>
+  <script src="log-utils.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

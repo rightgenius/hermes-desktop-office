@@ -1,5 +1,7 @@
 # 开发任务清单
 
+> **当前权威清单**：本文件是当前项目待办的唯一入口。`docs/phase-10-ui-plan.md` 是历史 UI 重构计划，部分条目已由后续实现覆盖，不再直接作为 backlog 执行。
+
 ## GUI 设计规范
 
 ### 配色方案（参考 Claude 浅色主题）
@@ -94,7 +96,20 @@
 - [x] 10.5 设置页增强（Provider/Model/API Key/测试连接）
 - [x] 10.6 对话页功能完善（Agent 流式通信、Markdown 渲染、会话管理）
 - [x] 10.7 授权页美化
-- [ ] 10.8 日志页增强（级别过滤、搜索、导出）
+- [x] 10.8 日志页增强（级别过滤、搜索、导出、行数统计、级别着色）
+
+---
+
+## 当前 Backlog
+
+### 发布前建议完成
+- [ ] 更新跨平台 release notes 模板与版本发布记录
+- [ ] 为 Gateway 日志页复用 Agent 日志页的过滤、搜索、导出交互
+- [ ] 梳理 `docs/superpowers/` 历史计划，将已完成计划移动到 archive 或添加归档说明
+
+### 有余力再做
+- [ ] 校准模型 API 配置文档中的厂商/模型清单，并记录核验日期与官方来源
+- [ ] 补充更多 packaged smoke 场景：首次启动向导、授权状态页、日志导出
 
 ---
 
@@ -115,11 +130,7 @@
 | `assets/feishu-cli/darwin-arm64/lark-cli` | ✅ | 飞书 CLI 二进制 (macOS ARM64) |
 | `assets/dws-cli/darwin-arm64/dws` | ✅ | 钉钉 CLI 二进制 (macOS ARM64) |
 | `docs/tasks.md` | ✅ | 开发任务清单 |
-| `docs/install.md` | ✅ | 安装指南 |
+| `docs/install.md` | ✅ | 安装与开发指南 |
+| `docs/testing.md` | ✅ | 测试入口说明 |
+| `docs/release-checklist.md` | ✅ | 发布/打包验收清单 |
 | `package.json` | ✅ | 项目配置 + electron-builder |
-
-### 待创建文件 (Phase 9+)
-| 文件 | 用途 |
-|------|------|
-| `dist/*.dmg` | macOS 安装包 |
-| `dist/*.exe` | Windows 安装包 |

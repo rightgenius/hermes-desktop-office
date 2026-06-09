@@ -6,6 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..', '..');
 const appJs = fs.readFileSync(path.join(root, 'src', 'renderer', 'app.js'), 'utf8');
 const stylesCss = fs.readFileSync(path.join(root, 'src', 'renderer', 'styles.css'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(root, 'src', 'renderer', 'index.html'), 'utf8');
 
 describe('renderer regressions', () => {
   test('session title tooltip is cleaned when the session list re-renders', () => {
@@ -26,5 +27,20 @@ describe('renderer regressions', () => {
     assert.ok(linkRule, '.message-bubble a rule should exist');
     assert.match(linkRule[1], /overflow-wrap\s*:\s*anywhere/);
     assert.match(linkRule[1], /word-break\s*:\s*break-word/);
+  });
+
+  test('logs page exposes filtering, search, export, and count controls', () => {
+    assert.match(indexHtml, /id="log-level-filter"/);
+    assert.match(indexHtml, /id="log-search"/);
+    assert.match(indexHtml, /id="export-logs"/);
+    assert.match(indexHtml, /id="log-counts"/);
+
+    assert.match(appJs, /function\s+renderLogs\s*\(/);
+    assert.match(appJs, /filterLogEntries\s*\(/);
+    assert.match(appJs, /formatLogExport\s*\(/);
+
+    assert.match(stylesCss, /\.log-line\.error/);
+    assert.match(stylesCss, /\.log-line\.warn/);
+    assert.match(stylesCss, /\.log-line\.debug/);
   });
 });

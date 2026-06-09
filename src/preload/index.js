@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('api', {
   tryStartAgent: () => ipcRenderer.invoke('try-start-agent'),
 
   // Session
-  sessionExport: (filename, content) => ipcRenderer.invoke('session-export', { filename, content }),
+  sessionExport: (filename, content, options = {}) => ipcRenderer.invoke('session-export', { filename, content, options }),
   selectAttachments: () => ipcRenderer.invoke('select-attachments'),
 
   // Workspace
