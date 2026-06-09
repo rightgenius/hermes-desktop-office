@@ -1,6 +1,6 @@
 {
   "name": "hermes-desktop-office",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Hermes Desktop for Office — bundled AI agent with Feishu & DingTalk CLI",
   "main": "src/main/index.js",
   "scripts": {

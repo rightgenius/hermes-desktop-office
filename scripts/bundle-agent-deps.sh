@@ -87,14 +87,70 @@ if [ -n "$PIP_PLATFORM" ]; then
   echo "  Building hermes-agent wheel for $TARGET_PLATFORM..."
   WHEEL_DIR=$(mktemp -d)
   $PYTHON_CMD -m pip wheel --no-deps --wheel-dir "$WHEEL_DIR" "$HERMES_DIR"
-  WHEEL_FILE=$(find "$WHEEL_DIR" -name "*.whl" | head -1)
+  # Some Alibaba Cloud transitive dependencies publish only sdists even though
+  # they are pure Python. Cross-platform installs require --only-binary, so
+  # build local py3-none-any wheels and expose them through --find-links.
+  $PYTHON_CMD -m pip wheel --no-deps --wheel-dir "$WHEEL_DIR" \
+    "alibabacloud-endpoint-util==0.0.4" \
+    "alibabacloud-gateway-dingtalk==1.0.2" \
+    "alibabacloud-gateway-spi==0.0.3" \
+    "alibabacloud-credentials-api==1.0.0" \
+    "alibabacloud-tea==0.4.3"
+  WHEEL_FILE=$(find "$WHEEL_DIR" -name "*.whl" | grep -i "hermes_agent" | head -1)
   if [ -z "$WHEEL_FILE" ]; then
     echo "❌ Failed to build hermes-agent wheel"
     rm -rf "$WHEEL_DIR"
     exit 1
   fi
-  # Use constraints file to pin critical transitive deps (e.g. websockets)
-  $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp $CONSTRAINTS_ARG "$WHEEL_FILE[dingtalk,feishu]"
+  PIP_WHEEL_FILE="$WHEEL_FILE"
+  PIP_WHEEL_DIR="$WHEEL_DIR"
+  PIP_BASE_REQS_FILE="$WHEEL_DIR/hermes-cross-requirements.txt"
+  "$PYTHON_CMD" - "$HERMES_DIR/pyproject.toml" > "$PIP_BASE_REQS_FILE" <<'PY'
+import sys
+
+inside = False
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    for raw in fh:
+        line = raw.strip()
+        if not inside:
+            if line == "dependencies = [":
+                inside = True
+            continue
+        if line == "]":
+            break
+        if not line.startswith('"'):
+            continue
+        dep = line.split("#", 1)[0].strip().rstrip(",").strip().strip('"')
+        if dep:
+            print(dep.replace("uvicorn[standard]", "uvicorn"))
+PY
+  if [ "$TARGET_PLATFORM" = "windows" ] && command -v cygpath >/dev/null 2>&1; then
+    PIP_WHEEL_FILE=$(cygpath -w "$WHEEL_FILE")
+    PIP_WHEEL_DIR=$(cygpath -w "$WHEEL_DIR")
+    PIP_BASE_REQS_FILE=$(cygpath -w "$PIP_BASE_REQS_FILE")
+  fi
+  # Use constraints file to pin critical transitive deps (e.g. websockets).
+  # Pip's handling of extras appended to a wheel filename is inconsistent
+  # across environments, so install Hermes plus the bundled gateway extras
+  # explicitly instead of relying on "$wheel[dingtalk,feishu]".
+  if [ "$TARGET_PLATFORM" = "windows" ]; then
+    # Pip evaluates uvicorn[standard]'s sys_platform markers against the host
+    # during cross-platform resolution, which makes Windows builds try to
+    # resolve uvloop. Install the Hermes wheel without deps, then install the
+    # project dependencies with uvicorn's optional "standard" extra stripped.
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp --find-links "$PIP_WHEEL_DIR" --no-deps "$PIP_WHEEL_FILE"
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp --find-links "$PIP_WHEEL_DIR" $CONSTRAINTS_ARG -r "$PIP_BASE_REQS_FILE" \
+      "dingtalk-stream==0.24.3" \
+      "alibabacloud-dingtalk==2.2.42" \
+      "lark-oapi==1.5.3" \
+      "qrcode==7.4.2"
+  else
+    $PYTHON_CMD -m pip install --target "$DEPS_DIR" --platform "$PIP_PLATFORM" --only-binary "$PIP_ONLY_BINARY" --python-version 3.13 --implementation cp --find-links "$PIP_WHEEL_DIR" $CONSTRAINTS_ARG "$PIP_WHEEL_FILE" \
+      "dingtalk-stream==0.24.3" \
+      "alibabacloud-dingtalk==2.2.42" \
+      "lark-oapi==1.5.3" \
+      "qrcode==7.4.2"
+  fi
   rm -rf "$WHEEL_DIR"
 else
   # Native install: use lock file as constraint (pins versions but allows new deps)
