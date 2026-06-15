@@ -549,6 +549,37 @@
           <div class="cron-list" id="cron-list">
             <div class="empty-state-text">暂无定时任务</div>
           </div>
+          <section class="card cron-audit-card" id="cron-audit-card">
+            <div class="cron-audit-header">
+              <div>
+                <h3>执行日志</h3>
+                <p class="cron-audit-description">审计任务状态、Agent 输出、工具调用和控制台日志</p>
+              </div>
+              <span id="cron-log-usage" class="cron-log-usage">已用 0 B / 100 MB</span>
+            </div>
+            <div class="cron-log-controls">
+              <label class="cron-log-filter-label" for="cron-log-job-filter">任务</label>
+              <select id="cron-log-job-filter">
+                <option value="">全部任务</option>
+              </select>
+              <label class="cron-log-limit-label" for="cron-log-max-mb">存储上限</label>
+              <div class="cron-log-limit-input">
+                <input type="number" id="cron-log-max-mb" min="10" max="10240" step="1" value="100">
+                <span>MB</span>
+              </div>
+              <button class="btn btn-secondary" id="cron-log-save-limit">保存上限</button>
+              <button class="btn btn-secondary" id="cron-log-refresh">刷新</button>
+              <button class="btn btn-secondary" id="cron-log-clear">清空日志</button>
+            </div>
+            <div class="cron-audit-grid">
+              <div class="cron-log-list" id="cron-log-list">
+                <div class="empty-state-text">暂无执行日志</div>
+              </div>
+              <div class="cron-log-detail" id="cron-log-detail">
+                <div class="empty-state-text">选择一条执行记录查看详情</div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
 
@@ -601,6 +632,28 @@
             <div class="form-group">
               <label for="cron-prompt">提示词 <span class="required">*</span></label>
               <textarea id="cron-prompt" rows="4" placeholder="任务执行内容，如：检查邮件并总结未回复的邮件"></textarea>
+            </div>
+            <div class="form-group">
+              <label>自动授权策略</label>
+              <div class="cron-auto-authorize">
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="denylist" checked>
+                  <strong>黑名单模式</strong> — 默认全开，命中内置黑名单时拒绝（推荐）
+                </label>
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="ask">
+                  <strong>每次询问</strong> — 危险命令弹模态框（cron 后台可能卡住）
+                </label>
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="allowlist">
+                  <strong>白名单模式</strong> — 仅放行明确允许的命令
+                </label>
+              </div>
+              <small class="form-hint">
+                所有自动授权决策会写入 <code>~/.hermes/cron/logs/*.jsonl</code> 审计日志。
+                硬阻断（rm -rf /、shutdown 等）永远生效，无视此设置。
+                <a href="#" id="cron-policy-view">查看内置黑名单</a>
+              </small>
             </div>
             <div class="form-group">
               <label for="cron-repeat">重复次数</label>

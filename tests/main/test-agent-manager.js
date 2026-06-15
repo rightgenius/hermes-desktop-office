@@ -1,6 +1,13 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { AgentManager, resolveHermesPath } = require('../../src/main/agent-manager');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {
+  AgentManager,
+  ensureExternalSkillsDirInConfig,
+  resolveHermesPath,
+} = require('../../src/main/agent-manager');
 
 function makeManager() {
   const sent = [];
@@ -14,6 +21,112 @@ function makeManager() {
 }
 
 describe('AgentManager bridge events', () => {
+  test('marks the process ready only after the bridge reports warmup completion', () => {
+    const { manager, sent } = makeManager();
+    manager.running = true;
+    manager.ready = false;
+
+    manager._handleBridgeMessage({
+      type: 'ready',
+      startup_ms: 3210,
+    });
+
+    assert.strictEqual(manager.ready, true);
+    assert.deepStrictEqual(
+      sent.filter(({ channel }) => channel === 'agent-status').map(({ payload }) => payload),
+      [{ running: true, ready: true }],
+    );
+    assert.match(
+      sent.find(({ channel }) => channel === 'agent-log').payload.message,
+      /3210ms/,
+    );
+  });
+
+  test('forwards session initialization before model generation starts', () => {
+    const { manager, sent } = makeManager();
+
+    manager._handleBridgeMessage({
+      type: 'initializing',
+      session_id: 'session-1',
+    });
+
+    assert.deepStrictEqual(sent, [
+      {
+        channel: 'agent-response',
+        payload: {
+          event: 'initializing',
+          data: '',
+          sessionId: 'session-1',
+        },
+      },
+    ]);
+  });
+
+  test('publishes response and log events internally without changing renderer IPC payloads', () => {
+    const { manager, sent } = makeManager();
+    const responses = [];
+    const logs = [];
+
+    manager.on('response', (event) => responses.push(event));
+    manager.on('log', (event) => logs.push(event));
+
+    manager.emitResponse('chunk', 'hello', 'cron-session');
+    manager.emitLog('warn', 'console output');
+
+    assert.strictEqual(responses.length, 1);
+    assert.deepStrictEqual(
+      {
+        event: responses[0].event,
+        data: responses[0].data,
+        sessionId: responses[0].sessionId,
+      },
+      { event: 'chunk', data: 'hello', sessionId: 'cron-session' }
+    );
+    assert.match(responses[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+
+    assert.strictEqual(logs.length, 1);
+    assert.deepStrictEqual(
+      {
+        level: logs[0].level,
+        message: logs[0].message,
+      },
+      { level: 'warn', message: 'console output' }
+    );
+    assert.match(logs[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+
+    assert.deepStrictEqual(sent, [
+      {
+        channel: 'agent-response',
+        payload: { event: 'chunk', data: 'hello', sessionId: 'cron-session' },
+      },
+      {
+        channel: 'agent-log',
+        payload: { level: 'warn', message: 'console output' },
+      },
+    ]);
+  });
+
+  test('startup errors stop the unusable bridge process and clear running state', () => {
+    const { manager } = makeManager();
+    let killed = false;
+    manager.running = true;
+    manager.ready = false;
+    manager.process = {
+      kill: () => {
+        killed = true;
+      },
+    };
+
+    manager._handleBridgeMessage({
+      type: 'startup_error',
+      message: 'warmup failed',
+    });
+
+    assert.strictEqual(killed, true);
+    assert.strictEqual(manager.running, false);
+    assert.strictEqual(manager.ready, false);
+  });
+
   test('forwards background self-improvement review summaries without completing the turn', () => {
     const { manager, sent } = makeManager();
 
@@ -41,6 +154,97 @@ describe('AgentManager bridge events', () => {
       },
     ]);
     assert.strictEqual(manager.sessionStates.get('session-1'), undefined);
+  });
+
+  test('sessionless bridge errors terminate every generating renderer session', () => {
+    const { manager, sent } = makeManager();
+    manager.sessionStates.set('session-1', { isGenerating: true });
+    manager.sessionStates.set('session-2', { isGenerating: false });
+    manager.sessionStates.set('session-3', { isGenerating: true });
+
+    manager._handleBridgeMessage({
+      type: 'error',
+      session_id: '',
+      message: 'Invalid JSON',
+    });
+
+    assert.strictEqual(manager.sessionStates.get('session-1').isGenerating, false);
+    assert.strictEqual(manager.sessionStates.get('session-2').isGenerating, false);
+    assert.strictEqual(manager.sessionStates.get('session-3').isGenerating, false);
+    assert.deepStrictEqual(
+      sent.filter(({ channel }) => channel === 'agent-response').map(({ payload }) => payload),
+      [
+        { event: 'error', data: 'Invalid JSON', sessionId: 'session-1' },
+        { event: 'error', data: 'Invalid JSON', sessionId: 'session-3' },
+      ]
+    );
+  });
+});
+
+describe('AgentManager Hermes config updates', () => {
+  test('adds an external skills directory without corrupting adjacent YAML sections', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-'));
+    const configPath = path.join(home, 'config.yaml');
+    fs.writeFileSync(configPath, [
+      'model:',
+      '  default: test-model',
+      'skills:',
+      '  external_dirs: []',
+      'providers: {}',
+      '',
+    ].join('\n'));
+
+    const result = ensureExternalSkillsDirInConfig(home, '/tmp/office skills');
+    const updated = fs.readFileSync(configPath, 'utf8');
+
+    assert.strictEqual(result.success, true);
+    assert.match(updated, /external_dirs:\s*\n\s+- ['"]?\/tmp\/office skills['"]?/);
+    assert.match(updated, /^providers: \{\}$/m);
+    assert.doesNotMatch(updated, /provi\s+external_dirs/);
+  });
+
+  test('backs up and repairs the known malformed external_dirs insertion pattern', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-repair-'));
+    const configPath = path.join(home, 'config.yaml');
+    fs.writeFileSync(configPath, [
+      'model:',
+      '  default: test-model',
+      'providers: {}',
+      'skills:',
+      '  external_dirs: []',
+      'provi  external_dirs:',
+      '    - "/old/office-skills"',
+      '- /current/office-skills',
+      'ders: {}',
+      'plugins:',
+      '  enabled: []',
+      '',
+    ].join('\n'));
+
+    const result = ensureExternalSkillsDirInConfig(home, '/new/office-skills');
+    const updated = fs.readFileSync(configPath, 'utf8');
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.recovered, true);
+    assert.ok(result.backupPath);
+    assert.strictEqual(fs.existsSync(result.backupPath), true);
+    assert.match(updated, /^providers: \{\}$/m);
+    assert.match(updated, /\/old\/office-skills/);
+    assert.match(updated, /\/current\/office-skills/);
+    assert.match(updated, /\/new\/office-skills/);
+    assert.doesNotMatch(updated, /provi\s+external_dirs|^ders:/m);
+  });
+
+  test('does not overwrite YAML corruption that does not match the known recovery pattern', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-invalid-'));
+    const configPath = path.join(home, 'config.yaml');
+    const invalid = 'model:\n  default: test\n- unexpected\n';
+    fs.writeFileSync(configPath, invalid);
+
+    const result = ensureExternalSkillsDirInConfig(home, '/new/office-skills');
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(fs.readFileSync(configPath, 'utf8'), invalid);
   });
 });
 

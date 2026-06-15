@@ -10,16 +10,25 @@
     return LEVELS.includes(normalized) ? normalized : 'INFO';
   }
 
-  function createLogEntry(text) {
+  function formatDisplayTime(date) {
+    return [
+      String(date.getHours()).padStart(2, '0'),
+      String(date.getMinutes()).padStart(2, '0'),
+      String(date.getSeconds()).padStart(2, '0'),
+    ].join(':') + `.${String(date.getMilliseconds()).padStart(3, '0')}`;
+  }
+
+  function createLogEntry(text, now = new Date()) {
     const raw = String(text || '');
     const match = raw.match(/^\[(INFO|WARN|WARNING|ERROR|DEBUG)\]\s*(.*)$/i);
     const level = match ? normalizeLevel(match[1] === 'WARNING' ? 'WARN' : match[1]) : 'INFO';
     return {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: `${now.getTime()}-${Math.random().toString(36).slice(2)}`,
       level,
       raw,
       message: match ? match[2] : raw,
-      createdAt: new Date().toISOString(),
+      createdAt: now.toISOString(),
+      displayTime: formatDisplayTime(now),
     };
   }
 
@@ -43,7 +52,7 @@
 
   function formatLogExport(entries) {
     if (!entries.length) return '';
-    return `${entries.map(entry => entry.raw).join('\n')}\n`;
+    return `${entries.map(entry => `${entry.createdAt} ${entry.raw}`).join('\n')}\n`;
   }
 
   return {

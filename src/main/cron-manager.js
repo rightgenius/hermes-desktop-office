@@ -1,17 +1,34 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const {
+  CronLogStore,
+  normalizeCronLogMaxMb,
+  DEFAULT_CRON_LOG_MAX_MB,
+} = require('./cron-log-store');
+const { CronPolicy } = require('./cron-policy');
 
 class CronManager {
-  constructor(agentManager, mainWindow) {
+  constructor(agentManager, mainWindow, options = {}) {
     this.agentManager = agentManager;
     this.mainWindow = mainWindow;
     this.tickInterval = null;
     this.isRunning = false;
-    this._cronDir = path.join(app.getPath('home'), '.hermes', 'cron');
+    this._cronDir = options.cronDir || path.join(app.getPath('home'), '.hermes', 'cron');
     this._jobsFile = path.join(this._cronDir, 'jobs.json');
     this._outputDir = path.join(this._cronDir, 'output');
-    this._chunkBuffers = new Map();
+    this.logger = options.logger || console;
+    this.configStore = options.configStore || null;
+    this.logStore = options.logStore || new CronLogStore({
+      baseDir: path.join(this._cronDir, 'logs'),
+      getMaxBytes: () => this._getLogMaxMb() * 1024 * 1024,
+    });
+    // GUI 侧 denylist 匹配器实例——bridge 端 Python 也有同样的副本，
+    // 两边保持语义一致；GUI 这一份用于配置预览 / 测试 / 决策审计的辅助
+    // （真正的执行拦截在 bridge 端 Python 层）。
+    this.policy = options.policy || new CronPolicy({
+      configProvider: this.configStore,
+    });
   }
 
   _ensureDirs() {
@@ -78,14 +95,122 @@ class CronManager {
     jobs[idx].state = 'running';
     this._saveJobs(jobs);
 
+    let logRun = null;
     try {
-      const sessionId = `cron_${job.id}_${Date.now()}`;
+      logRun = this.logStore.startRun(job);
+    } catch (err) {
+      this.logger.error('Failed to start cron execution log:', err.message);
+    }
+
+    const sessionId = `cron_${job.id}_${Date.now()}`;
+    const captureResponse = (event) => {
+      if (!logRun || event.sessionId !== sessionId) return;
+      // Convert cron auto-auth decision events into structured decision log entries.
+      if (event.event === 'cron_decision' && event.data && typeof event.data === 'object') {
+        this._appendLogEvent(logRun, {
+          timestamp: event.timestamp || new Date().toISOString(),
+          type: 'decision',
+          decision: event.data.decision,
+          rule_id: event.data.rule_id || null,
+          description: event.data.description || '',
+          command: event.data.command || '',
+          source: 'agent-bridge',
+        });
+        return;
+      }
+      this._appendResponseLog(logRun, event);
+    };
+    const captureConsole = (event) => {
+      if (!logRun) return;
+      this._appendLogEvent(logRun, {
+        timestamp: event.timestamp,
+        type: 'console',
+        level: event.level || 'info',
+        message: event.message || '',
+      });
+    };
+    this.agentManager.on('response', captureResponse);
+    this.agentManager.on('log', captureConsole);
+
+    // Emit a policy_applied audit event so reviewers see which policy regime
+    // this run was operating under (denylist mode, any extra user rules loaded,
+    // and whether HARDLINE_PATTERNS floor is acknowledged).
+    this._appendLogEvent(logRun, {
+      timestamp: new Date().toISOString(),
+      type: 'policy_applied',
+      policy: 'denylist_auto_authorize',
+      mode: job.autoAuthorize || 'denylist',
+      hardline_protected: true,
+      note: 'hermes-agent HARDLINE_PATTERNS 永远生效；denylist 仅补充后台场景下的额外拦截',
+    });
+
+    let logResult = {
+      status: 'error',
+      error: '任务执行未完成',
+      output: '',
+    };
+    try {
       const prompt = this._buildJobPrompt(job);
-      const result = await this._executeViaBridge(sessionId, prompt);
+      const result = await this._executeViaBridge(sessionId, prompt, job);
       this._saveJobOutput(job.id, result);
       this._markJobRun(job.id, true, null);
+      logResult = { status: 'success', error: null, output: result };
     } catch (err) {
       this._markJobRun(job.id, false, err.message);
+      logResult = { status: 'error', error: err.message, output: '' };
+    } finally {
+      this.agentManager.off('response', captureResponse);
+      this.agentManager.off('log', captureConsole);
+      if (logRun) {
+        try {
+          this.logStore.finishRun(logRun, logResult);
+        } catch (err) {
+          this.logger.error('Failed to finalize cron execution log:', err.message);
+        }
+      }
+      this._sendLogUpdate(job.id, logRun?.runId || null);
+    }
+  }
+
+  _appendLogEvent(logRun, event) {
+    try {
+      return this.logStore.appendEvent(logRun, event);
+    } catch (err) {
+      this.logger.error('Failed to append cron execution log:', err.message);
+      return false;
+    }
+  }
+
+  _appendResponseLog(logRun, event) {
+    const timestamp = event.timestamp || new Date().toISOString();
+    if (event.event === 'chunk') {
+      this._appendLogEvent(logRun, {
+        timestamp,
+        type: 'agent_output',
+        content: typeof event.data === 'string' ? event.data : JSON.stringify(event.data),
+      });
+      return;
+    }
+    if (event.event === 'complete') return;
+
+    if (event.data && typeof event.data === 'object' && !Array.isArray(event.data)) {
+      this._appendLogEvent(logRun, {
+        ...event.data,
+        timestamp,
+        type: event.event.startsWith('tool_') ? event.event : `agent_${event.event}`,
+      });
+      return;
+    }
+    this._appendLogEvent(logRun, {
+      timestamp,
+      type: event.event.startsWith('tool_') ? event.event : `agent_${event.event}`,
+      message: event.data == null ? '' : String(event.data),
+    });
+  }
+
+  _sendLogUpdate(jobId, runId) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('cron-log-updated', { jobId, runId });
     }
   }
 
@@ -98,36 +223,37 @@ class CronManager {
     return `[CRON JOB: ${job.name || job.id}]\n\n${prompt}`;
   }
 
-  async _executeViaBridge(sessionId, prompt) {
+  async _executeViaBridge(sessionId, prompt, job) {
     return new Promise((resolve, reject) => {
       if (!this.agentManager.running) {
         reject(new Error('Agent 未运行'));
         return;
       }
-      const result = this.agentManager.sendMessage(sessionId, prompt, []);
-      if (!result.success) {
-        reject(new Error(result.error));
-        return;
-      }
-      const handler = (_, data) => {
-        if (data.session_id === sessionId) {
-          if (data.type === 'chunk') {
-            const buf = this._chunkBuffers.get(sessionId) || '';
-            this._chunkBuffers.set(sessionId, buf + data.content);
-          } else if (data.type === 'done') {
-            this.mainWindow.removeListener('agent-response', handler);
-            const content = this._chunkBuffers.get(sessionId) || '';
-            this._chunkBuffers.delete(sessionId);
-            resolve(content);
-          } else if (data.type === 'error') {
-            this.mainWindow.removeListener('agent-response', handler);
-            this._chunkBuffers.delete(sessionId);
-            reject(new Error(data.error));
-          }
+      let content = '';
+      const handler = (event) => {
+        if (event.sessionId !== sessionId) return;
+        if (event.event === 'chunk') {
+          content += typeof event.data === 'string' ? event.data : '';
+        } else if (event.event === 'complete') {
+          this.agentManager.off('response', handler);
+          resolve(content || (typeof event.data === 'string' ? event.data : ''));
+        } else if (event.event === 'error') {
+          this.agentManager.off('response', handler);
+          reject(new Error(typeof event.data === 'string' ? event.data : '未知错误'));
+        } else if (event.event === 'stopped') {
+          this.agentManager.off('response', handler);
+          reject(new Error('任务执行已停止'));
         }
       };
-      this._chunkBuffers.set(sessionId, '');
-      this.mainWindow.on('agent-response', handler);
+      this.agentManager.on('response', handler);
+      const result = this.agentManager.sendMessage(sessionId, prompt, [], {
+        isCronSession: true,
+        cronJobId: job?.id || null,
+      });
+      if (!result.success) {
+        this.agentManager.off('response', handler);
+        reject(new Error(result.error));
+      }
     });
   }
 
@@ -260,6 +386,47 @@ class CronManager {
       paused_at: null,
       next_run_at: new Date().toISOString(),
     });
+  }
+
+  _getLogMaxMb() {
+    const configured = this.configStore?.get()?.cronLogMaxMb;
+    try {
+      return normalizeCronLogMaxMb(configured);
+    } catch {
+      return DEFAULT_CRON_LOG_MAX_MB;
+    }
+  }
+
+  listExecutionLogs(options = {}) {
+    return this.logStore.listRuns(options);
+  }
+
+  getExecutionLog(runId) {
+    return this.logStore.getRun(runId);
+  }
+
+  clearExecutionLogs() {
+    const result = this.logStore.clear();
+    this._sendLogUpdate(null, null);
+    return result;
+  }
+
+  getLogSettings() {
+    return {
+      maxMb: this._getLogMaxMb(),
+      ...this.logStore.getUsage(),
+    };
+  }
+
+  updateLogSettings(maxMb) {
+    const normalized = normalizeCronLogMaxMb(maxMb);
+    if (!this.configStore) {
+      throw new Error('配置存储不可用');
+    }
+    this.configStore.save({ cronLogMaxMb: normalized });
+    const usage = this.logStore.enforceLimit();
+    this._sendLogUpdate(null, null);
+    return { maxMb: normalized, ...usage };
   }
 }
 

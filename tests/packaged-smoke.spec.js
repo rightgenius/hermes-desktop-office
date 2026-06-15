@@ -61,6 +61,10 @@ test.describe('Packaged app smoke test', () => {
   });
 
   test('can start the Agent with the bundled Python runtime', async () => {
+    // CI 环境没有 LLM provider secret —— Agent 启动会卡在
+    // "No LLM provider configured"。本地保留这条 case 验证真实链路。
+    test.skip(Boolean(process.env.CI), 'CI 环境不调用 LLM（依赖 LLM provider secret）');
+
     const result = await page.evaluate(async () => {
       await window.api.agentStop().catch(() => {});
       const config = await window.api.configGet();

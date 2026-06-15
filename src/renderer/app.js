@@ -229,8 +229,16 @@ function updateStatus(id, status) {
   if (id === 'status-agent') {
     const titleStatus = document.getElementById('titlebar-agent-status');
     if (titleStatus) {
-      titleStatus.textContent = status === 'success' ? '运行中' : '未启动';
-      titleStatus.style.color = status === 'success' ? 'var(--success)' : 'var(--text-primary)';
+      titleStatus.textContent = status === 'success'
+        ? '运行中'
+        : status === 'pending'
+          ? '启动中'
+          : '未启动';
+      titleStatus.style.color = status === 'success'
+        ? 'var(--success)'
+        : status === 'pending'
+          ? 'var(--warning)'
+          : 'var(--text-primary)';
     }
   }
 }
@@ -1994,6 +2002,7 @@ function renderToolCalls(bubble) {
 }
 
 function showPromptOverlay(type, data) {
+  removePromptOverlay();
   pendingPrompt = { type, ...data };
   const chatInputArea = document.querySelector('.chat-input-area');
   if (chatInputArea) chatInputArea.classList.add('disabled');
@@ -2006,7 +2015,10 @@ function showPromptOverlay(type, data) {
   if (type === 'clarify_request') {
     const choices = data.choices || [];
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">❓</span>需要你的选择</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">❓</span>需要你的选择</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-question">${escapeHtml(data.question)}</div>
       <div class="prompt-choices">
         ${choices.map((c, i) => `<button class="prompt-choice-btn ${i === 0 ? 'primary' : ''}" data-answer="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
@@ -2014,7 +2026,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'approval_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔐</span>需要权限审批</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔐</span>需要权限审批</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-description">${escapeHtml(data.description || '以下命令需要你的批准才能执行')}</div>
       <div class="prompt-command">${escapeHtml(data.command || '')}</div>
       <div class="prompt-actions">
@@ -2025,7 +2040,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'sudo_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔑</span>需要 sudo 密码</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔑</span>需要 sudo 密码</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-input-group">
         <label for="prompt-sudo-password">请输入 sudo 密码</label>
         <input type="password" id="prompt-sudo-password" placeholder="密码" autofocus>
@@ -2037,7 +2055,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'secret_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔒</span>需要密钥</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔒</span>需要密钥</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-description">${escapeHtml(data.prompt || `请输入 ${data.env_var} 的值`)}</div>
       <div class="prompt-input-group">
         <label for="prompt-secret-value">${escapeHtml(data.env_var || 'Value')}</label>
@@ -2053,6 +2074,7 @@ function showPromptOverlay(type, data) {
 
   overlay.innerHTML = content;
   document.body.appendChild(overlay);
+  overlay.querySelector('.prompt-close')?.addEventListener('click', cancelPendingPrompt);
 
   if (type === 'clarify_request') {
     overlay.querySelectorAll('.prompt-choice-btn').forEach(btn => {
@@ -2084,12 +2106,22 @@ function showPromptOverlay(type, data) {
   }
 }
 
-function removePromptOverlay() {
+function removePromptOverlay(sessionId = null) {
+  if (sessionId && pendingPrompt?.session_id && pendingPrompt.session_id !== sessionId) return;
   const overlay = document.getElementById('prompt-overlay');
   if (overlay) overlay.remove();
   pendingPrompt = null;
   const chatInputArea = document.querySelector('.chat-input-area');
   if (chatInputArea) chatInputArea.classList.remove('disabled');
+}
+
+function cancelPendingPrompt() {
+  if (!pendingPrompt) {
+    removePromptOverlay();
+    return;
+  }
+  const answer = pendingPrompt.type === 'approval_request' ? 'deny' : '';
+  submitPrompt(answer);
 }
 
 async function submitPrompt(answer) {
@@ -2355,8 +2387,19 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMessageContextMenu();
 });
 if (chatInput) {
+  let chatInputIsComposing = false;
+  chatInput.addEventListener('compositionstart', () => {
+    chatInputIsComposing = true;
+  });
+  chatInput.addEventListener('compositionend', () => {
+    chatInputIsComposing = false;
+  });
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    const isComposing = chatInputIsComposing || e.isComposing || e.keyCode === 229;
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
   chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto';
@@ -2410,6 +2453,7 @@ function renderLogs() {
 
   logViewer.innerHTML = visibleEntries.map(entry => (
     `<div class="log-line ${entry.level.toLowerCase()}">` +
+      `<span class="log-line-time">${escapeHtml(entry.displayTime || '')}</span> ` +
       `<span class="log-line-level">[${entry.level}]</span> ` +
       `<span class="log-line-message">${escapeHtml(entry.message)}</span>` +
     '</div>'
@@ -2463,8 +2507,15 @@ async function agentAction(action) {
   appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);
   try {
     const config = await window.api.configGet();
-    await (action === 'start' ? window.api.agentStart(config) : action === 'stop' ? window.api.agentStop() : window.api.agentRestart());
-    updateStatus('status-agent', 'success');
+    const result = await (action === 'start'
+      ? window.api.agentStart(config)
+      : action === 'stop'
+        ? window.api.agentStop()
+        : window.api.agentRestart());
+    if (!result?.success) {
+      throw new Error(result?.error || '未知错误');
+    }
+    updateStatus('status-agent', action === 'stop' ? 'error' : 'success');
     appendLog(`[INFO] Agent ${action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'}`);
   } catch (err) { appendLog(`[ERROR] Agent ${action}失败: ${err.message}`); }
 }
@@ -2479,13 +2530,28 @@ document.getElementById('agent-restart')?.addEventListener('click', () => agentA
 if (window.api) {
   window.api.onAgentLog((data) => appendLog(`[${data.level}] ${data.message}`));
   window.api.onAgentStatus((data) => {
-    updateStatus('status-agent', data.running ? 'success' : 'error');
-    agentRunning = data.running;
+    const isReady = Boolean(data.running && data.ready);
+    updateStatus('status-agent', isReady ? 'success' : data.running ? 'pending' : 'error');
+    agentRunning = isReady;
     if (typeof updateCronStatusUI === 'function') updateCronStatusUI();
   });
   window.api.onAgentResponse((data) => {
     const sessionId = data.sessionId || '';
     switch (data.event) {
+      case 'initializing': {
+        if (sessionId && !streamingSessions[sessionId]) {
+          streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
+        }
+        if (sessionId === currentSessionId && !getStreamingMessageEl(sessionId)) {
+          const msg = addMessage('', 'agent', true, '', [], sessionId);
+          const bubble = msg?.querySelector('.message-bubble');
+          if (bubble) {
+            bubble.classList.add('session-initializing');
+            bubble.textContent = '正在初始化会话...';
+          }
+        }
+        break;
+      }
       case 'start':
         // Initialize streaming state for this session
         if (sessionId && !streamingSessions[sessionId]) {
@@ -2493,7 +2559,16 @@ if (window.api) {
         }
         // Only add DOM message if this session is currently visible
         if (sessionId === currentSessionId) {
-          addMessage('', 'agent', true, '', [], sessionId);
+          let msg = getStreamingMessageEl(sessionId);
+          if (!msg) {
+            msg = addMessage('', 'agent', true, '', [], sessionId);
+          }
+          const bubble = msg?.querySelector('.message-bubble');
+          if (bubble?.classList.contains('session-initializing')) {
+            bubble.classList.remove('session-initializing');
+            bubble.textContent = '';
+            bubble._rawText = '';
+          }
         }
         break;
       case 'chunk':
@@ -2553,6 +2628,7 @@ if (window.api) {
         });
         break;
       case 'complete':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -2561,6 +2637,7 @@ if (window.api) {
         }
         break;
       case 'error':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId, data.data);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -2569,6 +2646,7 @@ if (window.api) {
         }
         break;
       case 'stopped':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -3555,17 +3633,29 @@ const cronEls = {
   scheduleCron: document.getElementById('cron-schedule-cron'),
   scheduleOnce: document.getElementById('cron-schedule-once'),
   recurring: document.getElementById('cron-recurring'),
+  auditCard: document.getElementById('cron-audit-card'),
+  logUsage: document.getElementById('cron-log-usage'),
+  logJobFilter: document.getElementById('cron-log-job-filter'),
+  logMaxMb: document.getElementById('cron-log-max-mb'),
+  logSaveLimit: document.getElementById('cron-log-save-limit'),
+  logRefresh: document.getElementById('cron-log-refresh'),
+  logClear: document.getElementById('cron-log-clear'),
+  logList: document.getElementById('cron-log-list'),
+  logDetail: document.getElementById('cron-log-detail'),
 };
 
 let cronJobs = [];
 let editingCronJobId = null;
 let cronEngineRunning = false;
+let cronLogRuns = [];
+let selectedCronLogRunId = null;
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
   if (result.success) {
     cronJobs = result.jobs;
     renderCronList();
+    updateCronLogJobFilter();
   }
 }
 
@@ -3623,6 +3713,7 @@ function renderCronList() {
             : `<button class="btn btn-secondary btn-pause" data-job-id="${job.id}">暂停</button>`
           }
           <button class="btn btn-secondary btn-trigger" data-job-id="${job.id}">立即执行</button>
+          <button class="btn btn-secondary btn-logs" data-job-id="${job.id}">执行日志</button>
           <button class="btn btn-secondary btn-edit" data-job-id="${job.id}">编辑</button>
           <button class="btn btn-secondary btn-delete" data-job-id="${job.id}">删除</button>
         </div>
@@ -3639,6 +3730,9 @@ function renderCronList() {
   });
   cronEls.list.querySelectorAll('.btn-trigger').forEach(btn => {
     btn.addEventListener('click', () => triggerCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-logs').forEach(btn => {
+    btn.addEventListener('click', () => showCronLogsForJob(btn.dataset.jobId));
   });
   cronEls.list.querySelectorAll('.btn-edit').forEach(btn => {
     btn.addEventListener('click', () => editCronJob(btn.dataset.jobId));
@@ -3657,6 +3751,214 @@ function formatRelativeTime(isoString) {
   if (diff < 3600) return `${Math.floor(diff / 60)}分钟后`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时后`;
   return `${Math.floor(diff / 86400)}天后`;
+}
+
+function updateCronLogJobFilter() {
+  if (!cronEls.logJobFilter) return;
+  const current = cronEls.logJobFilter.value;
+  cronEls.logJobFilter.innerHTML = '<option value="">全部任务</option>' + cronJobs.map(job =>
+    `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name || job.id)}</option>`
+  ).join('');
+  if (cronJobs.some(job => job.id === current)) {
+    cronEls.logJobFilter.value = current;
+  }
+}
+
+function formatCronLogBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatCronLogDate(isoString) {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function formatCronLogDuration(durationMs) {
+  if (durationMs === null || durationMs === undefined) return '执行中';
+  if (durationMs < 1000) return `${durationMs} ms`;
+  if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} 秒`;
+  return `${Math.floor(durationMs / 60000)} 分 ${Math.round((durationMs % 60000) / 1000)} 秒`;
+}
+
+function cronLogStatusMeta(status) {
+  return {
+    success: { label: '成功', className: 'success' },
+    error: { label: '失败', className: 'error' },
+    running: { label: '执行中', className: 'running' },
+    interrupted: { label: '已中断', className: 'interrupted' },
+  }[status] || { label: status || '未知', className: 'unknown' };
+}
+
+function updateCronLogUsage(usageBytes, maxBytes) {
+  if (!cronEls.logUsage) return;
+  cronEls.logUsage.textContent = `已用 ${formatCronLogBytes(usageBytes)} / ${formatCronLogBytes(maxBytes)}`;
+}
+
+async function loadCronLogSettings() {
+  const result = await window.api.cronLogSettingsGet();
+  if (!result.success) return;
+  cronEls.logMaxMb.value = result.maxMb;
+  updateCronLogUsage(result.usageBytes, result.maxBytes);
+}
+
+async function loadCronLogs() {
+  if (!cronEls.logList) return;
+  const jobId = cronEls.logJobFilter?.value || undefined;
+  const result = await window.api.cronLogsList({ jobId, limit: 200 });
+  if (!result.success) {
+    cronEls.logList.innerHTML = `<div class="empty-state-text">日志加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  cronLogRuns = result.runs || [];
+  updateCronLogUsage(result.usageBytes, result.maxBytes);
+  if (selectedCronLogRunId && !cronLogRuns.some(run => run.runId === selectedCronLogRunId)) {
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+  }
+  renderCronLogList();
+}
+
+function renderCronLogList() {
+  if (!cronEls.logList) return;
+  if (cronLogRuns.length === 0) {
+    cronEls.logList.innerHTML = '<div class="empty-state-text">暂无执行日志</div>';
+    return;
+  }
+  cronEls.logList.innerHTML = cronLogRuns.map(run => {
+    const status = cronLogStatusMeta(run.status);
+    const selected = run.runId === selectedCronLogRunId ? ' selected' : '';
+    return `
+      <button class="cron-log-run${selected}" data-run-id="${escapeHtml(run.runId)}">
+        <span class="cron-log-run-main">
+          <span class="cron-log-run-name">${escapeHtml(run.jobName || run.jobId || '未知任务')}</span>
+          <span class="cron-log-run-status ${status.className}">${escapeHtml(status.label)}</span>
+        </span>
+        <span class="cron-log-run-meta">${escapeHtml(formatCronLogDate(run.startedAt))}</span>
+        <span class="cron-log-run-meta">${escapeHtml(formatCronLogDuration(run.durationMs))} · ${escapeHtml(formatCronLogBytes(run.sizeBytes))}${run.truncated ? ' · 已截断' : ''}</span>
+      </button>
+    `;
+  }).join('');
+  cronEls.logList.querySelectorAll('.cron-log-run').forEach(row => {
+    row.addEventListener('click', () => selectCronLogRun(row.dataset.runId));
+  });
+}
+
+function cronLogEventView(event) {
+  const eventType = event.type || 'unknown';
+  if (eventType === 'run_start') {
+    return { label: '开始', className: 'lifecycle', text: `开始执行 ${event.jobName || event.jobId || ''}\n${event.prompt || ''}`.trim() };
+  }
+  if (eventType === 'run_end') {
+    const status = cronLogStatusMeta(event.status);
+    const parts = [`执行${status.label}`];
+    if (event.error) parts.push(event.error);
+    if (event.output) parts.push(`最终输出：\n${event.output}`);
+    return { label: '结束', className: `lifecycle ${status.className}`, text: parts.join('\n') };
+  }
+  if (eventType === 'agent_output') {
+    return { label: 'Agent', className: 'agent-output', text: event.content || '' };
+  }
+  if (eventType === 'console') {
+    const level = String(event.level || 'info').toLowerCase();
+    const safeLevel = ['info', 'warn', 'error', 'debug'].includes(level) ? level : 'info';
+    return { label: `控制台 ${safeLevel.toUpperCase()}`, className: `console console-${safeLevel}`, text: event.message || '' };
+  }
+  if (eventType === 'tool_start') {
+    return { label: '工具开始', className: 'tool', text: `${event.name || 'unknown'}\n${JSON.stringify(event.args || {}, null, 2)}` };
+  }
+  if (eventType === 'tool_complete') {
+    const result = typeof event.result === 'string' ? event.result : JSON.stringify(event.result ?? '', null, 2);
+    return { label: '工具完成', className: 'tool', text: `${event.name || 'unknown'}\n${result}` };
+  }
+  if (eventType === 'log_truncated') {
+    return { label: '截断', className: 'console console-warn', text: event.message || '日志已截断' };
+  }
+  if (eventType === 'policy_applied') {
+    // 任务开始时的策略声明：明示本次执行走哪个 regime
+    const lines = [
+      `策略：${event.policy || '(unknown)'}`,
+      `模式：${event.mode || '(default)'}`,
+      `硬阻断保护：${event.hardline_protected ? '开启' : '关闭'}`,
+    ];
+    if (event.note) lines.push(event.note);
+    return { label: '策略', className: 'lifecycle policy', text: lines.join('\n') };
+  }
+  if (eventType === 'decision') {
+    // 自动授权决策：denylist 命中 / 自动通过
+    if (event.decision === 'denylist_blocked') {
+      const parts = [
+        '【拒绝】命中黑名单',
+        `规则：${event.rule_id || '(unknown)'}`,
+        `原因：${event.description || ''}`,
+      ];
+      if (event.command) parts.push(`命令：${event.command}`);
+      return { label: '权限拒绝', className: 'decision decision-deny', text: parts.join('\n') };
+    }
+    if (event.decision === 'auto_approve') {
+      return { label: '权限通过', className: 'decision decision-approve', text: `【自动通过】${event.description || ''}\n命令：${event.command || ''}` };
+    }
+    return { label: '权限决策', className: 'decision', text: JSON.stringify(event, null, 2) };
+  }
+  const text = event.message || event.text || JSON.stringify(event, null, 2);
+  return { label: eventType.replace(/^agent_/, 'Agent '), className: 'agent-event', text };
+}
+
+function renderCronLogDetail(log) {
+  if (!cronEls.logDetail) return;
+  const summary = log.summary || {};
+  const status = cronLogStatusMeta(summary.status);
+  const events = (log.events || []).map(event => {
+    const view = cronLogEventView(event);
+    return `
+      <div class="cron-log-entry ${view.className}">
+        <div class="cron-log-entry-header">
+          <span>${escapeHtml(view.label)}</span>
+          <time>${escapeHtml(formatCronLogDate(event.timestamp))}</time>
+        </div>
+        <pre>${escapeHtml(view.text)}</pre>
+      </div>
+    `;
+  }).join('');
+  cronEls.logDetail.innerHTML = `
+    <div class="cron-log-detail-header">
+      <div>
+        <h4>${escapeHtml(summary.jobName || summary.jobId || '未知任务')}</h4>
+        <span>${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}</span>
+      </div>
+      <span class="cron-log-run-status ${status.className}">${escapeHtml(status.label)}</span>
+    </div>
+    <div class="cron-log-events">${events || '<div class="empty-state-text">没有可显示的事件</div>'}</div>
+  `;
+}
+
+async function selectCronLogRun(runId) {
+  selectedCronLogRunId = runId;
+  renderCronLogList();
+  cronEls.logDetail.innerHTML = '<div class="empty-state-text">加载中...</div>';
+  const result = await window.api.cronLogsGet(runId);
+  if (!result.success) {
+    cronEls.logDetail.innerHTML = `<div class="empty-state-text">详情加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  renderCronLogDetail(result.log);
+}
+
+async function showCronLogsForJob(jobId) {
+  if (!cronEls.logJobFilter) return;
+  cronEls.logJobFilter.value = jobId;
+  selectedCronLogRunId = null;
+  await loadCronLogs();
+  cronEls.auditCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function initCronLogs() {
+  await Promise.all([loadCronLogSettings(), loadCronLogs()]);
 }
 
 async function pauseCronJob(jobId) {
@@ -3689,6 +3991,10 @@ function editCronJob(jobId) {
   cronEls.prompt.value = job.prompt || '';
   cronEls.repeat.value = job.repeat?.times || '';
   cronEls.workdir.value = job.workdir || '';
+  // 回填自动授权策略：默认 denylist
+  const authValue = job.autoAuthorize || 'denylist';
+  const authRadio = document.querySelector(`input[name="cron-auto-authorize"][value="${authValue}"]`);
+  if (authRadio) authRadio.checked = true;
   openCronModal();
 }
 
@@ -3739,6 +4045,10 @@ async function saveCronJob() {
     return;
   }
 
+  // 自动授权策略：denylist / ask / allowlist
+  const autoAuthorizeRadio = document.querySelector('input[name="cron-auto-authorize"]:checked');
+  const autoAuthorize = autoAuthorizeRadio ? autoAuthorizeRadio.value : 'denylist';
+
   const data = {
     name: cronEls.name.value.trim() || undefined,
     prompt,
@@ -3746,6 +4056,7 @@ async function saveCronJob() {
     schedule_display: getCronSchedule(),
     repeat: cronEls.repeat.value ? parseInt(cronEls.repeat.value) : null,
     workdir: cronEls.workdir.value.trim() || null,
+    autoAuthorize,
   };
 
   let result;
@@ -3797,10 +4108,66 @@ document.querySelectorAll('.cron-quick-times .btn-sm').forEach(btn => {
   });
 });
 
+if (cronEls.logJobFilter) {
+  cronEls.logJobFilter.addEventListener('change', () => {
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    loadCronLogs();
+  });
+}
+
+if (cronEls.logRefresh) {
+  cronEls.logRefresh.addEventListener('click', async () => {
+    await initCronLogs();
+    if (selectedCronLogRunId) await selectCronLogRun(selectedCronLogRunId);
+  });
+}
+
+if (cronEls.logSaveLimit) {
+  cronEls.logSaveLimit.addEventListener('click', async () => {
+    const maxMb = Number(cronEls.logMaxMb.value);
+    if (!Number.isInteger(maxMb) || maxMb < 10 || maxMb > 10240) {
+      alert('日志存储上限必须是 10 到 10240 MB 之间的整数');
+      return;
+    }
+    const result = await window.api.cronLogSettingsSet(maxMb);
+    if (!result.success) {
+      alert(`保存失败：${result.error || '未知错误'}`);
+      return;
+    }
+    cronEls.logMaxMb.value = result.maxMb;
+    updateCronLogUsage(result.usageBytes, result.maxBytes);
+    await loadCronLogs();
+  });
+}
+
+if (cronEls.logClear) {
+  cronEls.logClear.addEventListener('click', async () => {
+    if (!confirm('确定清空所有已完成的定时任务执行日志？正在执行的日志会保留。')) return;
+    const result = await window.api.cronLogsClear();
+    if (!result.success) {
+      alert(`清空失败：${result.error || '未知错误'}`);
+      return;
+    }
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    await loadCronLogs();
+  });
+}
+
 if (window.api.onCronStatus) {
   window.api.onCronStatus((data) => {
     cronEngineRunning = data.isRunning;
     updateCronStatusUI();
+  });
+}
+
+if (window.api.onCronLogUpdated) {
+  window.api.onCronLogUpdated(async (data) => {
+    await loadCronLogs();
+    if (selectedCronLogRunId && (!data.runId || data.runId === selectedCronLogRunId)) {
+      await selectCronLogRun(selectedCronLogRunId);
+    }
   });
 }
 
@@ -3810,6 +4177,7 @@ showPage = function(pageName) {
   if (pageName === 'cron') {
     loadCronJobs();
     updateCronStatusUI();
+    initCronLogs();
   }
   if (pageName === 'gateway') {
     initGatewayPage();

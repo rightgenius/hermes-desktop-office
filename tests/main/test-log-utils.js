@@ -10,13 +10,16 @@ const {
 
 describe('renderer log utilities', () => {
   test('parses known log levels and preserves the original message', () => {
-    const info = createLogEntry('[INFO] Agent 已启动');
+    const now = new Date(2026, 5, 15, 6, 7, 8, 901);
+    const info = createLogEntry('[INFO] Agent 已启动', now);
     const error = createLogEntry('[ERROR] Agent start失败: missing key');
     const plain = createLogEntry('bridge connected');
 
     assert.strictEqual(info.level, 'INFO');
     assert.strictEqual(info.message, 'Agent 已启动');
     assert.strictEqual(info.raw, '[INFO] Agent 已启动');
+    assert.strictEqual(info.createdAt, now.toISOString());
+    assert.strictEqual(info.displayTime, '06:07:08.901');
     assert.strictEqual(error.level, 'ERROR');
     assert.strictEqual(error.message, 'Agent start失败: missing key');
     assert.strictEqual(plain.level, 'INFO');
@@ -63,7 +66,8 @@ describe('renderer log utilities', () => {
 
     assert.strictEqual(
       formatLogExport(entries.slice(1, 3)),
-      '[WARN] Gateway token missing\n[ERROR] Agent start failed\n',
+      `${entries[1].createdAt} [WARN] Gateway token missing\n` +
+      `${entries[2].createdAt} [ERROR] Agent start failed\n`,
     );
   });
 });
