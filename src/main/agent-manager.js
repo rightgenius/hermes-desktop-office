@@ -1,5 +1,6 @@
 const { app } = require('electron');
 const { spawn, execFile } = require('child_process');
+const { EventEmitter } = require('events');
 const path = require('path');
 const fs = require('fs');
 const { getBundledCliDirs, prependCliDirsToPath } = require('./cli-runtime');
@@ -74,8 +75,9 @@ function ensureExternalSkillsDirInConfig(hermesHome, skillsPath) {
   }
 }
 
-class AgentManager {
+class AgentManager extends EventEmitter {
   constructor(mainWindow) {
+    super();
     this.mainWindow = mainWindow;
     this.process = null;
     this.running = false;
@@ -499,12 +501,23 @@ class AgentManager {
   }
 
   emitResponse(event, data, sessionId = '') {
+    this.emit('response', {
+      event,
+      data,
+      sessionId,
+      timestamp: new Date().toISOString(),
+    });
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('agent-response', { event, data, sessionId });
     }
   }
 
   emitLog(level, message) {
+    this.emit('log', {
+      level,
+      message,
+      timestamp: new Date().toISOString(),
+    });
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send('agent-log', { level, message });
     }

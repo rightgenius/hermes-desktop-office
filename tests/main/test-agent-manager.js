@@ -14,6 +14,50 @@ function makeManager() {
 }
 
 describe('AgentManager bridge events', () => {
+  test('publishes response and log events internally without changing renderer IPC payloads', () => {
+    const { manager, sent } = makeManager();
+    const responses = [];
+    const logs = [];
+
+    manager.on('response', (event) => responses.push(event));
+    manager.on('log', (event) => logs.push(event));
+
+    manager.emitResponse('chunk', 'hello', 'cron-session');
+    manager.emitLog('warn', 'console output');
+
+    assert.strictEqual(responses.length, 1);
+    assert.deepStrictEqual(
+      {
+        event: responses[0].event,
+        data: responses[0].data,
+        sessionId: responses[0].sessionId,
+      },
+      { event: 'chunk', data: 'hello', sessionId: 'cron-session' }
+    );
+    assert.match(responses[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+
+    assert.strictEqual(logs.length, 1);
+    assert.deepStrictEqual(
+      {
+        level: logs[0].level,
+        message: logs[0].message,
+      },
+      { level: 'warn', message: 'console output' }
+    );
+    assert.match(logs[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+
+    assert.deepStrictEqual(sent, [
+      {
+        channel: 'agent-response',
+        payload: { event: 'chunk', data: 'hello', sessionId: 'cron-session' },
+      },
+      {
+        channel: 'agent-log',
+        payload: { level: 'warn', message: 'console output' },
+      },
+    ]);
+  });
+
   test('forwards background self-improvement review summaries without completing the turn', () => {
     const { manager, sent } = makeManager();
 
