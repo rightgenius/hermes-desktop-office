@@ -379,7 +379,7 @@ class AgentManager extends EventEmitter {
     });
   }
 
-  sendMessage(sessionId, text, history = []) {
+  sendMessage(sessionId, text, history = [], options = {}) {
     if (!this.running || !this.process || !this.ready) {
       return { success: false, error: 'Agent 尚未就绪' };
     }
@@ -394,16 +394,26 @@ class AgentManager extends EventEmitter {
     const workspacePath = (sessionState && sessionState.workspacePath) || this._defaultWorkspace || '';
 
     try {
-      const message = JSON.stringify({ 
-        type: 'message', 
-        session_id: sessionId, 
-        content: text, 
+      const message = JSON.stringify({
+        type: 'message',
+        session_id: sessionId,
+        content: text,
         history,
-        workspace_path: workspacePath
+        workspace_path: workspacePath,
+        // Cron session flag: bridge 据此走自动授权 + 黑名单路径，
+        // 而不是把 approval_request 转发到 GUI 弹模态框。
+        is_cron_session: Boolean(options.isCronSession),
+        // cron job id（仅 cron session 有），用于审计日志关联
+        cron_job_id: options.cronJobId || null,
       }) + '\n';
       this.process.stdin.write(message);
       // Mark session as generating
-      this.sessionStates.set(sessionId, { isGenerating: true, workspacePath });
+      this.sessionStates.set(sessionId, {
+        isGenerating: true,
+        workspacePath,
+        isCronSession: Boolean(options.isCronSession),
+        cronJobId: options.cronJobId || null,
+      });
       return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
@@ -556,6 +566,18 @@ class AgentManager extends EventEmitter {
           command: msg.command || '',
           description: msg.description || '',
           allow_permanent: msg.allow_permanent !== false,
+        }, sessionId);
+        break;
+      case 'cron_decision':
+        // Auto-authorization decision emitted by agent-bridge for cron sessions.
+        // Format: { type, session_id, decision, rule_id, description, command, cron_job_id }
+        // GUI cron manager listens for this to write audit log entries.
+        this.emitResponse('cron_decision', {
+          decision: msg.decision,           // 'auto_approve' | 'denylist_blocked'
+          rule_id: msg.rule_id || null,
+          description: msg.description || '',
+          command: msg.command || '',
+          cron_job_id: msg.cron_job_id || null,
         }, sessionId);
         break;
       case 'sudo_request':

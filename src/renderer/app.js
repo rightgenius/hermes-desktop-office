@@ -3879,6 +3879,32 @@ function cronLogEventView(event) {
   if (eventType === 'log_truncated') {
     return { label: '截断', className: 'console console-warn', text: event.message || '日志已截断' };
   }
+  if (eventType === 'policy_applied') {
+    // 任务开始时的策略声明：明示本次执行走哪个 regime
+    const lines = [
+      `策略：${event.policy || '(unknown)'}`,
+      `模式：${event.mode || '(default)'}`,
+      `硬阻断保护：${event.hardline_protected ? '开启' : '关闭'}`,
+    ];
+    if (event.note) lines.push(event.note);
+    return { label: '策略', className: 'lifecycle policy', text: lines.join('\n') };
+  }
+  if (eventType === 'decision') {
+    // 自动授权决策：denylist 命中 / 自动通过
+    if (event.decision === 'denylist_blocked') {
+      const parts = [
+        '【拒绝】命中黑名单',
+        `规则：${event.rule_id || '(unknown)'}`,
+        `原因：${event.description || ''}`,
+      ];
+      if (event.command) parts.push(`命令：${event.command}`);
+      return { label: '权限拒绝', className: 'decision decision-deny', text: parts.join('\n') };
+    }
+    if (event.decision === 'auto_approve') {
+      return { label: '权限通过', className: 'decision decision-approve', text: `【自动通过】${event.description || ''}\n命令：${event.command || ''}` };
+    }
+    return { label: '权限决策', className: 'decision', text: JSON.stringify(event, null, 2) };
+  }
   const text = event.message || event.text || JSON.stringify(event, null, 2);
   return { label: eventType.replace(/^agent_/, 'Agent '), className: 'agent-event', text };
 }
@@ -3965,6 +3991,10 @@ function editCronJob(jobId) {
   cronEls.prompt.value = job.prompt || '';
   cronEls.repeat.value = job.repeat?.times || '';
   cronEls.workdir.value = job.workdir || '';
+  // 回填自动授权策略：默认 denylist
+  const authValue = job.autoAuthorize || 'denylist';
+  const authRadio = document.querySelector(`input[name="cron-auto-authorize"][value="${authValue}"]`);
+  if (authRadio) authRadio.checked = true;
   openCronModal();
 }
 
@@ -4015,6 +4045,10 @@ async function saveCronJob() {
     return;
   }
 
+  // 自动授权策略：denylist / ask / allowlist
+  const autoAuthorizeRadio = document.querySelector('input[name="cron-auto-authorize"]:checked');
+  const autoAuthorize = autoAuthorizeRadio ? autoAuthorizeRadio.value : 'denylist';
+
   const data = {
     name: cronEls.name.value.trim() || undefined,
     prompt,
@@ -4022,6 +4056,7 @@ async function saveCronJob() {
     schedule_display: getCronSchedule(),
     repeat: cronEls.repeat.value ? parseInt(cronEls.repeat.value) : null,
     workdir: cronEls.workdir.value.trim() || null,
+    autoAuthorize,
   };
 
   let result;

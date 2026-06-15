@@ -634,6 +634,28 @@
               <textarea id="cron-prompt" rows="4" placeholder="任务执行内容，如：检查邮件并总结未回复的邮件"></textarea>
             </div>
             <div class="form-group">
+              <label>自动授权策略</label>
+              <div class="cron-auto-authorize">
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="denylist" checked>
+                  <strong>黑名单模式</strong> — 默认全开，命中内置黑名单时拒绝（推荐）
+                </label>
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="ask">
+                  <strong>每次询问</strong> — 危险命令弹模态框（cron 后台可能卡住）
+                </label>
+                <label>
+                  <input type="radio" name="cron-auto-authorize" value="allowlist">
+                  <strong>白名单模式</strong> — 仅放行明确允许的命令
+                </label>
+              </div>
+              <small class="form-hint">
+                所有自动授权决策会写入 <code>~/.hermes/cron/logs/*.jsonl</code> 审计日志。
+                硬阻断（rm -rf /、shutdown 等）永远生效，无视此设置。
+                <a href="#" id="cron-policy-view">查看内置黑名单</a>
+              </small>
+            </div>
+            <div class="form-group">
               <label for="cron-repeat">重复次数</label>
               <input type="number" id="cron-repeat" min="1" placeholder="留空表示无限">
             </div>

@@ -6,6 +6,7 @@ const {
   normalizeCronLogMaxMb,
   DEFAULT_CRON_LOG_MAX_MB,
 } = require('./cron-log-store');
+const { CronPolicy } = require('./cron-policy');
 
 class CronManager {
   constructor(agentManager, mainWindow, options = {}) {
@@ -21,6 +22,12 @@ class CronManager {
     this.logStore = options.logStore || new CronLogStore({
       baseDir: path.join(this._cronDir, 'logs'),
       getMaxBytes: () => this._getLogMaxMb() * 1024 * 1024,
+    });
+    // GUI 侧 denylist 匹配器实例——bridge 端 Python 也有同样的副本，
+    // 两边保持语义一致；GUI 这一份用于配置预览 / 测试 / 决策审计的辅助
+    // （真正的执行拦截在 bridge 端 Python 层）。
+    this.policy = options.policy || new CronPolicy({
+      configProvider: this.configStore,
     });
   }
 
@@ -98,6 +105,19 @@ class CronManager {
     const sessionId = `cron_${job.id}_${Date.now()}`;
     const captureResponse = (event) => {
       if (!logRun || event.sessionId !== sessionId) return;
+      // Convert cron auto-auth decision events into structured decision log entries.
+      if (event.event === 'cron_decision' && event.data && typeof event.data === 'object') {
+        this._appendLogEvent(logRun, {
+          timestamp: event.timestamp || new Date().toISOString(),
+          type: 'decision',
+          decision: event.data.decision,
+          rule_id: event.data.rule_id || null,
+          description: event.data.description || '',
+          command: event.data.command || '',
+          source: 'agent-bridge',
+        });
+        return;
+      }
       this._appendResponseLog(logRun, event);
     };
     const captureConsole = (event) => {
@@ -112,6 +132,18 @@ class CronManager {
     this.agentManager.on('response', captureResponse);
     this.agentManager.on('log', captureConsole);
 
+    // Emit a policy_applied audit event so reviewers see which policy regime
+    // this run was operating under (denylist mode, any extra user rules loaded,
+    // and whether HARDLINE_PATTERNS floor is acknowledged).
+    this._appendLogEvent(logRun, {
+      timestamp: new Date().toISOString(),
+      type: 'policy_applied',
+      policy: 'denylist_auto_authorize',
+      mode: job.autoAuthorize || 'denylist',
+      hardline_protected: true,
+      note: 'hermes-agent HARDLINE_PATTERNS 永远生效；denylist 仅补充后台场景下的额外拦截',
+    });
+
     let logResult = {
       status: 'error',
       error: '任务执行未完成',
@@ -119,7 +151,7 @@ class CronManager {
     };
     try {
       const prompt = this._buildJobPrompt(job);
-      const result = await this._executeViaBridge(sessionId, prompt);
+      const result = await this._executeViaBridge(sessionId, prompt, job);
       this._saveJobOutput(job.id, result);
       this._markJobRun(job.id, true, null);
       logResult = { status: 'success', error: null, output: result };
@@ -191,7 +223,7 @@ class CronManager {
     return `[CRON JOB: ${job.name || job.id}]\n\n${prompt}`;
   }
 
-  async _executeViaBridge(sessionId, prompt) {
+  async _executeViaBridge(sessionId, prompt, job) {
     return new Promise((resolve, reject) => {
       if (!this.agentManager.running) {
         reject(new Error('Agent 未运行'));
@@ -214,7 +246,10 @@ class CronManager {
         }
       };
       this.agentManager.on('response', handler);
-      const result = this.agentManager.sendMessage(sessionId, prompt, []);
+      const result = this.agentManager.sendMessage(sessionId, prompt, [], {
+        isCronSession: true,
+        cronJobId: job?.id || null,
+      });
       if (!result.success) {
         this.agentManager.off('response', handler);
         reject(new Error(result.error));

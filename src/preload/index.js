@@ -93,6 +93,9 @@ contextBridge.exposeInMainWorld('api', {
   cronLogsClear: () => ipcRenderer.invoke('cron:logs:clear'),
   cronLogSettingsGet: () => ipcRenderer.invoke('cron:logs:settings:get'),
   cronLogSettingsSet: (maxMb) => ipcRenderer.invoke('cron:logs:settings:set', { maxMb }),
+  cronPolicyGet: () => ipcRenderer.invoke('cron:policy:get'),
+  cronPolicySet: (data) => ipcRenderer.invoke('cron:policy:set', data),
+  cronPolicyTest: (command) => ipcRenderer.invoke('cron:policy:test', { command }),
   onCronStatus: (fn) => {
     const handler = (_, data) => fn(data);
     ipcRenderer.on('cron-status', handler);

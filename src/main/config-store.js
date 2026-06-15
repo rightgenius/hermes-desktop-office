@@ -13,6 +13,14 @@ function getDefaultWorkspacePath() {
   }
 }
 
+// Default cron auto-authorize policy regime.
+//   'denylist'  → 默认全开 + 内置黑名单兜底（推荐，后台 cron 实际期望的体验）
+//   'ask'       → 走传统弹模态框路径（用户每次审批；安全但 cron 失去意义）
+//   'allowlist' → 仅允许白名单内命令（最严，但需要逐个加白名单）
+//
+// 'denylist' 对应用户原始诉求："后台跑任务默认同意，命中黑名单才拦"。
+const DEFAULT_CRON_AUTO_AUTHORIZE = 'denylist';
+
 const DEFAULT_CONFIG = {
   provider: 'auto',
   apiKey: '',
@@ -23,9 +31,16 @@ const DEFAULT_CONFIG = {
   autoStart: true,
   gatewayAutoStart: false,
   cronLogMaxMb: 100,
+  cronAutoAuthorize: DEFAULT_CRON_AUTO_AUTHORIZE,
+  cronExtraDenylist: [],   // [{ pattern, action: 'block'|'warn', description }]
   apiFormat: '',
   providerRegion: '',
 };
+
+function normalizeCronAutoAuthorize(value) {
+  if (value === 'denylist' || value === 'ask' || value === 'allowlist') return value;
+  return DEFAULT_CRON_AUTO_AUTHORIZE;
+}
 
 class ConfigStore {
   constructor() {

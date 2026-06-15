@@ -937,6 +937,79 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
+  // ----- Cron auto-authorize policy (黑名单模式) -----
+  ipcMain.handle('cron:policy:get', async () => {
+    try {
+      return {
+        success: true,
+        policy: configStore.get()?.cronAutoAuthorize || 'denylist',
+        builtinRules: cronManager.policy?.listBuiltinRules?.() || [],
+        extraRules: Array.isArray(configStore.get()?.cronExtraDenylist)
+          ? configStore.get().cronExtraDenylist
+          : [],
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:policy:set', async (_, { policy, extraRules } = {}) => {
+    try {
+      const valid = ['denylist', 'ask', 'allowlist'];
+      if (policy && !valid.includes(policy)) {
+        return { success: false, error: `policy 必须是 ${valid.join(' / ')}` };
+      }
+      const partial = {};
+      if (policy) partial.cronAutoAuthorize = policy;
+      if (Array.isArray(extraRules)) {
+        // Validate each rule's regex
+        for (const rule of extraRules) {
+          const check = (() => {
+            if (!rule || typeof rule.pattern !== 'string' || !rule.pattern) {
+              return { ok: false, error: 'pattern 必须是非空字符串' };
+            }
+            try { new RegExp(rule.pattern, 'i'); } catch (err) {
+              return { ok: false, error: `正则无效: ${err.message}` };
+            }
+            if (rule.action && rule.action !== 'block' && rule.action !== 'warn') {
+              return { ok: false, error: "action 必须是 'block' 或 'warn'" };
+            }
+            return { ok: true };
+          })();
+          if (!check.ok) {
+            return { success: false, error: `自定义规则校验失败: ${check.error}` };
+          }
+        }
+        partial.cronExtraDenylist = extraRules;
+      }
+      configStore.save(partial);
+      return { success: true, ...configStore.get() };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // 供 GUI 实时测试某条命令是否命中黑名单（不影响真实执行）
+  ipcMain.handle('cron:policy:test', async (_, { command } = {}) => {
+    try {
+      if (typeof command !== 'string') {
+        return { success: false, error: 'command 必须是字符串' };
+      }
+      const hit = cronManager.policy?.evaluate?.(command) || null;
+      return {
+        success: true,
+        hit: hit ? {
+          rule_id: hit.rule.id,
+          category: hit.rule.category,
+          action: hit.rule.action,
+          description: hit.rule.description,
+        } : null,
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   // Gateway IPC handlers
   // Build a status object from the current manager state. Order matters:
   // GUI-managed MUST be checked first, otherwise the hermes-agent's own
