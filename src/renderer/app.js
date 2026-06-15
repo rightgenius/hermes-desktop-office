@@ -3593,17 +3593,29 @@ const cronEls = {
   scheduleCron: document.getElementById('cron-schedule-cron'),
   scheduleOnce: document.getElementById('cron-schedule-once'),
   recurring: document.getElementById('cron-recurring'),
+  auditCard: document.getElementById('cron-audit-card'),
+  logUsage: document.getElementById('cron-log-usage'),
+  logJobFilter: document.getElementById('cron-log-job-filter'),
+  logMaxMb: document.getElementById('cron-log-max-mb'),
+  logSaveLimit: document.getElementById('cron-log-save-limit'),
+  logRefresh: document.getElementById('cron-log-refresh'),
+  logClear: document.getElementById('cron-log-clear'),
+  logList: document.getElementById('cron-log-list'),
+  logDetail: document.getElementById('cron-log-detail'),
 };
 
 let cronJobs = [];
 let editingCronJobId = null;
 let cronEngineRunning = false;
+let cronLogRuns = [];
+let selectedCronLogRunId = null;
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
   if (result.success) {
     cronJobs = result.jobs;
     renderCronList();
+    updateCronLogJobFilter();
   }
 }
 
@@ -3661,6 +3673,7 @@ function renderCronList() {
             : `<button class="btn btn-secondary btn-pause" data-job-id="${job.id}">暂停</button>`
           }
           <button class="btn btn-secondary btn-trigger" data-job-id="${job.id}">立即执行</button>
+          <button class="btn btn-secondary btn-logs" data-job-id="${job.id}">执行日志</button>
           <button class="btn btn-secondary btn-edit" data-job-id="${job.id}">编辑</button>
           <button class="btn btn-secondary btn-delete" data-job-id="${job.id}">删除</button>
         </div>
@@ -3677,6 +3690,9 @@ function renderCronList() {
   });
   cronEls.list.querySelectorAll('.btn-trigger').forEach(btn => {
     btn.addEventListener('click', () => triggerCronJob(btn.dataset.jobId));
+  });
+  cronEls.list.querySelectorAll('.btn-logs').forEach(btn => {
+    btn.addEventListener('click', () => showCronLogsForJob(btn.dataset.jobId));
   });
   cronEls.list.querySelectorAll('.btn-edit').forEach(btn => {
     btn.addEventListener('click', () => editCronJob(btn.dataset.jobId));
@@ -3695,6 +3711,188 @@ function formatRelativeTime(isoString) {
   if (diff < 3600) return `${Math.floor(diff / 60)}分钟后`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}小时后`;
   return `${Math.floor(diff / 86400)}天后`;
+}
+
+function updateCronLogJobFilter() {
+  if (!cronEls.logJobFilter) return;
+  const current = cronEls.logJobFilter.value;
+  cronEls.logJobFilter.innerHTML = '<option value="">全部任务</option>' + cronJobs.map(job =>
+    `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name || job.id)}</option>`
+  ).join('');
+  if (cronJobs.some(job => job.id === current)) {
+    cronEls.logJobFilter.value = current;
+  }
+}
+
+function formatCronLogBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function formatCronLogDate(isoString) {
+  if (!isoString) return '-';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
+function formatCronLogDuration(durationMs) {
+  if (durationMs === null || durationMs === undefined) return '执行中';
+  if (durationMs < 1000) return `${durationMs} ms`;
+  if (durationMs < 60000) return `${(durationMs / 1000).toFixed(1)} 秒`;
+  return `${Math.floor(durationMs / 60000)} 分 ${Math.round((durationMs % 60000) / 1000)} 秒`;
+}
+
+function cronLogStatusMeta(status) {
+  return {
+    success: { label: '成功', className: 'success' },
+    error: { label: '失败', className: 'error' },
+    running: { label: '执行中', className: 'running' },
+    interrupted: { label: '已中断', className: 'interrupted' },
+  }[status] || { label: status || '未知', className: 'unknown' };
+}
+
+function updateCronLogUsage(usageBytes, maxBytes) {
+  if (!cronEls.logUsage) return;
+  cronEls.logUsage.textContent = `已用 ${formatCronLogBytes(usageBytes)} / ${formatCronLogBytes(maxBytes)}`;
+}
+
+async function loadCronLogSettings() {
+  const result = await window.api.cronLogSettingsGet();
+  if (!result.success) return;
+  cronEls.logMaxMb.value = result.maxMb;
+  updateCronLogUsage(result.usageBytes, result.maxBytes);
+}
+
+async function loadCronLogs() {
+  if (!cronEls.logList) return;
+  const jobId = cronEls.logJobFilter?.value || undefined;
+  const result = await window.api.cronLogsList({ jobId, limit: 200 });
+  if (!result.success) {
+    cronEls.logList.innerHTML = `<div class="empty-state-text">日志加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  cronLogRuns = result.runs || [];
+  updateCronLogUsage(result.usageBytes, result.maxBytes);
+  if (selectedCronLogRunId && !cronLogRuns.some(run => run.runId === selectedCronLogRunId)) {
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+  }
+  renderCronLogList();
+}
+
+function renderCronLogList() {
+  if (!cronEls.logList) return;
+  if (cronLogRuns.length === 0) {
+    cronEls.logList.innerHTML = '<div class="empty-state-text">暂无执行日志</div>';
+    return;
+  }
+  cronEls.logList.innerHTML = cronLogRuns.map(run => {
+    const status = cronLogStatusMeta(run.status);
+    const selected = run.runId === selectedCronLogRunId ? ' selected' : '';
+    return `
+      <button class="cron-log-run${selected}" data-run-id="${escapeHtml(run.runId)}">
+        <span class="cron-log-run-main">
+          <span class="cron-log-run-name">${escapeHtml(run.jobName || run.jobId || '未知任务')}</span>
+          <span class="cron-log-run-status ${status.className}">${escapeHtml(status.label)}</span>
+        </span>
+        <span class="cron-log-run-meta">${escapeHtml(formatCronLogDate(run.startedAt))}</span>
+        <span class="cron-log-run-meta">${escapeHtml(formatCronLogDuration(run.durationMs))} · ${escapeHtml(formatCronLogBytes(run.sizeBytes))}${run.truncated ? ' · 已截断' : ''}</span>
+      </button>
+    `;
+  }).join('');
+  cronEls.logList.querySelectorAll('.cron-log-run').forEach(row => {
+    row.addEventListener('click', () => selectCronLogRun(row.dataset.runId));
+  });
+}
+
+function cronLogEventView(event) {
+  const eventType = event.type || 'unknown';
+  if (eventType === 'run_start') {
+    return { label: '开始', className: 'lifecycle', text: `开始执行 ${event.jobName || event.jobId || ''}\n${event.prompt || ''}`.trim() };
+  }
+  if (eventType === 'run_end') {
+    const status = cronLogStatusMeta(event.status);
+    const parts = [`执行${status.label}`];
+    if (event.error) parts.push(event.error);
+    if (event.output) parts.push(`最终输出：\n${event.output}`);
+    return { label: '结束', className: `lifecycle ${status.className}`, text: parts.join('\n') };
+  }
+  if (eventType === 'agent_output') {
+    return { label: 'Agent', className: 'agent-output', text: event.content || '' };
+  }
+  if (eventType === 'console') {
+    const level = String(event.level || 'info').toLowerCase();
+    const safeLevel = ['info', 'warn', 'error', 'debug'].includes(level) ? level : 'info';
+    return { label: `控制台 ${safeLevel.toUpperCase()}`, className: `console console-${safeLevel}`, text: event.message || '' };
+  }
+  if (eventType === 'tool_start') {
+    return { label: '工具开始', className: 'tool', text: `${event.name || 'unknown'}\n${JSON.stringify(event.args || {}, null, 2)}` };
+  }
+  if (eventType === 'tool_complete') {
+    const result = typeof event.result === 'string' ? event.result : JSON.stringify(event.result ?? '', null, 2);
+    return { label: '工具完成', className: 'tool', text: `${event.name || 'unknown'}\n${result}` };
+  }
+  if (eventType === 'log_truncated') {
+    return { label: '截断', className: 'console console-warn', text: event.message || '日志已截断' };
+  }
+  const text = event.message || event.text || JSON.stringify(event, null, 2);
+  return { label: eventType.replace(/^agent_/, 'Agent '), className: 'agent-event', text };
+}
+
+function renderCronLogDetail(log) {
+  if (!cronEls.logDetail) return;
+  const summary = log.summary || {};
+  const status = cronLogStatusMeta(summary.status);
+  const events = (log.events || []).map(event => {
+    const view = cronLogEventView(event);
+    return `
+      <div class="cron-log-entry ${view.className}">
+        <div class="cron-log-entry-header">
+          <span>${escapeHtml(view.label)}</span>
+          <time>${escapeHtml(formatCronLogDate(event.timestamp))}</time>
+        </div>
+        <pre>${escapeHtml(view.text)}</pre>
+      </div>
+    `;
+  }).join('');
+  cronEls.logDetail.innerHTML = `
+    <div class="cron-log-detail-header">
+      <div>
+        <h4>${escapeHtml(summary.jobName || summary.jobId || '未知任务')}</h4>
+        <span>${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}</span>
+      </div>
+      <span class="cron-log-run-status ${status.className}">${escapeHtml(status.label)}</span>
+    </div>
+    <div class="cron-log-events">${events || '<div class="empty-state-text">没有可显示的事件</div>'}</div>
+  `;
+}
+
+async function selectCronLogRun(runId) {
+  selectedCronLogRunId = runId;
+  renderCronLogList();
+  cronEls.logDetail.innerHTML = '<div class="empty-state-text">加载中...</div>';
+  const result = await window.api.cronLogsGet(runId);
+  if (!result.success) {
+    cronEls.logDetail.innerHTML = `<div class="empty-state-text">详情加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  renderCronLogDetail(result.log);
+}
+
+async function showCronLogsForJob(jobId) {
+  if (!cronEls.logJobFilter) return;
+  cronEls.logJobFilter.value = jobId;
+  selectedCronLogRunId = null;
+  await loadCronLogs();
+  cronEls.auditCard?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function initCronLogs() {
+  await Promise.all([loadCronLogSettings(), loadCronLogs()]);
 }
 
 async function pauseCronJob(jobId) {
@@ -3835,10 +4033,66 @@ document.querySelectorAll('.cron-quick-times .btn-sm').forEach(btn => {
   });
 });
 
+if (cronEls.logJobFilter) {
+  cronEls.logJobFilter.addEventListener('change', () => {
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    loadCronLogs();
+  });
+}
+
+if (cronEls.logRefresh) {
+  cronEls.logRefresh.addEventListener('click', async () => {
+    await initCronLogs();
+    if (selectedCronLogRunId) await selectCronLogRun(selectedCronLogRunId);
+  });
+}
+
+if (cronEls.logSaveLimit) {
+  cronEls.logSaveLimit.addEventListener('click', async () => {
+    const maxMb = Number(cronEls.logMaxMb.value);
+    if (!Number.isInteger(maxMb) || maxMb < 10 || maxMb > 10240) {
+      alert('日志存储上限必须是 10 到 10240 MB 之间的整数');
+      return;
+    }
+    const result = await window.api.cronLogSettingsSet(maxMb);
+    if (!result.success) {
+      alert(`保存失败：${result.error || '未知错误'}`);
+      return;
+    }
+    cronEls.logMaxMb.value = result.maxMb;
+    updateCronLogUsage(result.usageBytes, result.maxBytes);
+    await loadCronLogs();
+  });
+}
+
+if (cronEls.logClear) {
+  cronEls.logClear.addEventListener('click', async () => {
+    if (!confirm('确定清空所有已完成的定时任务执行日志？正在执行的日志会保留。')) return;
+    const result = await window.api.cronLogsClear();
+    if (!result.success) {
+      alert(`清空失败：${result.error || '未知错误'}`);
+      return;
+    }
+    selectedCronLogRunId = null;
+    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    await loadCronLogs();
+  });
+}
+
 if (window.api.onCronStatus) {
   window.api.onCronStatus((data) => {
     cronEngineRunning = data.isRunning;
     updateCronStatusUI();
+  });
+}
+
+if (window.api.onCronLogUpdated) {
+  window.api.onCronLogUpdated(async (data) => {
+    await loadCronLogs();
+    if (selectedCronLogRunId && (!data.runId || data.runId === selectedCronLogRunId)) {
+      await selectCronLogRun(selectedCronLogRunId);
+    }
   });
 }
 
@@ -3848,6 +4102,7 @@ showPage = function(pageName) {
   if (pageName === 'cron') {
     loadCronJobs();
     updateCronStatusUI();
+    initCronLogs();
   }
   if (pageName === 'gateway') {
     initGatewayPage();

@@ -60,4 +60,35 @@ describe('renderer regressions', () => {
     assert.match(appJs, /e\.isComposing/);
     assert.match(appJs, /e\.keyCode\s*===\s*229/);
   });
+
+  test('cron page exposes execution audit logs and bounded storage controls', () => {
+    for (const id of [
+      'cron-log-max-mb',
+      'cron-log-usage',
+      'cron-log-save-limit',
+      'cron-log-job-filter',
+      'cron-log-refresh',
+      'cron-log-clear',
+      'cron-log-list',
+      'cron-log-detail',
+    ]) {
+      assert.match(indexHtml, new RegExp(`id="${id}"`));
+    }
+
+    assert.match(appJs, /function\s+loadCronLogs\s*\(/);
+    assert.match(appJs, /function\s+renderCronLogList\s*\(/);
+    assert.match(appJs, /function\s+renderCronLogDetail\s*\(/);
+    assert.match(appJs, /window\.api\.cronLogSettingsSet/);
+    assert.match(appJs, /window\.api\.cronLogsClear/);
+    assert.match(appJs, /window\.api\.onCronLogUpdated/);
+    assert.match(appJs, /class="btn btn-secondary btn-logs"/);
+
+    const detailBody = appJs.match(/function\s+renderCronLogDetail\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/);
+    assert.ok(detailBody, 'renderCronLogDetail body should be findable');
+    assert.match(detailBody[1], /escapeHtml\s*\(/);
+
+    assert.match(stylesCss, /\.cron-audit-grid/);
+    assert.match(stylesCss, /\.cron-log-entry\.console-error/);
+    assert.match(stylesCss, /\.cron-log-run\.selected/);
+  });
 });
