@@ -59,4 +59,58 @@ test.describe('Packaged app smoke test', () => {
     expect(Array.isArray(skills.builtin)).toBe(true);
     expect(skills.builtin.length).toBeGreaterThan(0);
   });
+
+  test('can start the Agent with the bundled Python runtime', async () => {
+    const result = await page.evaluate(async () => {
+      await window.api.agentStop().catch(() => {});
+      const config = await window.api.configGet();
+      return new Promise((resolve) => {
+        let settled = false;
+        let startRequested = false;
+        let removeLogListener = () => {};
+        let removeStatusListener = () => {};
+        const logs = [];
+
+        const finish = (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          removeLogListener();
+          removeStatusListener();
+          resolve(value);
+        };
+
+        removeLogListener = window.api.onAgentLog((entry) => {
+          logs.push(`[${entry.level}] ${entry.message}`);
+          if (entry.message.includes('Agent 已就绪')) {
+            finish({ success: true });
+          }
+        });
+        removeStatusListener = window.api.onAgentStatus((status) => {
+          if (startRequested && !status.running) {
+            finish({
+              success: false,
+              error: `Agent exited before ready:\n${logs.join('\n')}`,
+            });
+          }
+        });
+
+        const timeout = setTimeout(() => {
+          finish({
+            success: false,
+            error: `Timed out waiting for Agent ready:\n${logs.join('\n')}`,
+          });
+        }, 30000);
+
+        startRequested = true;
+        window.api.agentStart(config).then((startResult) => {
+          if (!startResult.success) finish(startResult);
+        }).catch((error) => {
+          finish({ success: false, error: error.message });
+        });
+      });
+    });
+
+    expect(result.success, result.error || 'Agent failed to become ready').toBe(true);
+  });
 });

@@ -1,3 +1,28 @@
+# Release Notes v0.9.1
+
+## 修复
+
+- 修复 macOS CI 和 Release 构建未打包 standalone Python runtime 与 Agent Python 依赖的问题。
+- 为 Windows、Linux 和 macOS 构建统一使用 Python 3.13 生成 Agent 依赖。
+- 修复跨平台连续构建时可能复用其他操作系统 Python runtime 缓存的问题。
+- 修复 Linux CI 可能把 `chrome-sandbox` 等辅助程序误认为应用入口的问题。
+
+## 验证改进
+
+- packaged smoke test 会真实启动 Agent，并等待 bridge 返回“Agent 已就绪”。
+- Windows/Linux CI 可检测 Python 架构、ABI、DLL/so 和依赖加载错误。
+- 新增 CI/Release 构建顺序与 runtime 平台缓存回归测试。
+
+## 支持平台
+
+- macOS Apple Silicon
+- Windows x64
+- Linux x64
+
+## 历史版本
+
+---
+
 # Release Notes v0.9.0
 
 ## 版本定位

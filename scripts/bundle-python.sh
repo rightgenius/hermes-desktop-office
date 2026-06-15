@@ -15,6 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ASSETS_DIR="$PROJECT_DIR/assets/python-runtime"
 
+PYTHON_VERSION="3.13.13"
 RELEASE_TAG="20260510"
 
 # Determine target platform
@@ -34,18 +35,22 @@ case "$TARGET_PLATFORM" in
   macos)
     ARCH=$(uname -m)
     if [ "$ARCH" = "arm64" ]; then
-      FILENAME="cpython-3.13.13+${RELEASE_TAG}-aarch64-apple-darwin-install_only.tar.gz"
+      RUNTIME_ARCH="arm64"
+      FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_TAG}-aarch64-apple-darwin-install_only.tar.gz"
     else
-      FILENAME="cpython-3.13.13+${RELEASE_TAG}-x86_64-apple-darwin-install_only.tar.gz"
+      RUNTIME_ARCH="x86_64"
+      FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_TAG}-x86_64-apple-darwin-install_only.tar.gz"
     fi
     PYTHON_BIN="bin/python3"
     ;;
   windows)
-    FILENAME="cpython-3.13.13+${RELEASE_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz"
+    RUNTIME_ARCH="x86_64"
+    FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_TAG}-x86_64-pc-windows-msvc-install_only.tar.gz"
     PYTHON_BIN="python.exe"
     ;;
   linux)
-    FILENAME="cpython-3.13.13+${RELEASE_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz"
+    RUNTIME_ARCH="x86_64"
+    FILENAME="cpython-${PYTHON_VERSION}+${RELEASE_TAG}-x86_64-unknown-linux-gnu-install_only.tar.gz"
     PYTHON_BIN="bin/python3"
     ;;
   *)
@@ -54,10 +59,17 @@ case "$TARGET_PLATFORM" in
     ;;
 esac
 
+TARGET_ID="${TARGET_PLATFORM}-${RUNTIME_ARCH}-cpython-${PYTHON_VERSION}-${RELEASE_TAG}"
+TARGET_FILE="$ASSETS_DIR/.runtime-target"
 PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE_TAG}/${FILENAME}"
 
-# Check if already downloaded
-if [ -f "$ASSETS_DIR/$PYTHON_BIN" ]; then
+# Reuse only a runtime downloaded for the exact target. macOS and Linux both
+# use bin/python3, so checking the executable path alone can reuse the wrong OS.
+CACHED_TARGET=""
+if [ -f "$TARGET_FILE" ]; then
+  CACHED_TARGET=$(cat "$TARGET_FILE")
+fi
+if [ "$CACHED_TARGET" = "$TARGET_ID" ] && [ -f "$ASSETS_DIR/$PYTHON_BIN" ]; then
   echo "✅ Python runtime already bundled at assets/python-runtime/ ($TARGET_PLATFORM)"
   "$ASSETS_DIR/$PYTHON_BIN" --version
   exit 0
@@ -76,6 +88,7 @@ tar -xzf "$TEMP_DIR/python.tar.gz" -C "$TEMP_DIR"
 # The extract creates a 'python' directory
 if [ -d "$TEMP_DIR/python" ]; then
   cp -R "$TEMP_DIR/python"/* "$ASSETS_DIR/"
+  printf '%s\n' "$TARGET_ID" > "$TARGET_FILE"
 else
   echo "❌ Failed to find python directory in extracted archive"
   ls -la "$TEMP_DIR"
