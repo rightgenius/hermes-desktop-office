@@ -552,31 +552,66 @@
           <section class="card cron-audit-card" id="cron-audit-card">
             <div class="cron-audit-header">
               <div>
-                <h3>执行日志</h3>
-                <p class="cron-audit-description">审计任务状态、Agent 输出、工具调用和控制台日志</p>
+                <h3>定时任务审计</h3>
+                <p class="cron-audit-description">查看任务执行日志和后台自动授权决策历史</p>
               </div>
               <span id="cron-log-usage" class="cron-log-usage">已用 0 B / 100 MB</span>
             </div>
-            <div class="cron-log-controls">
-              <label class="cron-log-filter-label" for="cron-log-job-filter">任务</label>
-              <select id="cron-log-job-filter">
-                <option value="">全部任务</option>
-              </select>
-              <label class="cron-log-limit-label" for="cron-log-max-mb">存储上限</label>
-              <div class="cron-log-limit-input">
-                <input type="number" id="cron-log-max-mb" min="10" max="10240" step="1" value="100">
-                <span>MB</span>
-              </div>
-              <button class="btn btn-secondary" id="cron-log-save-limit">保存上限</button>
-              <button class="btn btn-secondary" id="cron-log-refresh">刷新</button>
-              <button class="btn btn-secondary" id="cron-log-clear">清空日志</button>
+            <div class="cron-audit-tabs" id="cron-audit-tabs" role="tablist">
+              <button class="cron-audit-tab active" data-cron-audit-tab="executions" role="tab" aria-selected="true">执行日志</button>
+              <button class="cron-audit-tab" data-cron-audit-tab="permissions" role="tab" aria-selected="false">权限审计</button>
             </div>
-            <div class="cron-audit-grid">
-              <div class="cron-log-list" id="cron-log-list">
-                <div class="empty-state-text">暂无执行日志</div>
+
+            <!-- Tab 1: 执行日志（原有功能） -->
+            <div class="cron-audit-panel" data-cron-audit-panel="executions" role="tabpanel">
+              <div class="cron-log-controls">
+                <label class="cron-log-filter-label" for="cron-log-job-filter">任务</label>
+                <select id="cron-log-job-filter">
+                  <option value="">全部任务</option>
+                </select>
+                <label class="cron-log-limit-label" for="cron-log-max-mb">存储上限</label>
+                <div class="cron-log-limit-input">
+                  <input type="number" id="cron-log-max-mb" min="10" max="10240" step="1" value="100">
+                  <span>MB</span>
+                </div>
+                <button class="btn btn-secondary" id="cron-log-save-limit">保存上限</button>
+                <button class="btn btn-secondary" id="cron-log-refresh">刷新</button>
+                <button class="btn btn-secondary" id="cron-log-clear">清空日志</button>
               </div>
-              <div class="cron-log-detail" id="cron-log-detail">
-                <div class="empty-state-text">选择一条执行记录查看详情</div>
+              <div class="cron-audit-grid">
+                <div class="cron-log-list" id="cron-log-list">
+                  <div class="empty-state-text">暂无执行日志</div>
+                </div>
+                <div class="cron-log-detail" id="cron-log-detail">
+                  <div class="empty-state-text">选择一条执行记录查看详情</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2: 权限审计（新增） -->
+            <div class="cron-audit-panel" data-cron-audit-panel="permissions" role="tabpanel" style="display:none">
+              <div class="cron-permission-controls">
+                <label class="cron-permission-filter-label" for="cron-permission-decision-filter">决策类型</label>
+                <select id="cron-permission-decision-filter">
+                  <option value="">全部</option>
+                  <option value="auto_approve">自动通过</option>
+                  <option value="denylist_blocked">黑名单拒绝</option>
+                </select>
+                <label class="cron-permission-filter-label" for="cron-permission-job-filter">任务</label>
+                <select id="cron-permission-job-filter">
+                  <option value="">全部任务</option>
+                </select>
+                <label class="cron-permission-filter-label" for="cron-permission-search">搜索命令/规则</label>
+                <input type="text" id="cron-permission-search" placeholder="支持正则，例如 ssh|curl">
+                <button class="btn btn-secondary" id="cron-permission-refresh">刷新</button>
+              </div>
+              <div class="cron-permission-stats" id="cron-permission-stats">
+                <span class="stat-pill stat-pill-approve">自动通过 0</span>
+                <span class="stat-pill stat-pill-deny">黑名单拒绝 0</span>
+                <span class="stat-pill stat-pill-policies">策略声明 0</span>
+              </div>
+              <div class="cron-permission-list" id="cron-permission-list">
+                <div class="empty-state-text">暂无权限决策记录</div>
               </div>
             </div>
           </section>

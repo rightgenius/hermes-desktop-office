@@ -3642,6 +3642,13 @@ const cronEls = {
   logClear: document.getElementById('cron-log-clear'),
   logList: document.getElementById('cron-log-list'),
   logDetail: document.getElementById('cron-log-detail'),
+  // 权限审计 tab
+  permissionDecisionFilter: document.getElementById('cron-permission-decision-filter'),
+  permissionJobFilter: document.getElementById('cron-permission-job-filter'),
+  permissionSearch: document.getElementById('cron-permission-search'),
+  permissionRefresh: document.getElementById('cron-permission-refresh'),
+  permissionStats: document.getElementById('cron-permission-stats'),
+  permissionList: document.getElementById('cron-permission-list'),
 };
 
 let cronJobs = [];
@@ -3649,6 +3656,8 @@ let editingCronJobId = null;
 let cronEngineRunning = false;
 let cronLogRuns = [];
 let selectedCronLogRunId = null;
+let cronPermissionEntries = [];   // 跨所有 run 的 decision + policy_applied 扁平数组
+let cronActiveAuditTab = 'executions';   // 'executions' | 'permissions'
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
@@ -4155,6 +4164,222 @@ if (cronEls.logClear) {
   });
 }
 
+// ============================
+// 权限审计 tab
+// ============================
+// 跨所有 cron run 收集 decision + policy_applied 事件，扁平化为一个数组，
+// 渲染时支持按决策类型、任务、命令/规则搜索过滤。
+function initCronAuditTabs() {
+  document.querySelectorAll('[data-cron-audit-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.cronAuditTab;
+      cronActiveAuditTab = target;
+      document.querySelectorAll('[data-cron-audit-tab]').forEach((b) => {
+        const active = b.dataset.cronAuditTab === target;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('[data-cron-audit-panel]').forEach((p) => {
+        p.style.display = p.dataset.cronAuditPanel === target ? '' : 'none';
+      });
+      if (target === 'permissions' && cronPermissionEntries.length === 0) {
+        loadCronPermissionEntries();
+      }
+    });
+  });
+
+  if (cronEls.permissionDecisionFilter) {
+    cronEls.permissionDecisionFilter.addEventListener('change', renderCronPermissionList);
+  }
+  if (cronEls.permissionJobFilter) {
+    cronEls.permissionJobFilter.addEventListener('change', renderCronPermissionList);
+  }
+  if (cronEls.permissionSearch) {
+    let debounceId = null;
+    cronEls.permissionSearch.addEventListener('input', () => {
+      if (debounceId) clearTimeout(debounceId);
+      debounceId = setTimeout(renderCronPermissionList, 200);
+    });
+  }
+  if (cronEls.permissionRefresh) {
+    cronEls.permissionRefresh.addEventListener('click', () => loadCronPermissionEntries());
+  }
+}
+
+async function loadCronPermissionEntries() {
+  if (!cronEls.permissionList) return;
+  // 后端没原生聚合 IPC——我们复用 cronLogsList 拿所有 runId，
+  // 再批量调 cronLogsGet 把 events 拉下来本地过滤。
+  // 上限 1000 runs 防止一次拉太多；想看更多请走「执行日志」单 run 详情。
+  try {
+    cronEls.permissionList.innerHTML = '<div class="empty-state-text">加载中…</div>';
+    const list = await window.api.cronLogsList({ limit: 1000 });
+    const runs = list?.runs || [];
+    const all = [];
+    // 限制并发：每批 8 个
+    const batchSize = 8;
+    for (let i = 0; i < runs.length; i += batchSize) {
+      const batch = runs.slice(i, i + batchSize);
+      const results = await Promise.all(
+        batch.map(async (r) => {
+          try {
+            const detail = await window.api.cronLogsGet(r.runId);
+            return detail?.events || [];
+          } catch {
+            return [];
+          }
+        })
+      );
+      for (const events of results) {
+        for (const evt of events) {
+          if (evt.type === 'decision' || evt.type === 'policy_applied') {
+            all.push({
+              ...evt,
+              // 从外层 run summary 拿到 jobName
+              jobName: runs.find((rr) => rr.runId === r.runId)?.jobName,
+            });
+          }
+        }
+      }
+    }
+    // 按时间倒序
+    all.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    cronPermissionEntries = all;
+    refreshCronPermissionJobFilter();
+    renderCronPermissionStats();
+    renderCronPermissionList();
+  } catch (err) {
+    cronEls.permissionList.innerHTML = `<div class="empty-state-text">加载失败：${escapeHtml(err.message || String(err))}</div>`;
+  }
+}
+
+function refreshCronPermissionJobFilter() {
+  if (!cronEls.permissionJobFilter) return;
+  const current = cronEls.permissionJobFilter.value;
+  const jobIds = new Set();
+  for (const e of cronPermissionEntries) {
+    if (e.jobId) jobIds.add(e.jobId);
+  }
+  // 按 jobName 分组，方便用户看懂
+  const jobNameById = new Map();
+  for (const e of cronPermissionEntries) {
+    if (e.jobId && e.jobName && !jobNameById.has(e.jobId)) {
+      jobNameById.set(e.jobId, e.jobName);
+    }
+  }
+  const opts = ['<option value="">全部任务</option>'];
+  for (const id of jobIds) {
+    const name = jobNameById.get(id) || id;
+    opts.push(`<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`);
+  }
+  cronEls.permissionJobFilter.innerHTML = opts.join('');
+  if (current && jobIds.has(current)) cronEls.permissionJobFilter.value = current;
+}
+
+function renderCronPermissionStats() {
+  if (!cronEls.permissionStats) return;
+  let approve = 0, deny = 0, policies = 0;
+  for (const e of cronPermissionEntries) {
+    if (e.type === 'policy_applied') policies += 1;
+    else if (e.type === 'decision' && e.decision === 'auto_approve') approve += 1;
+    else if (e.type === 'decision' && e.decision === 'denylist_blocked') deny += 1;
+  }
+  cronEls.permissionStats.innerHTML = `
+    <span class="stat-pill stat-pill-approve">自动通过 ${approve}</span>
+    <span class="stat-pill stat-pill-deny">黑名单拒绝 ${deny}</span>
+    <span class="stat-pill stat-pill-policies">策略声明 ${policies}</span>
+  `;
+}
+
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function renderCronPermissionList() {
+  if (!cronEls.permissionList) return;
+  const decisionFilter = cronEls.permissionDecisionFilter?.value || '';
+  const jobFilter = cronEls.permissionJobFilter?.value || '';
+  const searchRaw = (cronEls.permissionSearch?.value || '').trim();
+  let searchRegex = null;
+  if (searchRaw) {
+    try {
+      searchRegex = new RegExp(searchRaw, 'i');
+    } catch {
+      // 无效正则回退到子串匹配
+      searchRegex = null;
+    }
+  }
+  const filtered = cronPermissionEntries.filter((e) => {
+    if (jobFilter && e.jobId !== jobFilter) return false;
+    if (decisionFilter) {
+      if (e.type !== 'decision') return false;
+      if (e.decision !== decisionFilter) return false;
+    }
+    if (searchRaw) {
+      const haystack = `${e.command || ''} ${e.rule_id || ''} ${e.description || ''}`;
+      if (searchRegex) {
+        if (!searchRegex.test(haystack)) return false;
+      } else if (!haystack.toLowerCase().includes(searchRaw.toLowerCase())) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    cronEls.permissionList.innerHTML = '<div class="empty-state-text">没有匹配的权限决策记录</div>';
+    return;
+  }
+
+  const html = filtered.map((e) => {
+    if (e.type === 'policy_applied') {
+      return `
+        <div class="permission-entry permission-policy">
+          <div class="permission-entry-header">
+            <span class="permission-entry-tag tag-policy">策略声明</span>
+            <span class="permission-entry-time">${escapeHtml(formatCronPermissionTime(e.timestamp))}</span>
+          </div>
+          <div class="permission-entry-job">任务：${escapeHtml(e.jobName || e.jobId || '未知')}</div>
+          <div class="permission-entry-reason">
+            策略 <code>${escapeHtml(e.policy || '?')}</code> · 模式 <code>${escapeHtml(e.mode || '?')}</code>
+            · 硬阻断保护 ${e.hardline_protected ? '✓' : '✗'}
+          </div>
+          ${e.note ? `<div class="permission-entry-reason">${escapeHtml(e.note)}</div>` : ''}
+        </div>
+      `;
+    }
+    // decision
+    const isDeny = e.decision === 'denylist_blocked';
+    const isApprove = e.decision === 'auto_approve';
+    const cls = isDeny ? 'permission-deny' : isApprove ? 'permission-approve' : '';
+    const tagCls = isDeny ? 'tag-deny' : isApprove ? 'tag-approve' : '';
+    const tagText = isDeny ? '黑名单拒绝' : isApprove ? '自动通过' : (e.decision || '?');
+    return `
+      <div class="permission-entry ${cls}">
+        <div class="permission-entry-header">
+          <span class="permission-entry-tag ${tagCls}">${escapeHtml(tagText)}</span>
+          <span class="permission-entry-time">${escapeHtml(formatCronPermissionTime(e.timestamp))}</span>
+        </div>
+        <div class="permission-entry-job">任务：${escapeHtml(e.jobName || e.jobId || '未知')}</div>
+        ${e.command ? `<div class="permission-entry-command">${escapeHtml(e.command)}</div>` : ''}
+        <div class="permission-entry-reason">
+          ${e.description ? escapeHtml(e.description) : ''}
+          ${e.rule_id ? `<span class="permission-entry-rule-id">${escapeHtml(e.rule_id)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  cronEls.permissionList.innerHTML = html;
+}
+
+function formatCronPermissionTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 if (window.api.onCronStatus) {
   window.api.onCronStatus((data) => {
     cronEngineRunning = data.isRunning;
@@ -4168,6 +4393,10 @@ if (window.api.onCronLogUpdated) {
     if (selectedCronLogRunId && (!data.runId || data.runId === selectedCronLogRunId)) {
       await selectCronLogRun(selectedCronLogRunId);
     }
+    // 权限审计 tab 已加载时同步刷新（看到新决策）
+    if (cronActiveAuditTab === 'permissions' && cronPermissionEntries.length > 0) {
+      await loadCronPermissionEntries();
+    }
   });
 }
 
@@ -4178,6 +4407,7 @@ showPage = function(pageName) {
     loadCronJobs();
     updateCronStatusUI();
     initCronLogs();
+    initCronAuditTabs();
   }
   if (pageName === 'gateway') {
     initGatewayPage();

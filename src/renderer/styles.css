@@ -3325,6 +3325,177 @@ body {
   background: rgba(99, 102, 241, 0.06);
 }
 
+/* Cron audit tab 切换 */
+.cron-audit-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: var(--space-md);
+}
+.cron-audit-tab {
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.cron-audit-tab:hover {
+  color: var(--text-primary);
+}
+.cron-audit-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.cron-audit-panel {
+  /* default visible; second tab uses inline style to hide */
+}
+
+/* 权限审计 tab */
+.cron-permission-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+.cron-permission-filter-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cron-permission-controls select,
+.cron-permission-controls input[type="text"] {
+  padding: 4px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.cron-permission-controls input[type="text"] {
+  min-width: 220px;
+}
+
+.cron-permission-stats {
+  display: flex;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+  flex-wrap: wrap;
+}
+.stat-pill {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+.stat-pill-approve {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.stat-pill-deny {
+  border-color: var(--error);
+  color: var(--error);
+}
+.stat-pill-policies {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.cron-permission-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.permission-entry {
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.permission-entry.permission-deny {
+  border-left-color: var(--error);
+  background: rgba(239, 68, 68, 0.08);
+}
+.permission-entry.permission-approve {
+  border-left-color: var(--warning);
+  background: rgba(245, 158, 11, 0.06);
+}
+.permission-entry.permission-policy {
+  border-left-color: var(--accent);
+  background: rgba(99, 102, 241, 0.06);
+}
+.permission-entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+.permission-entry-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+.permission-entry-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+}
+.permission-entry-tag.tag-deny {
+  background: var(--error);
+  color: white;
+}
+.permission-entry-tag.tag-approve {
+  background: var(--warning);
+  color: white;
+}
+.permission-entry-tag.tag-policy {
+  background: var(--accent);
+  color: white;
+}
+.permission-entry-job {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.permission-entry-command {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-tertiary);
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  margin-top: var(--space-xs);
+  word-break: break-all;
+  color: var(--text-primary);
+}
+.permission-entry-reason {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: var(--space-xs);
+}
+.permission-entry-rule-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  margin-left: var(--space-xs);
+}
+
 /* 自动授权策略 radio 选项排版 */
 .cron-auto-authorize {
   display: flex;
