@@ -2379,8 +2379,19 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMessageContextMenu();
 });
 if (chatInput) {
+  let chatInputIsComposing = false;
+  chatInput.addEventListener('compositionstart', () => {
+    chatInputIsComposing = true;
+  });
+  chatInput.addEventListener('compositionend', () => {
+    chatInputIsComposing = false;
+  });
   chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    const isComposing = chatInputIsComposing || e.isComposing || e.keyCode === 229;
+    if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
+      e.preventDefault();
+      sendMessage();
+    }
   });
   chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto';

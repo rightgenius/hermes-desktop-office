@@ -53,4 +53,11 @@ describe('renderer regressions', () => {
     assert.match(appJs, /removePromptOverlay\s*\(\s*sessionId\s*\)/);
     assert.match(stylesCss, /\.prompt-close\s*\{/);
   });
+
+  test('chat input does not send Enter while an IME composition is active', () => {
+    assert.match(appJs, /chatInput\.addEventListener\('compositionstart'/);
+    assert.match(appJs, /chatInput\.addEventListener\('compositionend'/);
+    assert.match(appJs, /e\.isComposing/);
+    assert.match(appJs, /e\.keyCode\s*===\s*229/);
+  });
 });
