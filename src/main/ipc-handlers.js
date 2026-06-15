@@ -25,7 +25,7 @@ function handle(channel, listener) {
   if (registeredChannels.has(channel)) {
     ipcMain.removeHandler(channel);
   }
-  handle(channel, listener);
+  ipcMain.handle(channel, listener);
   registeredChannels.add(channel);
 }
 let agentManager = null;
