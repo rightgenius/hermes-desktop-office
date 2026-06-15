@@ -98,6 +98,29 @@ Hermes Desktop for Office 是一个面向办公场景的桌面 AI 助手。它�
 - 文档待办清理：明确 `docs/tasks.md` 是当前 backlog 来源。
 - 安装、测试和发布文档补齐。
 
+### 定时任务自动授权与审计（v0.9.0+）
+
+后台定时任务默认采用「黑名单模式」——cron 触发 agent 执行时，**不再弹模态框**
+打断后台任务流；只有命中内置黑名单的命令会被自动拒绝并写入审计日志。
+
+**三层拦截机制**：
+
+| 层级 | 位置 | 行为 |
+| --- | --- | --- |
+| 1. 硬阻断 | hermes-agent `HARDLINE_PATTERNS` | 永远生效：`rm -rf /`、`mkfs`、`dd` 到块设备、`shutdown`、`sudo -S` 密码爆破、fork bomb —— 这些无视任何配置都不会执行 |
+| 2. 黑名单 | GUI 端 `cron-policy.js` + bridge `CRON_DENYLIST` | 网络外联（SSH 转发 / 反弹 shell / curl\|bash）、凭证读取（`.aws/`、`.ssh/id_rsa`、`.kube/config`）、持久化（crontab -e、shell rc、systemd enable）、容器逃逸（nsenter / unshare / chroot）、系统完整性破坏 |
+| 3. 用户自定义 | GUI「自动授权策略」面板 / `~/.hermes/config.yaml` `cron.denylist` | 在内置规则之上追加正则表达式，支持 `block` 和 `warn` 两种动作 |
+
+**审计日志位置**：`~/.hermes/cron/logs/<timestamp>_<runId>.jsonl`，每条执行一份独立 JSONL。
+事件类型：
+- `policy_applied` — 任务开始时声明本次执行的策略 regime
+- `decision` — 每条自动授权决策（`auto_approve` 或 `denylist_blocked`）
+- `agent_output` / `tool_start` / `tool_complete` / `console` — 原有事件类型
+
+**GUI 切换策略**：编辑定时任务时，「自动授权策略」字段支持 `denylist`（推荐）、`ask`（每次询问）、`allowlist`（最严）三种模式。
+
+**安全边界**：hermes-agent 的 `HARDLINE_PATTERNS` 在 submodule 内，不受本系统配置影响；任何后台 cron 配置都**无法**绕过这一层。
+
 完整版本说明见 [RELEASE_NOTES.md](RELEASE_NOTES.md)。
 
 ## 给开发者
