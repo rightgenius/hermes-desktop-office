@@ -1,3 +1,22 @@
+# Release Notes v0.9.3
+
+## 修复
+
+- 修复打包应用中 Agent 终端执行 `dws` 或 `lark-cli` 时提示 `command not found` 的问题。
+- Agent 与 Gateway 子进程启动时会把随应用打包的 CLI 目录加入 `PATH`。
+- Windows 使用现有的 `Path` 环境变量和分号分隔符，macOS/Linux 使用 `PATH` 和冒号分隔符。
+- CLI 路径解析统一复用同一套跨平台逻辑，避免 GUI 与 Agent 使用不同路径。
+
+## 验证
+
+- 主进程测试 62 项通过。
+- 已从 macOS 打包目录验证 `dws --version` 与 `lark-cli --version` 可通过注入后的 `PATH` 直接执行。
+- 新增 Windows 与 POSIX PATH 处理、打包路径解析和缺失单个 CLI 时的回归测试。
+
+## 历史版本
+
+---
+
 # Release Notes v0.9.2
 
 ## 修复

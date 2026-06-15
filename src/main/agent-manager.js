@@ -2,6 +2,7 @@ const { app } = require('electron');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const { getBundledCliDirs, prependCliDirsToPath } = require('./cli-runtime');
 
 function resolveHermesPath({ isPackaged, devPath, prodPath, existsSync = fs.existsSync }) {
   const prodExists = existsSync(path.join(prodPath, 'cli.py'));
@@ -181,6 +182,11 @@ class AgentManager {
     const workspacePath = config.workspacePath || config.defaultWorkspacePath || '';
     this._defaultWorkspace = workspacePath;
     const env = { ...process.env };
+    const cliDirs = getBundledCliDirs({
+      resourcesDir,
+      isPackaged: Boolean(app?.isPackaged),
+    });
+    prependCliDirsToPath(env, cliDirs);
     if (workspacePath && workspacePath.trim()) {
       env.TERMINAL_CWD = workspacePath.trim();
     }

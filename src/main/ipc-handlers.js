@@ -6,6 +6,7 @@ const ConfigStore = require('./config-store');
 const { AgentManager } = require('./agent-manager');
 const { CronManager } = require('./cron-manager');
 const skillScanner = require('./skill-scanner');
+const { getBundledCliDirMap } = require('./cli-runtime');
 
 const fsPromises = fs.promises;
 
@@ -15,24 +16,15 @@ let cronManager = null;
 
 function getCLIBinaryPath(cliName) {
   const platform = process.platform;
-  const arch = process.arch;
-  
-  // In production, use unpacked path (CLI binaries can't run from asar)
   const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
-  const unpackedAssets = path.join(resourcesDir, 'app.asar.unpacked', 'assets');
-  const devAssets = path.join(__dirname, '../../assets');
-  const assetsDir = fs.existsSync(path.join(unpackedAssets, 'feishu-cli')) ? unpackedAssets : devAssets;
-  
-  if (cliName === 'lark-cli') {
-    if (platform === 'darwin') return path.join(assetsDir, 'feishu-cli', `darwin-${arch}`, 'lark-cli');
-    if (platform === 'win32') return path.join(assetsDir, 'feishu-cli', 'windows-amd64', 'lark-cli.exe');
-    return path.join(assetsDir, 'feishu-cli', 'linux-amd64', 'lark-cli');
-  }
-  if (cliName === 'dws') {
-    if (platform === 'darwin') return path.join(assetsDir, 'dws-cli', `darwin-${arch}`, 'dws');
-    if (platform === 'win32') return path.join(assetsDir, 'dws-cli', 'windows-amd64', 'dws.exe');
-    return path.join(assetsDir, 'dws-cli', 'linux-amd64', 'dws');
-  }
+  const cliDirs = getBundledCliDirMap({
+    resourcesDir,
+    isPackaged: Boolean(app?.isPackaged),
+  });
+  const extension = platform === 'win32' ? '.exe' : '';
+
+  if (cliName === 'lark-cli') return path.join(cliDirs.lark, `lark-cli${extension}`);
+  if (cliName === 'dws') return path.join(cliDirs.dws, `dws${extension}`);
 }
 
 function runCLI(cliName, args, timeout = 30000, maxBuffer = 1024 * 1024) {

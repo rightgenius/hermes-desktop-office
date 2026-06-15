@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { resolveHermesPath } = require('./agent-manager');
+const { getBundledCliDirs, prependCliDirsToPath } = require('./cli-runtime');
 
 const HEALTH_CHECK_INTERVAL_MS = 30000;
 const STARTUP_VERIFY_DELAY_MS = 1500;
@@ -341,12 +342,18 @@ class GatewayManager {
   }
 
   _buildChildEnv(extra = {}) {
-    return {
+    const env = {
       ...process.env,
       ...this._loadHermesEnv(),
       HERMES_HOME: path.join(os.homedir(), '.hermes'),
       ...extra,
     };
+    const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+    const cliDirs = getBundledCliDirs({
+      resourcesDir,
+      isPackaged: Boolean(app?.isPackaged),
+    });
+    return prependCliDirsToPath(env, cliDirs);
   }
 
   _cleanStaleGatewayArtifacts() {
