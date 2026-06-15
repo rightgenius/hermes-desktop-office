@@ -62,7 +62,7 @@ describe('renderer regressions', () => {
     assert.match(appJs, /data\.running\s*\?\s*'pending'\s*:\s*'error'/);
     assert.match(appJs, /status\s*===\s*'pending'\s*\?\s*'启动中'/);
     const tryStartHandler = ipcHandlersJs.match(
-      /ipcMain\.handle\('try-start-agent'[\s\S]*?\n  \}\);/,
+      /(?:ipcMain\.)?handle\('try-start-agent'[\s\S]*?\n  \}\);/,
     );
     assert.ok(tryStartHandler, 'try-start-agent handler should be findable');
     assert.doesNotMatch(tryStartHandler[0], /setTimeout\(resolve,\s*3000\)/);

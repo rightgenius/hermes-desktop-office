@@ -14,6 +14,9 @@ describe('cron execution log IPC contract', () => {
   });
 
   test('main process exposes log list, detail, clear, and settings handlers', () => {
+    // Match either the raw `ipcMain.handle(...)` form (legacy) or the
+    // idempotent `handle(...)` wrapper introduced to support repeated
+    // setupIPCHandlers() calls (e.g. macOS dock reactivation).
     for (const channel of [
       'cron:logs:list',
       'cron:logs:get',
@@ -21,7 +24,8 @@ describe('cron execution log IPC contract', () => {
       'cron:logs:settings:get',
       'cron:logs:settings:set',
     ]) {
-      assert.match(ipcHandlersJs, new RegExp(`ipcMain\\.handle\\('${channel.replaceAll(':', '\\:')}'`));
+      const re = new RegExp(`(?:ipcMain\\.)?handle\\('${channel.replaceAll(':', '\\:')}'`);
+      assert.match(ipcHandlersJs, re);
     }
     assert.match(ipcHandlersJs, /new CronManager\(agentManager,\s*mainWindow,\s*\{[\s\S]*configStore/);
   });
