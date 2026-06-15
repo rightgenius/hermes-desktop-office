@@ -22,6 +22,7 @@ const DEFAULT_CONFIG = {
   defaultWorkspacePath: getDefaultWorkspacePath(),
   autoStart: true,
   gatewayAutoStart: false,
+  cronLogMaxMb: 100,
   apiFormat: '',
   providerRegion: '',
 };

@@ -88,10 +88,20 @@ contextBridge.exposeInMainWorld('api', {
   cronStatus: () => ipcRenderer.invoke('cron:status'),
   cronStart: () => ipcRenderer.invoke('cron:start'),
   cronStop: () => ipcRenderer.invoke('cron:stop'),
+  cronLogsList: (options) => ipcRenderer.invoke('cron:logs:list', options),
+  cronLogsGet: (runId) => ipcRenderer.invoke('cron:logs:get', runId),
+  cronLogsClear: () => ipcRenderer.invoke('cron:logs:clear'),
+  cronLogSettingsGet: () => ipcRenderer.invoke('cron:logs:settings:get'),
+  cronLogSettingsSet: (maxMb) => ipcRenderer.invoke('cron:logs:settings:set', { maxMb }),
   onCronStatus: (fn) => {
     const handler = (_, data) => fn(data);
     ipcRenderer.on('cron-status', handler);
     return () => ipcRenderer.removeListener('cron-status', handler);
+  },
+  onCronLogUpdated: (fn) => {
+    const handler = (_, data) => fn(data);
+    ipcRenderer.on('cron-log-updated', handler);
+    return () => ipcRenderer.removeListener('cron-log-updated', handler);
   },
 
   // Gateway

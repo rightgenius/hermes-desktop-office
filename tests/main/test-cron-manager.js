@@ -182,4 +182,29 @@ describe('CronManager execution logging', () => {
     assert.strictEqual(agent.listenerCount('response'), 0);
     assert.strictEqual(agent.listenerCount('log'), 0);
   });
+
+  test('persists validated log limits and applies them to storage usage', () => {
+    const agent = new FakeAgentManager(() => ({ success: true }));
+    let config = { cronLogMaxMb: 100 };
+    const configStore = {
+      get: () => ({ ...config }),
+      save: (updates) => {
+        config = { ...config, ...updates };
+        return { ...config };
+      },
+    };
+    const manager = new CronManager(agent, mainWindow, {
+      cronDir: tempDir,
+      configStore,
+    });
+
+    assert.strictEqual(manager.getLogSettings().maxMb, 100);
+    assert.strictEqual(manager.getLogSettings().maxBytes, 100 * 1024 * 1024);
+
+    const updated = manager.updateLogSettings('250');
+    assert.strictEqual(updated.maxMb, 250);
+    assert.strictEqual(updated.maxBytes, 250 * 1024 * 1024);
+    assert.strictEqual(config.cronLogMaxMb, 250);
+    assert.throws(() => manager.updateLogSettings(5), /10.*10240/);
+  });
 });

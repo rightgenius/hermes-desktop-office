@@ -1,7 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { CronLogStore } = require('./cron-log-store');
+const {
+  CronLogStore,
+  normalizeCronLogMaxMb,
+  DEFAULT_CRON_LOG_MAX_MB,
+} = require('./cron-log-store');
 
 class CronManager {
   constructor(agentManager, mainWindow, options = {}) {
@@ -13,8 +17,10 @@ class CronManager {
     this._jobsFile = path.join(this._cronDir, 'jobs.json');
     this._outputDir = path.join(this._cronDir, 'output');
     this.logger = options.logger || console;
+    this.configStore = options.configStore || null;
     this.logStore = options.logStore || new CronLogStore({
       baseDir: path.join(this._cronDir, 'logs'),
+      getMaxBytes: () => this._getLogMaxMb() * 1024 * 1024,
     });
   }
 
@@ -345,6 +351,47 @@ class CronManager {
       paused_at: null,
       next_run_at: new Date().toISOString(),
     });
+  }
+
+  _getLogMaxMb() {
+    const configured = this.configStore?.get()?.cronLogMaxMb;
+    try {
+      return normalizeCronLogMaxMb(configured);
+    } catch {
+      return DEFAULT_CRON_LOG_MAX_MB;
+    }
+  }
+
+  listExecutionLogs(options = {}) {
+    return this.logStore.listRuns(options);
+  }
+
+  getExecutionLog(runId) {
+    return this.logStore.getRun(runId);
+  }
+
+  clearExecutionLogs() {
+    const result = this.logStore.clear();
+    this._sendLogUpdate(null, null);
+    return result;
+  }
+
+  getLogSettings() {
+    return {
+      maxMb: this._getLogMaxMb(),
+      ...this.logStore.getUsage(),
+    };
+  }
+
+  updateLogSettings(maxMb) {
+    const normalized = normalizeCronLogMaxMb(maxMb);
+    if (!this.configStore) {
+      throw new Error('配置存储不可用');
+    }
+    this.configStore.save({ cronLogMaxMb: normalized });
+    const usage = this.logStore.enforceLimit();
+    this._sendLogUpdate(null, null);
+    return { maxMb: normalized, ...usage };
   }
 }
 

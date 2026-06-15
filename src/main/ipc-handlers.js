@@ -93,7 +93,7 @@ function runCLISpawn(cliName, args, timeout = 30000) {
 
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
-  cronManager = new CronManager(agentManager, mainWindow);
+  cronManager = new CronManager(agentManager, mainWindow, { configStore });
   const { GatewayManager } = require('./gateway-manager');
   const gatewayManager = new GatewayManager(mainWindow);
 
@@ -893,6 +893,48 @@ function setupIPCHandlers(mainWindow) {
     try {
       await cronManager.stop();
       return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:logs:list', async (_, options = {}) => {
+    try {
+      return { success: true, ...cronManager.listExecutionLogs(options) };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:logs:get', async (_, runId) => {
+    try {
+      const log = cronManager.getExecutionLog(runId);
+      if (!log) return { success: false, error: '执行日志不存在' };
+      return { success: true, log };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:logs:clear', async () => {
+    try {
+      return { success: true, ...cronManager.clearExecutionLogs() };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:logs:settings:get', async () => {
+    try {
+      return { success: true, ...cronManager.getLogSettings() };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('cron:logs:settings:set', async (_, { maxMb } = {}) => {
+    try {
+      return { success: true, ...cronManager.updateLogSettings(maxMb) };
     } catch (err) {
       return { success: false, error: err.message };
     }

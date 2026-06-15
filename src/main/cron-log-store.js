@@ -66,6 +66,11 @@ class CronLogStore {
     };
   }
 
+  enforceLimit() {
+    this._removeOldestFinalized(0, 0);
+    return this.getUsage();
+  }
+
   _removeOldestFinalized(requiredBytes = 0, reserveBytes = 0) {
     const maxBytes = this._maxBytes();
     let files = this._files();
