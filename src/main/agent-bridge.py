@@ -25,7 +25,10 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 import uuid
+
+_PROCESS_STARTED = time.perf_counter()
 
 # hermes-agent directory is passed as first argument
 hermes_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'hermes-agent')
@@ -208,6 +211,15 @@ def _get_or_create_agent(session_id):
         return _sessions[session_id]
 
 
+def _warm_runtime():
+    """Populate cold import, provider, and tool caches before reporting ready."""
+    warmup_session_id = "__desktop_warmup__"
+    _get_or_create_agent(warmup_session_id)
+    with _sessions_lock:
+        _sessions.pop(warmup_session_id, None)
+        _session_callbacks.pop(warmup_session_id, None)
+
+
 def _handle_message(msg):
     """Handle a message request in a separate thread."""
     session_id = msg.get("session_id", "")
@@ -218,6 +230,9 @@ def _handle_message(msg):
     if not content:
         _emit({"type": "error", "session_id": session_id, "message": "Empty message"})
         return
+
+    request_started = time.perf_counter()
+    _emit({"type": "initializing", "session_id": session_id})
 
     try:
         # Set TERMINAL_CWD for this session's workspace and chdir so
@@ -237,15 +252,22 @@ def _handle_message(msg):
         if session_id:
             os.environ["HERMES_SESSION_KEY"] = f"desktop-bridge:{session_id}"
 
+        init_started = time.perf_counter()
         agent = _get_or_create_agent(session_id)
+        init_ms = round((time.perf_counter() - init_started) * 1000)
         # Hermes stores these callbacks in threading.local(). Every desktop
         # message uses a fresh worker thread, including reused chat sessions.
         _bind_interactive_callbacks(session_id)
 
+        first_chunk_ms = None
+
         def on_chunk(text):
+            nonlocal first_chunk_ms
+            if first_chunk_ms is None:
+                first_chunk_ms = round((time.perf_counter() - request_started) * 1000)
             _emit({"type": "chunk", "session_id": session_id, "text": text})
 
-        _emit({"type": "start", "session_id": session_id})
+        _emit({"type": "start", "session_id": session_id, "init_ms": init_ms})
 
         # Build the full message with history context
         if history:
@@ -263,7 +285,13 @@ def _handle_message(msg):
             full_message = content
 
         result = agent.chat(full_message, stream_callback=on_chunk)
-        _emit({"type": "done", "session_id": session_id, "text": result})
+        _emit({
+            "type": "done",
+            "session_id": session_id,
+            "text": result,
+            "total_ms": round((time.perf_counter() - request_started) * 1000),
+            "first_chunk_ms": first_chunk_ms,
+        })
 
     except Exception as e:
         _emit({"type": "error", "session_id": session_id, "message": str(e)})
@@ -304,8 +332,20 @@ def main():
     # Enable interactive mode so tools like cronjob are available
     os.environ["HERMES_INTERACTIVE"] = "1"
 
-    # Signal ready
-    _emit({"type": "ready"})
+    try:
+        _warm_runtime()
+    except Exception as exc:
+        _emit({
+            "type": "startup_error",
+            "message": str(exc),
+            "startup_ms": round((time.perf_counter() - _PROCESS_STARTED) * 1000),
+        })
+        return
+
+    _emit({
+        "type": "ready",
+        "startup_ms": round((time.perf_counter() - _PROCESS_STARTED) * 1000),
+    })
 
     # Read messages from stdin
     for line in sys.stdin:

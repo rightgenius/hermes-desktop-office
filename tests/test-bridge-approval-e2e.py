@@ -15,9 +15,11 @@ Strategy:
   - Verify the agent receives the choice and continues
 """
 
+import atexit
 import json
 import os
 import queue
+import shutil
 import subprocess
 import sys
 import textwrap
@@ -31,7 +33,10 @@ VENV_PY = HERMES_AGENT / ".venv" / "bin" / "python3"
 
 # We stub the AIAgent via PYTHONPATH so the bridge picks up our fake.
 FAKE_AGENT_DIR = REPO_ROOT / "tests" / ".tmp_fake_agent"
+if FAKE_AGENT_DIR.exists():
+    shutil.rmtree(FAKE_AGENT_DIR)
 FAKE_AGENT_DIR.mkdir(parents=True, exist_ok=True)
+atexit.register(shutil.rmtree, FAKE_AGENT_DIR, ignore_errors=True)
 
 FAKE_RUN_AGENT = FAKE_AGENT_DIR / "run_agent.py"
 FAKE_RUN_AGENT.write_text(textwrap.dedent('''
@@ -164,10 +169,15 @@ def run_test():
     proc.stdin.flush()
 
     # We expect:
-    # 1. start event
-    # 2. chunk event (from fake stream_callback before approval fires)
-    # 3. approval_request event (the bug fix!)
-    # 4. done event
+    # 1. initializing event
+    # 2. start event
+    # 3. chunk event (from fake stream_callback before approval fires)
+    # 4. approval_request event (the bug fix!)
+    # 5. done event
+    initializing = read_event(timeout=3)
+    assert initializing and initializing.get("type") == "initializing", (
+        f"expected initializing, got {initializing!r}"
+    )
     start = read_event(timeout=3)
     assert start and start.get("type") == "start", f"expected start, got {start!r}"
     print("[OK] bridge emitted start")
@@ -225,6 +235,10 @@ def run_test():
     proc.stdin.write(msg + "\n")
     proc.stdin.flush()
 
+    repeated_initializing = read_event(timeout=3)
+    assert repeated_initializing and repeated_initializing.get("type") == "initializing", (
+        f"expected repeated initializing, got {repeated_initializing!r}"
+    )
     repeated_start = read_event(timeout=3)
     assert repeated_start and repeated_start.get("type") == "start", (
         f"expected repeated start, got {repeated_start!r}"
@@ -264,6 +278,10 @@ def run_test():
     proc.stdin.write(msg2 + "\n")
     proc.stdin.flush()
 
+    initializing2 = read_event(timeout=3)
+    assert initializing2 and initializing2.get("type") == "initializing", (
+        f"expected initializing, got {initializing2!r}"
+    )
     start2 = read_event(timeout=3)
     assert start2 and start2.get("type") == "start", f"expected start, got {start2!r}"
     chunk2 = read_event(timeout=3)
@@ -305,6 +323,10 @@ def run_test():
     })
     proc.stdin.write(msg3 + "\n")
     proc.stdin.flush()
+    initializing3 = read_event(timeout=3)
+    assert initializing3 and initializing3.get("type") == "initializing", (
+        f"expected initializing, got {initializing3!r}"
+    )
     start3 = read_event(timeout=3)
     chunk3 = read_event(timeout=3)
     approval3 = read_event(timeout=3)

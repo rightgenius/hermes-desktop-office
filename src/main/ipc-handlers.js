@@ -461,9 +461,6 @@ function setupIPCHandlers(mainWindow) {
     const config = configStore.get();
     const result = await agentManager.start(config);
 
-    // Wait briefly to catch early startup errors
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-
     if (result.success && agentManager.running) {
       return {
         success: true,

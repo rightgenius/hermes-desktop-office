@@ -7,6 +7,7 @@ const root = path.join(__dirname, '..', '..');
 const appJs = fs.readFileSync(path.join(root, 'src', 'renderer', 'app.js'), 'utf8');
 const stylesCss = fs.readFileSync(path.join(root, 'src', 'renderer', 'styles.css'), 'utf8');
 const indexHtml = fs.readFileSync(path.join(root, 'src', 'renderer', 'index.html'), 'utf8');
+const ipcHandlersJs = fs.readFileSync(path.join(root, 'src', 'main', 'ipc-handlers.js'), 'utf8');
 
 describe('renderer regressions', () => {
   test('session title tooltip is cleaned when the session list re-renders', () => {
@@ -38,10 +39,33 @@ describe('renderer regressions', () => {
     assert.match(appJs, /function\s+renderLogs\s*\(/);
     assert.match(appJs, /filterLogEntries\s*\(/);
     assert.match(appJs, /formatLogExport\s*\(/);
+    assert.match(appJs, /log-line-time/);
 
     assert.match(stylesCss, /\.log-line\.error/);
     assert.match(stylesCss, /\.log-line\.warn/);
     assert.match(stylesCss, /\.log-line\.debug/);
+  });
+
+  test('chat shows immediate feedback while a new session agent is initializing', () => {
+    assert.match(appJs, /case\s+'initializing':/);
+    assert.match(appJs, /正在初始化会话/);
+    assert.match(appJs, /session-initializing/);
+  });
+
+  test('manual agent actions only report success when the IPC result succeeds', () => {
+    assert.match(appJs, /const\s+result\s*=\s*await\s*\(action\s*===\s*'start'/);
+    assert.match(appJs, /if\s*\(\s*!result\?\.success\s*\)/);
+    assert.match(appJs, /throw\s+new\s+Error\(result\?\.error/);
+  });
+
+  test('agent status distinguishes startup from ready and does not wait after ready', () => {
+    assert.match(appJs, /data\.running\s*\?\s*'pending'\s*:\s*'error'/);
+    assert.match(appJs, /status\s*===\s*'pending'\s*\?\s*'启动中'/);
+    const tryStartHandler = ipcHandlersJs.match(
+      /ipcMain\.handle\('try-start-agent'[\s\S]*?\n  \}\);/,
+    );
+    assert.ok(tryStartHandler, 'try-start-agent handler should be findable');
+    assert.doesNotMatch(tryStartHandler[0], /setTimeout\(resolve,\s*3000\)/);
   });
 
   test('interactive prompts always expose safe close and terminal cleanup', () => {

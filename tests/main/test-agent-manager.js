@@ -1,6 +1,13 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { AgentManager, resolveHermesPath } = require('../../src/main/agent-manager');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {
+  AgentManager,
+  ensureExternalSkillsDirInConfig,
+  resolveHermesPath,
+} = require('../../src/main/agent-manager');
 
 function makeManager() {
   const sent = [];
@@ -14,6 +21,68 @@ function makeManager() {
 }
 
 describe('AgentManager bridge events', () => {
+  test('marks the process ready only after the bridge reports warmup completion', () => {
+    const { manager, sent } = makeManager();
+    manager.running = true;
+    manager.ready = false;
+
+    manager._handleBridgeMessage({
+      type: 'ready',
+      startup_ms: 3210,
+    });
+
+    assert.strictEqual(manager.ready, true);
+    assert.deepStrictEqual(
+      sent.filter(({ channel }) => channel === 'agent-status').map(({ payload }) => payload),
+      [{ running: true, ready: true }],
+    );
+    assert.match(
+      sent.find(({ channel }) => channel === 'agent-log').payload.message,
+      /3210ms/,
+    );
+  });
+
+  test('forwards session initialization before model generation starts', () => {
+    const { manager, sent } = makeManager();
+
+    manager._handleBridgeMessage({
+      type: 'initializing',
+      session_id: 'session-1',
+    });
+
+    assert.deepStrictEqual(sent, [
+      {
+        channel: 'agent-response',
+        payload: {
+          event: 'initializing',
+          data: '',
+          sessionId: 'session-1',
+        },
+      },
+    ]);
+  });
+
+  test('startup errors stop the unusable bridge process and clear running state', () => {
+    const { manager } = makeManager();
+    let killed = false;
+    manager.running = true;
+    manager.ready = false;
+    manager.process = {
+      kill: () => {
+        killed = true;
+      },
+    };
+
+    manager._handleBridgeMessage({
+      type: 'startup_error',
+      message: 'warmup failed',
+    });
+
+    assert.strictEqual(killed, true);
+    assert.strictEqual(manager.running, false);
+    assert.strictEqual(manager.ready, false);
+  });
+
   test('forwards background self-improvement review summaries without completing the turn', () => {
     const { manager, sent } = makeManager();
 
@@ -65,6 +134,73 @@ describe('AgentManager bridge events', () => {
         { event: 'error', data: 'Invalid JSON', sessionId: 'session-3' },
       ]
     );
+  });
+});
+
+describe('AgentManager Hermes config updates', () => {
+  test('adds an external skills directory without corrupting adjacent YAML sections', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-'));
+    const configPath = path.join(home, 'config.yaml');
+    fs.writeFileSync(configPath, [
+      'model:',
+      '  default: test-model',
+      'skills:',
+      '  external_dirs: []',
+      'providers: {}',
+      '',
+    ].join('\n'));
+
+    const result = ensureExternalSkillsDirInConfig(home, '/tmp/office skills');
+    const updated = fs.readFileSync(configPath, 'utf8');
+
+    assert.strictEqual(result.success, true);
+    assert.match(updated, /external_dirs:\s*\n\s+- ['"]?\/tmp\/office skills['"]?/);
+    assert.match(updated, /^providers: \{\}$/m);
+    assert.doesNotMatch(updated, /provi\s+external_dirs/);
+  });
+
+  test('backs up and repairs the known malformed external_dirs insertion pattern', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-repair-'));
+    const configPath = path.join(home, 'config.yaml');
+    fs.writeFileSync(configPath, [
+      'model:',
+      '  default: test-model',
+      'providers: {}',
+      'skills:',
+      '  external_dirs: []',
+      'provi  external_dirs:',
+      '    - "/old/office-skills"',
+      '- /current/office-skills',
+      'ders: {}',
+      'plugins:',
+      '  enabled: []',
+      '',
+    ].join('\n'));
+
+    const result = ensureExternalSkillsDirInConfig(home, '/new/office-skills');
+    const updated = fs.readFileSync(configPath, 'utf8');
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.recovered, true);
+    assert.ok(result.backupPath);
+    assert.strictEqual(fs.existsSync(result.backupPath), true);
+    assert.match(updated, /^providers: \{\}$/m);
+    assert.match(updated, /\/old\/office-skills/);
+    assert.match(updated, /\/current\/office-skills/);
+    assert.match(updated, /\/new\/office-skills/);
+    assert.doesNotMatch(updated, /provi\s+external_dirs|^ders:/m);
+  });
+
+  test('does not overwrite YAML corruption that does not match the known recovery pattern', () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'hermes-config-invalid-'));
+    const configPath = path.join(home, 'config.yaml');
+    const invalid = 'model:\n  default: test\n- unexpected\n';
+    fs.writeFileSync(configPath, invalid);
+
+    const result = ensureExternalSkillsDirInConfig(home, '/new/office-skills');
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(fs.readFileSync(configPath, 'utf8'), invalid);
   });
 });
 

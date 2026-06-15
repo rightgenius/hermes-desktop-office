@@ -229,8 +229,16 @@ function updateStatus(id, status) {
   if (id === 'status-agent') {
     const titleStatus = document.getElementById('titlebar-agent-status');
     if (titleStatus) {
-      titleStatus.textContent = status === 'success' ? '运行中' : '未启动';
-      titleStatus.style.color = status === 'success' ? 'var(--success)' : 'var(--text-primary)';
+      titleStatus.textContent = status === 'success'
+        ? '运行中'
+        : status === 'pending'
+          ? '启动中'
+          : '未启动';
+      titleStatus.style.color = status === 'success'
+        ? 'var(--success)'
+        : status === 'pending'
+          ? 'var(--warning)'
+          : 'var(--text-primary)';
     }
   }
 }
@@ -2445,6 +2453,7 @@ function renderLogs() {
 
   logViewer.innerHTML = visibleEntries.map(entry => (
     `<div class="log-line ${entry.level.toLowerCase()}">` +
+      `<span class="log-line-time">${escapeHtml(entry.displayTime || '')}</span> ` +
       `<span class="log-line-level">[${entry.level}]</span> ` +
       `<span class="log-line-message">${escapeHtml(entry.message)}</span>` +
     '</div>'
@@ -2498,8 +2507,15 @@ async function agentAction(action) {
   appendLog(`[INFO] ${action === 'start' ? '启动' : action === 'stop' ? '停止' : '重启'} Agent...`);
   try {
     const config = await window.api.configGet();
-    await (action === 'start' ? window.api.agentStart(config) : action === 'stop' ? window.api.agentStop() : window.api.agentRestart());
-    updateStatus('status-agent', 'success');
+    const result = await (action === 'start'
+      ? window.api.agentStart(config)
+      : action === 'stop'
+        ? window.api.agentStop()
+        : window.api.agentRestart());
+    if (!result?.success) {
+      throw new Error(result?.error || '未知错误');
+    }
+    updateStatus('status-agent', action === 'stop' ? 'error' : 'success');
     appendLog(`[INFO] Agent ${action === 'start' ? '已启动' : action === 'stop' ? '已停止' : '已重启'}`);
   } catch (err) { appendLog(`[ERROR] Agent ${action}失败: ${err.message}`); }
 }
@@ -2514,13 +2530,28 @@ document.getElementById('agent-restart')?.addEventListener('click', () => agentA
 if (window.api) {
   window.api.onAgentLog((data) => appendLog(`[${data.level}] ${data.message}`));
   window.api.onAgentStatus((data) => {
-    updateStatus('status-agent', data.running ? 'success' : 'error');
-    agentRunning = data.running;
+    const isReady = Boolean(data.running && data.ready);
+    updateStatus('status-agent', isReady ? 'success' : data.running ? 'pending' : 'error');
+    agentRunning = isReady;
     if (typeof updateCronStatusUI === 'function') updateCronStatusUI();
   });
   window.api.onAgentResponse((data) => {
     const sessionId = data.sessionId || '';
     switch (data.event) {
+      case 'initializing': {
+        if (sessionId && !streamingSessions[sessionId]) {
+          streamingSessions[sessionId] = { text: '', reasoning: '', toolCalls: {} };
+        }
+        if (sessionId === currentSessionId && !getStreamingMessageEl(sessionId)) {
+          const msg = addMessage('', 'agent', true, '', [], sessionId);
+          const bubble = msg?.querySelector('.message-bubble');
+          if (bubble) {
+            bubble.classList.add('session-initializing');
+            bubble.textContent = '正在初始化会话...';
+          }
+        }
+        break;
+      }
       case 'start':
         // Initialize streaming state for this session
         if (sessionId && !streamingSessions[sessionId]) {
@@ -2528,7 +2559,16 @@ if (window.api) {
         }
         // Only add DOM message if this session is currently visible
         if (sessionId === currentSessionId) {
-          addMessage('', 'agent', true, '', [], sessionId);
+          let msg = getStreamingMessageEl(sessionId);
+          if (!msg) {
+            msg = addMessage('', 'agent', true, '', [], sessionId);
+          }
+          const bubble = msg?.querySelector('.message-bubble');
+          if (bubble?.classList.contains('session-initializing')) {
+            bubble.classList.remove('session-initializing');
+            bubble.textContent = '';
+            bubble._rawText = '';
+          }
         }
         break;
       case 'chunk':
