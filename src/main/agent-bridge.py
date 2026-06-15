@@ -45,12 +45,32 @@ def _emit(obj):
 
 # Session management
 _sessions = {}  # session_id -> AIAgent instance
+_session_callbacks = {}  # session_id -> interactive callbacks for thread-local binding
 _sessions_lock = threading.Lock()
 
 # Blocking state for interactive prompts (clarify, sudo, secret)
 # Keyed by (session_id, request_id) to support concurrent sessions
 _pending_responses = {}  # (session_id, request_id) -> {"event": threading.Event, "answer": str}
 _pending_lock = threading.Lock()
+
+
+def _bind_interactive_callbacks(session_id):
+    """Install a session's callbacks in the current worker thread."""
+    callbacks = _session_callbacks.get(session_id)
+    if not callbacks:
+        return
+    try:
+        from tools.terminal_tool import (
+            set_approval_callback,
+            set_sudo_password_callback,
+        )
+        from tools.skills_tool import set_secret_capture_callback
+
+        set_approval_callback(callbacks["approval"])
+        set_sudo_password_callback(callbacks["sudo"])
+        set_secret_capture_callback(callbacks["secret"])
+    except ImportError:
+        pass
 
 
 def _block_for_input(session_id, event_type, payload, timeout=300):
@@ -129,18 +149,12 @@ def _get_or_create_agent(session_id):
                     "message": "ok",
                 }
 
-            try:
-                from tools.terminal_tool import (
-                    set_approval_callback,
-                    set_sudo_password_callback,
-                )
-                from tools.skills_tool import set_secret_capture_callback
-
-                set_approval_callback(approval_cb)
-                set_sudo_password_callback(sudo_cb)
-                set_secret_capture_callback(secret_cb)
-            except ImportError:
-                pass
+            _session_callbacks[session_id] = {
+                "approval": approval_cb,
+                "sudo": sudo_cb,
+                "secret": secret_cb,
+            }
+            _bind_interactive_callbacks(session_id)
 
             agent = AIAgent(
                 base_url=os.getenv("HERMES_BASE_URL") or os.getenv("OPENROUTER_BASE_URL"),
@@ -224,6 +238,9 @@ def _handle_message(msg):
             os.environ["HERMES_SESSION_KEY"] = f"desktop-bridge:{session_id}"
 
         agent = _get_or_create_agent(session_id)
+        # Hermes stores these callbacks in threading.local(). Every desktop
+        # message uses a fresh worker thread, including reused chat sessions.
+        _bind_interactive_callbacks(session_id)
 
         def on_chunk(text):
             _emit({"type": "chunk", "session_id": session_id, "text": text})

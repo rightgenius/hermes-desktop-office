@@ -42,6 +42,30 @@ describe('AgentManager bridge events', () => {
     ]);
     assert.strictEqual(manager.sessionStates.get('session-1'), undefined);
   });
+
+  test('sessionless bridge errors terminate every generating renderer session', () => {
+    const { manager, sent } = makeManager();
+    manager.sessionStates.set('session-1', { isGenerating: true });
+    manager.sessionStates.set('session-2', { isGenerating: false });
+    manager.sessionStates.set('session-3', { isGenerating: true });
+
+    manager._handleBridgeMessage({
+      type: 'error',
+      session_id: '',
+      message: 'Invalid JSON',
+    });
+
+    assert.strictEqual(manager.sessionStates.get('session-1').isGenerating, false);
+    assert.strictEqual(manager.sessionStates.get('session-2').isGenerating, false);
+    assert.strictEqual(manager.sessionStates.get('session-3').isGenerating, false);
+    assert.deepStrictEqual(
+      sent.filter(({ channel }) => channel === 'agent-response').map(({ payload }) => payload),
+      [
+        { event: 'error', data: 'Invalid JSON', sessionId: 'session-1' },
+        { event: 'error', data: 'Invalid JSON', sessionId: 'session-3' },
+      ]
+    );
+  });
 });
 
 describe('AgentManager runtime path resolution', () => {

@@ -43,4 +43,14 @@ describe('renderer regressions', () => {
     assert.match(stylesCss, /\.log-line\.warn/);
     assert.match(stylesCss, /\.log-line\.debug/);
   });
+
+  test('interactive prompts always expose safe close and terminal cleanup', () => {
+    assert.match(appJs, /class="prompt-close"/);
+    assert.match(appJs, /function\s+cancelPendingPrompt\s*\(/);
+    assert.match(appJs, /pendingPrompt\.type\s*===\s*'approval_request'\s*\?\s*'deny'\s*:\s*''/);
+    assert.match(appJs, /removePromptOverlay\s*\(\s*\)\s*;\s*pendingPrompt\s*=\s*\{\s*type/);
+    assert.match(appJs, /function\s+removePromptOverlay\s*\(\s*sessionId\s*=\s*null\s*\)/);
+    assert.match(appJs, /removePromptOverlay\s*\(\s*sessionId\s*\)/);
+    assert.match(stylesCss, /\.prompt-close\s*\{/);
+  });
 });

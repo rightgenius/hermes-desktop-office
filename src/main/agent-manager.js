@@ -401,8 +401,16 @@ class AgentManager {
         this.emitResponse('complete', msg.text || '', sessionId);
         break;
       case 'error':
-        this._setSessionGenerating(sessionId, false);
-        this.emitResponse('error', msg.message || '未知错误', sessionId);
+        if (sessionId) {
+          this._setSessionGenerating(sessionId, false);
+          this.emitResponse('error', msg.message || '未知错误', sessionId);
+        } else {
+          for (const [activeSessionId, state] of this.sessionStates) {
+            if (!state.isGenerating) continue;
+            this._setSessionGenerating(activeSessionId, false);
+            this.emitResponse('error', msg.message || '未知错误', activeSessionId);
+          }
+        }
         this.emitLog('error', `Agent 错误: ${msg.message}`);
         break;
       case 'stopped':

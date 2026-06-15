@@ -17,10 +17,11 @@ Strategy:
 
 import json
 import os
+import queue
 import subprocess
 import sys
 import textwrap
-import time
+import threading
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -124,28 +125,28 @@ def run_test():
     )
 
     events = []
+    event_queue = queue.Queue()
+
+    def collect_events():
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event_queue.put(json.loads(line))
+            except json.JSONDecodeError:
+                print(f"[non-JSON stdout] {line}", file=sys.stderr)
+
+    threading.Thread(target=collect_events, daemon=True).start()
 
     def read_event(timeout=2.0):
         """Read one JSON line from stdout (with timeout)."""
-        import select
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            r, _, _ = select.select([proc.stdout], [], [], 0.1)
-            if r:
-                line = proc.stdout.readline()
-                if not line:
-                    return None
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    print(f"[non-JSON stdout] {line}", file=sys.stderr)
-                    continue
-                events.append(obj)
-                return obj
-        return None
+        try:
+            obj = event_queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
+        events.append(obj)
+        return obj
 
     # Wait for ready
     ready = read_event(timeout=5)
@@ -218,9 +219,42 @@ def run_test():
     print(f"[OK] bridge emitted done: {final_text!r}")
 
     # -------------------------------------------------------------------------
-    # Test 2: "once" approval choice on a fresh session
+    # Test 2: approval callbacks are rebound for a reused session
     # -------------------------------------------------------------------------
-    print("\n--- Test 2: 'once' approval ---")
+    print("\n--- Test 2: repeated approval in the same session ---")
+    proc.stdin.write(msg + "\n")
+    proc.stdin.flush()
+
+    repeated_start = read_event(timeout=3)
+    assert repeated_start and repeated_start.get("type") == "start", (
+        f"expected repeated start, got {repeated_start!r}"
+    )
+    repeated_chunk = read_event(timeout=3)
+    assert repeated_chunk and repeated_chunk.get("type") == "chunk", (
+        f"expected repeated chunk, got {repeated_chunk!r}"
+    )
+    repeated_approval = read_event(timeout=3)
+    assert repeated_approval and repeated_approval.get("type") == "approval_request", (
+        "reused sessions must bind the GUI approval callback in every worker "
+        f"thread, got {repeated_approval!r}"
+    )
+    proc.stdin.write(json.dumps({
+        "type": "respond",
+        "session_id": "test-session-1",
+        "request_id": repeated_approval["request_id"],
+        "answer": "deny",
+    }) + "\n")
+    proc.stdin.flush()
+    repeated_done = read_event(timeout=3)
+    assert repeated_done and repeated_done.get("type") == "done", (
+        f"expected repeated done, got {repeated_done!r}"
+    )
+    print("[OK] reused session emitted a second approval_request")
+
+    # -------------------------------------------------------------------------
+    # Test 3: "once" approval choice on a fresh session
+    # -------------------------------------------------------------------------
+    print("\n--- Test 3: 'once' approval ---")
     msg2 = json.dumps({
         "type": "message",
         "session_id": "test-session-2",
@@ -260,9 +294,9 @@ def run_test():
     print(f"[OK] bridge emitted done: {done2.get('text')!r}")
 
     # -------------------------------------------------------------------------
-    # Test 3: session key is set per chat session
+    # Test 4: session key is set per chat session
     # -------------------------------------------------------------------------
-    print("\n--- Test 3: session key binding ---")
+    print("\n--- Test 4: session key binding ---")
     msg3 = json.dumps({
         "type": "message",
         "session_id": "test-session-3",

@@ -1994,6 +1994,7 @@ function renderToolCalls(bubble) {
 }
 
 function showPromptOverlay(type, data) {
+  removePromptOverlay();
   pendingPrompt = { type, ...data };
   const chatInputArea = document.querySelector('.chat-input-area');
   if (chatInputArea) chatInputArea.classList.add('disabled');
@@ -2006,7 +2007,10 @@ function showPromptOverlay(type, data) {
   if (type === 'clarify_request') {
     const choices = data.choices || [];
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">❓</span>需要你的选择</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">❓</span>需要你的选择</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-question">${escapeHtml(data.question)}</div>
       <div class="prompt-choices">
         ${choices.map((c, i) => `<button class="prompt-choice-btn ${i === 0 ? 'primary' : ''}" data-answer="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
@@ -2014,7 +2018,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'approval_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔐</span>需要权限审批</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔐</span>需要权限审批</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-description">${escapeHtml(data.description || '以下命令需要你的批准才能执行')}</div>
       <div class="prompt-command">${escapeHtml(data.command || '')}</div>
       <div class="prompt-actions">
@@ -2025,7 +2032,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'sudo_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔑</span>需要 sudo 密码</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔑</span>需要 sudo 密码</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-input-group">
         <label for="prompt-sudo-password">请输入 sudo 密码</label>
         <input type="password" id="prompt-sudo-password" placeholder="密码" autofocus>
@@ -2037,7 +2047,10 @@ function showPromptOverlay(type, data) {
     </div>`;
   } else if (type === 'secret_request') {
     content = `<div class="prompt-modal">
-      <h3><span class="prompt-icon">🔒</span>需要密钥</h3>
+      <div class="prompt-header">
+        <h3><span class="prompt-icon">🔒</span>需要密钥</h3>
+        <button class="prompt-close" type="button" aria-label="关闭">&times;</button>
+      </div>
       <div class="prompt-description">${escapeHtml(data.prompt || `请输入 ${data.env_var} 的值`)}</div>
       <div class="prompt-input-group">
         <label for="prompt-secret-value">${escapeHtml(data.env_var || 'Value')}</label>
@@ -2053,6 +2066,7 @@ function showPromptOverlay(type, data) {
 
   overlay.innerHTML = content;
   document.body.appendChild(overlay);
+  overlay.querySelector('.prompt-close')?.addEventListener('click', cancelPendingPrompt);
 
   if (type === 'clarify_request') {
     overlay.querySelectorAll('.prompt-choice-btn').forEach(btn => {
@@ -2084,12 +2098,22 @@ function showPromptOverlay(type, data) {
   }
 }
 
-function removePromptOverlay() {
+function removePromptOverlay(sessionId = null) {
+  if (sessionId && pendingPrompt?.session_id && pendingPrompt.session_id !== sessionId) return;
   const overlay = document.getElementById('prompt-overlay');
   if (overlay) overlay.remove();
   pendingPrompt = null;
   const chatInputArea = document.querySelector('.chat-input-area');
   if (chatInputArea) chatInputArea.classList.remove('disabled');
+}
+
+function cancelPendingPrompt() {
+  if (!pendingPrompt) {
+    removePromptOverlay();
+    return;
+  }
+  const answer = pendingPrompt.type === 'approval_request' ? 'deny' : '';
+  submitPrompt(answer);
 }
 
 async function submitPrompt(answer) {
@@ -2553,6 +2577,7 @@ if (window.api) {
         });
         break;
       case 'complete':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -2561,6 +2586,7 @@ if (window.api) {
         }
         break;
       case 'error':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId, data.data);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -2569,6 +2595,7 @@ if (window.api) {
         }
         break;
       case 'stopped':
+        removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
