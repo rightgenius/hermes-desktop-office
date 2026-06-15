@@ -89,3 +89,14 @@ test('packaged smoke test waits for the Agent bridge to become ready', () => {
   assert.match(content, /onAgentLog/);
   assert.match(content, /onAgentStatus/);
 });
+
+test('application asar excludes the separately bundled Hermes Agent', () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'),
+  );
+
+  assert.ok(
+    packageJson.build.files.includes('!src/hermes-agent/**'),
+    'Hermes Agent must exist only in extraResources, not inside app.asar',
+  );
+});

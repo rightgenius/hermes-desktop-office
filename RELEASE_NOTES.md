@@ -1,3 +1,21 @@
+# Release Notes v0.9.2
+
+## 修复
+
+- 修复 Windows 打包应用误把 `app.asar/src/hermes-agent` 识别为开发环境的问题。
+- 打包模式下 Agent 和 Gateway 强制使用 `Resources/hermes-agent` 与 bundled Python runtime。
+- Hermes Agent 不再重复打入 `app.asar`，避免路径歧义并减小安装包体积。
+
+## 验证
+
+- 新增打包模式 Hermes Agent 路径选择回归测试。
+- 新增 asar 不包含 Hermes Agent 的构建配置回归测试。
+- 主进程测试 58 项通过，Skills scanner 40 项通过。
+
+## 历史版本
+
+---
+
 # Release Notes v0.9.1
 
 ## 修复

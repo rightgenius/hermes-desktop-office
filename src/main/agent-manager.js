@@ -3,6 +3,22 @@ const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
+function resolveHermesPath({ isPackaged, devPath, prodPath, existsSync = fs.existsSync }) {
+  const prodExists = existsSync(path.join(prodPath, 'cli.py'));
+  if (isPackaged) {
+    return {
+      hermesPath: prodExists ? prodPath : null,
+      isProduction: true,
+    };
+  }
+
+  const devExists = existsSync(path.join(devPath, 'cli.py'));
+  return {
+    hermesPath: devExists ? devPath : prodExists ? prodPath : null,
+    isProduction: !devExists && prodExists,
+  };
+}
+
 // Simple YAML merge helper for skills.external_dirs (avoids full YAML dependency)
 function ensureExternalSkillsDirInConfig(hermesHome, skillsPath) {
   const configPath = path.join(hermesHome, 'config.yaml');
@@ -107,11 +123,11 @@ class AgentManager {
     const devPath = path.join(__dirname, '../hermes-agent');
     const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
     const prodPath = path.join(resourcesDir, 'hermes-agent');
-    
-    const hermesPath = fs.existsSync(path.join(devPath, 'cli.py')) ? devPath
-                     : fs.existsSync(path.join(prodPath, 'cli.py')) ? prodPath
-                     : null;
-    const isProduction = hermesPath === prodPath;
+    const { hermesPath, isProduction } = resolveHermesPath({
+      isPackaged: Boolean(app?.isPackaged),
+      devPath,
+      prodPath,
+    });
 
     if (!hermesPath) {
       return { success: false, error: 'Hermes Agent 未安装，请确保 hermes-agent submodule 已正确初始化' };
@@ -505,4 +521,4 @@ class AgentManager {
   }
 }
 
-module.exports = { AgentManager };
+module.exports = { AgentManager, resolveHermesPath };

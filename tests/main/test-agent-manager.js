@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert');
-const { AgentManager } = require('../../src/main/agent-manager');
+const { AgentManager, resolveHermesPath } = require('../../src/main/agent-manager');
 
 function makeManager() {
   const sent = [];
@@ -41,5 +41,26 @@ describe('AgentManager bridge events', () => {
       },
     ]);
     assert.strictEqual(manager.sessionStates.get('session-1'), undefined);
+  });
+});
+
+describe('AgentManager runtime path resolution', () => {
+  test('packaged app selects Resources hermes-agent even when the asar path exists', () => {
+    const existingPaths = new Set([
+      '/app.asar/src/hermes-agent/cli.py',
+      '/resources/hermes-agent/cli.py',
+    ]);
+
+    const result = resolveHermesPath({
+      isPackaged: true,
+      devPath: '/app.asar/src/hermes-agent',
+      prodPath: '/resources/hermes-agent',
+      existsSync: (candidate) => existingPaths.has(candidate),
+    });
+
+    assert.deepStrictEqual(result, {
+      hermesPath: '/resources/hermes-agent',
+      isProduction: true,
+    });
   });
 });

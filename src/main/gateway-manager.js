@@ -3,6 +3,7 @@ const { spawn, execFile, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { resolveHermesPath } = require('./agent-manager');
 
 const HEALTH_CHECK_INTERVAL_MS = 30000;
 const STARTUP_VERIFY_DELAY_MS = 1500;
@@ -295,9 +296,11 @@ class GatewayManager {
     const devPath = path.join(__dirname, '../hermes-agent');
     const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
     const prodPath = path.join(resourcesDir, 'hermes-agent');
-    return fs.existsSync(path.join(devPath, 'cli.py')) ? devPath
-      : fs.existsSync(path.join(prodPath, 'cli.py')) ? prodPath
-      : null;
+    return resolveHermesPath({
+      isPackaged: Boolean(app?.isPackaged),
+      devPath,
+      prodPath,
+    }).hermesPath;
   }
 
   _findPythonCmd(hermesPath) {
