@@ -3918,11 +3918,20 @@ function cronLogEventView(event) {
   return { label: eventType.replace(/^agent_/, 'Agent '), className: 'agent-event', text };
 }
 
+// Track which runId is currently rendered in the detail panel, and how many
+// events we already showed — so onCronLogUpdated can append new events
+// instead of re-rendering the whole panel.
+let _renderedDetailRunId = null;
+let _renderedDetailEventCount = 0;
+
 function renderCronLogDetail(log) {
   if (!cronEls.logDetail) return;
   const summary = log.summary || {};
   const status = cronLogStatusMeta(summary.status);
-  const events = (log.events || []).map(event => {
+  const events = log.events || [];
+  _renderedDetailRunId = log.runId;
+  _renderedDetailEventCount = events.length;
+  const eventsHtml = events.map(event => {
     const view = cronLogEventView(event);
     return `
       <div class="cron-log-entry ${view.className}">
@@ -3934,16 +3943,67 @@ function renderCronLogDetail(log) {
       </div>
     `;
   }).join('');
+  const runningBadge = status.className === 'running' || status.className === 'unknown'
+    ? '<span class="cron-log-spinner" aria-label="运行中"></span>'
+    : '';
   cronEls.logDetail.innerHTML = `
     <div class="cron-log-detail-header">
       <div>
         <h4>${escapeHtml(summary.jobName || summary.jobId || '未知任务')}</h4>
         <span>${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}</span>
       </div>
-      <span class="cron-log-run-status ${status.className}">${escapeHtml(status.label)}</span>
+      <span class="cron-log-run-status ${status.className}">${runningBadge}${escapeHtml(status.label)}</span>
     </div>
-    <div class="cron-log-events">${events || '<div class="empty-state-text">没有可显示的事件</div>'}</div>
+    <div class="cron-log-events">${eventsHtml || '<div class="empty-state-text">没有可显示的事件</div>'}</div>
   `;
+  // Auto-scroll to bottom so new events stream in
+  const eventsDiv = cronEls.logDetail.querySelector('.cron-log-events');
+  if (eventsDiv) eventsDiv.scrollTop = eventsDiv.scrollHeight;
+}
+
+function appendCronLogEvents(log) {
+  if (!cronEls.logDetail) return;
+  if (log.runId !== _renderedDetailRunId) return; // not the one we're showing
+  const allEvents = log.events || [];
+  const newEvents = allEvents.slice(_renderedDetailEventCount);
+  if (newEvents.length === 0) return;
+  const eventsDiv = cronEls.logDetail.querySelector('.cron-log-events');
+  if (!eventsDiv) return;
+  // Remove the "no events" placeholder if it's there
+  const placeholder = eventsDiv.querySelector('.empty-state-text');
+  if (placeholder) placeholder.remove();
+  const fragment = newEvents.map(event => {
+    const view = cronLogEventView(event);
+    const div = document.createElement('div');
+    div.className = `cron-log-entry ${view.className}`;
+    div.innerHTML = `
+      <div class="cron-log-entry-header">
+        <span>${escapeHtml(view.label)}</span>
+        <time>${escapeHtml(formatCronLogDate(event.timestamp))}</time>
+      </div>
+      <pre>${escapeHtml(view.text)}</pre>
+    `;
+    return div;
+  }).forEach((el) => eventsDiv.appendChild(el));
+  _renderedDetailEventCount = allEvents.length;
+  // Update the status badge if the run is now finished
+  const summary = log.summary || {};
+  const status = cronLogStatusMeta(summary.status);
+  const headerRight = cronEls.logDetail.querySelector('.cron-log-detail-header > :last-child');
+  if (headerRight) {
+    const runningBadge = status.className === 'running' || status.className === 'unknown'
+      ? '<span class="cron-log-spinner" aria-label="运行中"></span>'
+      : '';
+    headerRight.className = `cron-log-run-status ${status.className}`;
+    headerRight.innerHTML = `${runningBadge}${escapeHtml(status.label)}`;
+  }
+  // Update duration
+  const headerSpan = cronEls.logDetail.querySelector('.cron-log-detail-header > div > span');
+  if (headerSpan && summary) {
+    headerSpan.textContent = `${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}`;
+  }
+  // Auto-scroll to bottom
+  eventsDiv.scrollTop = eventsDiv.scrollHeight;
 }
 
 async function selectCronLogRun(runId) {
@@ -4389,9 +4449,19 @@ if (window.api.onCronStatus) {
 
 if (window.api.onCronLogUpdated) {
   window.api.onCronLogUpdated(async (data) => {
+    // The watcher emits this on every state change. The list always needs a
+    // refresh (new runs may have appeared, or status badges changed), but
+    // the detail panel can be appended-to rather than re-rendered so the
+    // user's scroll position and any reading focus are preserved.
     await loadCronLogs();
-    if (selectedCronLogRunId && (!data.runId || data.runId === selectedCronLogRunId)) {
-      await selectCronLogRun(selectedCronLogRunId);
+    if (!selectedCronLogRunId) return;
+    if (data.runId && data.runId !== selectedCronLogRunId) return;
+    const result = await window.api.cronLogsGet(selectedCronLogRunId);
+    if (!result || !result.success || !result.log) return;
+    if (result.log.runId === _renderedDetailRunId) {
+      appendCronLogEvents(result.log);
+    } else {
+      renderCronLogDetail(result.log);
     }
     // 权限审计 tab 已加载时同步刷新（看到新决策）
     if (cronActiveAuditTab === 'permissions' && cronPermissionEntries.length > 0) {

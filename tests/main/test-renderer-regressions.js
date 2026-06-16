@@ -115,4 +115,21 @@ describe('renderer regressions', () => {
     assert.match(stylesCss, /\.cron-log-entry\.console-error/);
     assert.match(stylesCss, /\.cron-log-run\.selected/);
   });
+
+  test('cron log detail streams new events without re-rendering (live tail)', () => {
+    // The watcher polls disk and emits cron-log-updated on every state
+    // change. The renderer should append new events to the detail panel
+    // rather than re-rendering the whole thing — preserves scroll
+    // position, prevents flicker, and makes streaming feel live.
+    assert.match(appJs, /function\s+appendCronLogEvents\s*\(/);
+    assert.match(appJs, /appendCronLogEvents\(result\.log\)/);
+    // The onCronLogUpdated handler should not call selectCronLogRun for
+    // incremental updates — only on first selection.
+    const handler = appJs.match(/onCronLogUpdated[\s\S]*?\}\s*\);/);
+    assert.ok(handler, 'onCronLogUpdated handler should be findable');
+    assert.doesNotMatch(handler[0], /await\s+selectCronLogRun\(/);
+    // spinner class exists
+    assert.match(stylesCss, /\.cron-log-spinner/);
+    assert.match(stylesCss, /@keyframes\s+cron-log-spin/);
+  });
 });
