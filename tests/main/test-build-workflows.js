@@ -79,6 +79,46 @@ test('Python runtime cache is scoped to the target platform and architecture', (
   assert.match(content, /printf.*TARGET_ID.*TARGET_FILE/);
 });
 
+test('native dependency bundling keeps office deps constrained by the lock file', () => {
+  const content = fs.readFileSync(
+    path.join(projectRoot, 'scripts/bundle-agent-deps.sh'),
+    'utf8',
+  );
+
+  assert.match(content, /LOCK_CONSTRAINTS_ARG=/);
+  assert.match(
+    content,
+    /\$PYTHON_CMD -m pip install --target "\$DEPS_DIR" \$LOCK_CONSTRAINTS_ARG "markitdown\[pptx\]" Pillow openpyxl pandas/,
+    'native office dependency install must use the lock constraints so relocking cannot drift requests/packaging',
+  );
+});
+
+test('native dependency bundling regenerates the lock file from target deps only', () => {
+  const content = fs.readFileSync(
+    path.join(projectRoot, 'scripts/bundle-agent-deps.sh'),
+    'utf8',
+  );
+
+  assert.match(content, /importlib\.metadata/);
+  assert.match(content, /distributions\(path=\[deps_dir\]\)/);
+  assert.doesNotMatch(
+    content,
+    /pkg_resources\.working_set/,
+    'lock generation must not inspect the caller Python environment',
+  );
+});
+
+test('native dependency bundling keeps existing locked versions when duplicate dist-info exists', () => {
+  const content = fs.readFileSync(
+    path.join(projectRoot, 'scripts/bundle-agent-deps.sh'),
+    'utf8',
+  );
+
+  assert.match(content, /locked_versions/);
+  assert.match(content, /if existing_version and existing_version != dist\.version:/);
+  assert.match(content, /entries\[normalized\] = f'\{name\}==\{dist\.version\}'/);
+});
+
 test('packaged smoke test waits for the Agent bridge to become ready', () => {
   const content = fs.readFileSync(
     path.join(projectRoot, 'tests/packaged-smoke.spec.js'),
