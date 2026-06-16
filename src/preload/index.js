@@ -93,6 +93,8 @@ contextBridge.exposeInMainWorld('api', {
   cronLogsClear: () => ipcRenderer.invoke('cron:logs:clear'),
   cronLogSettingsGet: () => ipcRenderer.invoke('cron:logs:settings:get'),
   cronLogSettingsSet: (maxMb) => ipcRenderer.invoke('cron:logs:settings:set', { maxMb }),
+  cronLogFilesList: (runId, options) => ipcRenderer.invoke('cron:logs:files:list', runId, options || {}),
+  cronLogFileRead: (fileId, options) => ipcRenderer.invoke('cron:logs:files:read', fileId, options || {}),
   cronPolicyGet: () => ipcRenderer.invoke('cron:policy:get'),
   cronPolicySet: (data) => ipcRenderer.invoke('cron:policy:set', data),
   cronPolicyTest: (command) => ipcRenderer.invoke('cron:policy:test', { command }),

@@ -109,7 +109,14 @@ describe('renderer regressions', () => {
 
     const detailBody = appJs.match(/function\s+renderCronLogDetail\s*\([^)]*\)\s*\{([\s\S]*?)\n\}/);
     assert.ok(detailBody, 'renderCronLogDetail body should be findable');
-    assert.match(detailBody[1], /escapeHtml\s*\(/);
+    // escapeHtml may live in a helper (renderCronLogEntryHTML / renderCronLogDetailHeaderHTML)
+    // invoked from renderCronLogDetail — accept either inline usage or a reference to
+    // one of those helpers.
+    const usesEscaping =
+      /escapeHtml\s*\(/.test(detailBody[1]) ||
+      /renderCronLogEntryHTML\s*\(/.test(detailBody[1]) ||
+      /renderCronLogDetailHeaderHTML\s*\(/.test(detailBody[1]);
+    assert.ok(usesEscaping, 'renderCronLogDetail must escape user-controlled content via escapeHtml or its helpers');
 
     assert.match(stylesCss, /\.cron-audit-grid/);
     assert.match(stylesCss, /\.cron-log-entry\.console-error/);

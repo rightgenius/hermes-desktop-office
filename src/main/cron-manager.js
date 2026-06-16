@@ -8,6 +8,7 @@ const {
   DEFAULT_CRON_LOG_MAX_MB,
 } = require('./cron-log-store');
 const { CronPolicy } = require('./cron-policy');
+const { CronLogFiles } = require('./cron-log-files');
 
 /**
  * CronManager — GUI-side observer and CRUD layer for cron jobs.
@@ -74,6 +75,13 @@ class CronManager {
     // Stuck-run reconciliation: any `.jsonl.active` file older than this is
     // force-finalized as 'interrupted' on startup.
     this._staleRunMs = options.staleRunMs || 30 * 60 * 1000;
+    // File aggregation for the file-view panel: pairs audit + output + global
+    // logs filtered by session/explicit/time-window confidence.
+    this.logFiles = options.logFiles || new CronLogFiles({
+      logsDir: path.join(this._cronDir, 'logs'),
+      outputDir: this._outputDir,
+      globalLogsDir: path.join(this._home(), '.hermes', 'logs'),
+    });
   }
 
   // ---------- helpers ----------
@@ -341,6 +349,7 @@ class CronManager {
       // Already have a pending run for this job; promote it to a real run_start
       this._appendEvent(ctx.logRun, {
         type: 'run_start',
+        runId: ctx.runId,
         jobId: job.id,
         jobName: job.name || job.id,
         startedAt,
@@ -352,6 +361,7 @@ class CronManager {
       catch (err) { this.logger.warn('startRun failed:', err.message); return; }
       this._appendEvent(logRun, {
         type: 'run_start',
+        runId: logRun.runId,
         jobId: job.id,
         jobName: job.name || job.id,
         startedAt,
@@ -386,6 +396,7 @@ class CronManager {
         catch (err) { this.logger.warn('startRun failed:', err.message); continue; }
         this._appendEvent(logRun, {
           type: 'run_start',
+          runId: logRun.runId,
           jobId: job.id,
           jobName: job.name || job.id,
           startedAt: job.last_run_at,
@@ -627,6 +638,53 @@ class CronManager {
     const usage = this.logStore.enforceLimit();
     this._sendLogUpdate(null, null);
     return { maxMb: normalized, ...usage };
+  }
+
+  // ---------- File-view surface ----------
+
+  /**
+   * 列出与某个 run 相关的所有日志文件（审计 JSONL / 最终输出 / 全局日志过滤视图）。
+   * 默认不返回按时间窗口推断的虚拟文件；includeInferred=true 时追加。
+   *
+   * @param {string} runId
+   * @param {object} [options]
+   * @param {boolean} [options.includeInferred=false]
+   */
+  listExecutionLogFiles(runId, options = {}) {
+    if (!runId || typeof runId !== 'string') {
+      return { success: false, error: 'runId 必须是非空字符串' };
+    }
+    if (!this.logFiles) {
+      return { success: false, error: '日志文件聚合器不可用' };
+    }
+    try {
+      return this.logFiles.listFiles(runId, options);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  /**
+   * 读取某个 fileId 对应的文件内容。fileId 必须来自 listExecutionLogFiles。
+   *
+   * @param {string} fileId
+   * @param {object} [options]
+   * @param {number} [options.offset]
+   * @param {number} [options.limitBytes]
+   * @param {boolean} [options.tail]
+   */
+  readExecutionLogFile(fileId, options = {}) {
+    if (!fileId || typeof fileId !== 'string') {
+      return { success: false, error: 'fileId 必须是非空字符串' };
+    }
+    if (!this.logFiles) {
+      return { success: false, error: '日志文件聚合器不可用' };
+    }
+    try {
+      return this.logFiles.readFile(fileId, options);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }
 }
 

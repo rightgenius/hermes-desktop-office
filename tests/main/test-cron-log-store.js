@@ -30,8 +30,21 @@ describe('CronLogStore', () => {
     });
   }
 
+  function startRunWithStartEvent(store, job) {
+    const run = store.startRun(job);
+    store.appendEvent(run, {
+      timestamp: new Date(clock).toISOString(),
+      type: 'run_start',
+      runId: run.runId,
+      jobId: job.id,
+      jobName: job.name || job.id,
+      prompt: job.prompt || '',
+    });
+    return run;
+  }
+
   function finishRun(store, jobId, jobName, status = 'success') {
-    const run = store.startRun({ id: jobId, name: jobName, prompt: `prompt ${jobId}` });
+    const run = startRunWithStartEvent(store, { id: jobId, name: jobName, prompt: `prompt ${jobId}` });
     store.appendEvent(run, {
       type: 'console',
       level: 'info',
@@ -74,7 +87,7 @@ describe('CronLogStore', () => {
 
   test('shows orphaned active files as interrupted after restart', () => {
     const store = createStore();
-    const run = store.startRun({ id: 'job-1', name: '未完成任务', prompt: 'work' });
+    const run = startRunWithStartEvent(store, { id: 'job-1', name: '未完成任务', prompt: 'work' });
     store.appendEvent(run, { type: 'console', level: 'error', message: 'last line' });
 
     const restartedStore = createStore();
@@ -87,13 +100,13 @@ describe('CronLogStore', () => {
 
   test('deletes the oldest finalized runs before exceeding the global limit', () => {
     const store = createStore({ maxBytes: 1500, endReserveBytes: 128 });
-    const first = store.startRun({ id: 'job-1', name: '旧任务', prompt: 'old' });
+    const first = startRunWithStartEvent(store, { id: 'job-1', name: '旧任务', prompt: 'old' });
     store.appendEvent(first, { type: 'console', message: 'x'.repeat(420) });
     clock += 1000;
     store.finishRun(first, { status: 'success', output: 'old output' });
 
     clock += 1000;
-    const second = store.startRun({ id: 'job-2', name: '新任务', prompt: 'new' });
+    const second = startRunWithStartEvent(store, { id: 'job-2', name: '新任务', prompt: 'new' });
     store.appendEvent(second, { type: 'console', message: 'y'.repeat(420) });
     clock += 1000;
     store.finishRun(second, { status: 'success', output: 'new output' });
@@ -105,7 +118,7 @@ describe('CronLogStore', () => {
 
   test('truncates an oversized active run and still records its final status', () => {
     const store = createStore({ maxBytes: 900, endReserveBytes: 240 });
-    const run = store.startRun({ id: 'job-1', name: '大日志', prompt: 'large' });
+    const run = startRunWithStartEvent(store, { id: 'job-1', name: '大日志', prompt: 'large' });
 
     const appended = store.appendEvent(run, {
       type: 'console',
@@ -126,10 +139,10 @@ describe('CronLogStore', () => {
   test('clear removes completed and orphaned logs but preserves active handles', () => {
     const store = createStore();
     finishRun(store, 'job-complete', '完成任务');
-    const orphan = store.startRun({ id: 'job-orphan', name: '遗留任务', prompt: 'orphan' });
+    const orphan = startRunWithStartEvent(store, { id: 'job-orphan', name: '遗留任务', prompt: 'orphan' });
 
     const restartedStore = createStore();
-    const active = restartedStore.startRun({ id: 'job-active', name: '活动任务', prompt: 'active' });
+    const active = startRunWithStartEvent(restartedStore, { id: 'job-active', name: '活动任务', prompt: 'active' });
     const result = restartedStore.clear();
 
     assert.strictEqual(result.deleted, 2);

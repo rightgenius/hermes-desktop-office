@@ -3996,3 +3996,253 @@ body {
     grid-template-columns: repeat(4, 1fr);
   }
 }
+
+/* ============== Cron log file viewer ============== */
+
+.cron-log-detail-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.cron-log-detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.cron-log-view-switch {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-top: var(--space-md);
+}
+
+.cron-log-view-tab {
+  padding: 6px var(--space-md);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cron-log-view-tab:hover {
+  color: var(--text-primary);
+}
+
+.cron-log-view-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.cron-log-view-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#cron-log-files-pane[hidden] {
+  display: none;
+}
+
+.cron-log-files-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-sm) 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cron-log-files-tabs {
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding-bottom: 2px;
+}
+
+.cron-log-file-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cron-log-file-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cron-log-file-tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-active);
+}
+
+.cron-log-file-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cron-log-file-tab-size {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.cron-log-file-live {
+  color: var(--accent);
+  font-size: 10px;
+  animation: cron-log-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes cron-log-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.cron-log-file-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.cron-log-file-badge.inferred {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.cron-log-file-badge.near {
+  background: var(--bg-tertiary);
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.cron-log-files-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.cron-log-files-actions .btn-xs {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.cron-log-files-auto,
+.cron-log-files-inferred {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.cron-log-files-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+  padding: 3px 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.cron-log-files-inferred-banner {
+  margin: var(--space-xs) 0;
+  padding: 6px 10px;
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.cron-log-files-content {
+  flex: 1 1 auto;
+  overflow: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-sm);
+  margin-top: var(--space-sm);
+  font-family: var(--font-mono);
+}
+
+.cron-log-file-pre-wrap {
+  width: 100%;
+}
+
+.cron-log-file-pre {
+  margin: 0;
+  padding: 0;
+  white-space: pre;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.cron-log-file-banner {
+  padding: 6px 10px;
+  margin-bottom: var(--space-xs);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans, sans-serif);
+  font-size: 12px;
+}
+
+.cron-log-file-banner.filter {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.cron-log-file-mark {
+  background: rgba(245, 158, 11, 0.30);
+  color: inherit;
+  padding: 0;
+  border-radius: 2px;
+}
+
+.cron-log-file-mark.current {
+  background: var(--warning);
+  color: #1a1a1a;
+}
+
+.cron-log-files-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-xs) 0;
+  margin-top: var(--space-xs);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.cron-log-files-search-count {
+  margin-right: auto;
+}
