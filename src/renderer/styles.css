@@ -2957,6 +2957,7 @@ body {
 .cron-header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -2982,6 +2983,28 @@ body {
 .cron-status-badge.no-agent {
   background: #4a1a1a;
   color: #f87171;
+}
+
+/* Runtime warning banner — used for "this Gateway is externally managed and
+   might not see our bundled CLIs" hint. Sits inside status cards, never as a
+   modal. */
+.runtime-warning-banner {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Inline hint shown next to the cron status badge when the GUI watcher has
+   stopped — clarifies that the Gateway scheduler is unaffected. */
+.cron-sync-hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .cron-list {

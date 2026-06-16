@@ -376,6 +376,9 @@
               <div class="gateway-status-item"><span class="gateway-status-label">管理器</span><span class="gateway-status-value" id="gw-manager">-</span></div>
               <div class="gateway-status-item"><span class="gateway-status-label">运行时长</span><span class="gateway-status-value" id="gw-uptime">-</span></div>
             </div>
+            <div id="gateway-external-cli-warning" class="runtime-warning-banner" style="display:none">
+              当前 Gateway 由外部进程管理，可能无法使用本应用内置的钉钉/飞书 CLI。如果定时任务依赖 dws 或 lark-cli，建议由 GUI 接管 Gateway，以使用内置 CLI 和一致的运行环境。
+            </div>
             <div class="form-actions" id="gateway-controls">
               <!-- Primary action (changes per state) -->
               <button id="gateway-start-btn" class="btn btn-primary" style="display:none">启动 Gateway</button>
@@ -542,6 +545,8 @@
           <h2>定时任务</h2>
           <div class="cron-header-actions">
             <span class="cron-status-badge" id="cron-status-badge">Agent 未启动</span>
+            <button class="btn btn-secondary" id="cron-sync-resume-btn" style="display:none">恢复同步</button>
+            <span class="cron-sync-hint" id="cron-sync-hint" style="display:none">只影响界面自动刷新，不代表 Gateway 停止执行任务。</span>
             <button class="btn btn-primary" id="new-cron-btn">新建任务</button>
           </div>
         </div>
