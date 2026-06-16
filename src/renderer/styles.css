@@ -3251,6 +3251,22 @@ body {
   color: var(--accent);
 }
 
+.cron-log-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 2px solid var(--bg-tertiary);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: cron-log-spin 0.9s linear infinite;
+}
+
+@keyframes cron-log-spin {
+  to { transform: rotate(360deg); }
+}
+
 .cron-log-detail {
   min-width: 0;
   overflow-y: auto;

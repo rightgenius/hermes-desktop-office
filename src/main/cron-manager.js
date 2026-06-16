@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { app } = require('electron');
 const {
@@ -6,15 +7,36 @@ const {
   normalizeCronLogMaxMb,
   DEFAULT_CRON_LOG_MAX_MB,
 } = require('./cron-log-store');
-const { CronPolicy } = require('./cron-policy');
 
+/**
+ * CronManager — GUI-side observer and CRUD layer for cron jobs.
+ *
+ * Scheduling authority lives in hermes-agent's own `cron.scheduler`
+ * (ticked by the gateway process). This class:
+ *   - reads/writes `~/.hermes/cron/jobs.json` so the GUI stays in sync
+ *     with the same source of truth the gateway reads;
+ *   - exposes a CRUD surface (list / create / update / delete / pause / resume);
+ *   - exposes an audit log surface (list / get / clear / settings) backed by
+ *     `CronLogStore` writing JSONL under `~/.hermes/cron/logs/`;
+ *   - when start()ed, polls the disk every 2s to:
+ *       a) detect jobs whose `last_run_at` just changed and emit `run_start`;
+ *       b) detect new `output/<jobId>/*.md` files and emit `run_end` with the
+ *          markdown as the `output` field;
+ *       c) tail `~/.hermes/logs/agent.log` for new lines matching
+ *          `[cron_<knownJobId>_*]` and emit them as `console` / `agent_output`
+ *          events.
+ *
+ * It does NOT spawn subprocesses, run a tick loop, or talk to AgentManager —
+ * those responsibilities belong to the gateway. The trigger button simply
+ * updates `next_run_at` on `jobs.json`; the gateway's next tick (≤60s later)
+ * picks it up and runs the job; the watcher then captures the run.
+ */
 class CronManager {
   constructor(agentManager, mainWindow, options = {}) {
-    this.agentManager = agentManager;
+    this.agentManager = agentManager; // retained for backward-compat / status checks
     this.mainWindow = mainWindow;
-    this.tickInterval = null;
     this.isRunning = false;
-    this._cronDir = options.cronDir || path.join(app.getPath('home'), '.hermes', 'cron');
+    this._cronDir = options.cronDir || path.join(this._home(), '.hermes', 'cron');
     this._jobsFile = path.join(this._cronDir, 'jobs.json');
     this._outputDir = path.join(this._cronDir, 'output');
     this.logger = options.logger || console;
@@ -23,13 +45,70 @@ class CronManager {
       baseDir: path.join(this._cronDir, 'logs'),
       getMaxBytes: () => this._getLogMaxMb() * 1024 * 1024,
     });
-    // GUI 侧 denylist 匹配器实例——bridge 端 Python 也有同样的副本，
-    // 两边保持语义一致；GUI 这一份用于配置预览 / 测试 / 决策审计的辅助
-    // （真正的执行拦截在 bridge 端 Python 层）。
-    this.policy = options.policy || new CronPolicy({
-      configProvider: this.configStore,
-    });
+    // Active runs being tracked by the watcher, keyed by `${jobId}:${startedAt}`
+    // so a single job can have multiple in-flight runs across scans.
+    this._watchedRuns = new Map(); // key -> { jobId, startedAt, logRun, outputFile? }
+    // Per-job memory of the last `last_run_at` we observed, so we can detect
+    // a new run on the next scan. Seeded on first scan from disk.
+    this._lastSeenRunAt = new Map(); // jobId -> ISO string
+    // Per-job memory of the last `output/<jobId>/*.md` we observed, so we can
+    // detect a new file on the next scan.
+    this._lastSeenOutputFile = new Map(); // jobId -> absolute path
+    // agent.log tail offset
+    this._agentLogOffset = 0;
+    this._agentLogPath = options.agentLogPath || path.join(
+      this._home(), '.hermes', 'logs', 'agent.log',
+    );
+    // Polling interval
+    this._pollIntervalMs = options.pollIntervalMs || 2000;
+    this._pollTimer = null;
+    // Stuck-run reconciliation: any `.jsonl.active` file older than this is
+    // force-finalized as 'interrupted' on startup.
+    this._staleRunMs = options.staleRunMs || 30 * 60 * 1000;
   }
+
+  // ---------- helpers ----------
+
+  _home() {
+    if (app && typeof app.getPath === 'function') {
+      try { return app.getPath('home'); } catch (_) { /* noop */ }
+    }
+    return os.homedir();
+  }
+
+  // ---------- lifecycle ----------
+
+  async start() {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    this._reconcileStaleActiveRuns();
+    // Initial seed: read jobs.json once to populate _lastSeenRunAt /
+    // _lastSeenOutputFile so the first poll doesn't fire a phantom
+    // "new run" for runs that happened before the GUI started.
+    this._seedWatchState();
+    this._pollTimer = setInterval(() => this._pollOnce(), this._pollIntervalMs);
+    this._pollTimer.unref?.();
+    // Run once immediately so a write-jobs-then-start-watch scenario picks
+    // up the new state on the same tick (setInterval doesn't fire instantly).
+    this._pollOnce();
+    this._sendStatusUpdate();
+  }
+
+  async stop() {
+    if (!this.isRunning) return;
+    if (this._pollTimer) clearInterval(this._pollTimer);
+    this._pollTimer = null;
+    this.isRunning = false;
+    this._sendStatusUpdate();
+  }
+
+  _sendStatusUpdate() {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('cron-status', { isRunning: this.isRunning });
+    }
+  }
+
+  // ---------- CRUD on jobs.json (GUI's read/write of the shared source of truth) ----------
 
   _ensureDirs() {
     if (!fs.existsSync(this._cronDir)) fs.mkdirSync(this._cronDir, { recursive: true, mode: 0o700 });
@@ -54,258 +133,9 @@ class CronManager {
     fs.renameSync(tmp, this._jobsFile);
   }
 
-  async start() {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    this.tickInterval = setInterval(() => this._tick(), 60000);
-    this._sendStatusUpdate();
-  }
-
-  async stop() {
-    if (!this.isRunning) return;
-    clearInterval(this.tickInterval);
-    this.tickInterval = null;
-    this.isRunning = false;
-    this._sendStatusUpdate();
-  }
-
-  _sendStatusUpdate() {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('cron-status', { isRunning: this.isRunning });
-    }
-  }
-
-  async _tick() {
-    if (!this.agentManager.running) return;
-    const jobs = this._loadJobs();
-    const now = new Date();
-    const dueJobs = jobs.filter(j => {
-      if (!j.enabled || j.state === 'paused' || !j.next_run_at) return false;
-      return new Date(j.next_run_at) <= now;
-    });
-    for (const job of dueJobs) {
-      await this._runJob(job);
-    }
-  }
-
-  async _runJob(job) {
-    const jobs = this._loadJobs();
-    const idx = jobs.findIndex(j => j.id === job.id);
-    if (idx === -1) return;
-    jobs[idx].state = 'running';
-    this._saveJobs(jobs);
-
-    let logRun = null;
-    try {
-      logRun = this.logStore.startRun(job);
-    } catch (err) {
-      this.logger.error('Failed to start cron execution log:', err.message);
-    }
-
-    const sessionId = `cron_${job.id}_${Date.now()}`;
-    const captureResponse = (event) => {
-      if (!logRun || event.sessionId !== sessionId) return;
-      // Convert cron auto-auth decision events into structured decision log entries.
-      if (event.event === 'cron_decision' && event.data && typeof event.data === 'object') {
-        this._appendLogEvent(logRun, {
-          timestamp: event.timestamp || new Date().toISOString(),
-          type: 'decision',
-          decision: event.data.decision,
-          rule_id: event.data.rule_id || null,
-          description: event.data.description || '',
-          command: event.data.command || '',
-          source: 'agent-bridge',
-        });
-        return;
-      }
-      this._appendResponseLog(logRun, event);
-    };
-    const captureConsole = (event) => {
-      if (!logRun) return;
-      this._appendLogEvent(logRun, {
-        timestamp: event.timestamp,
-        type: 'console',
-        level: event.level || 'info',
-        message: event.message || '',
-      });
-    };
-    this.agentManager.on('response', captureResponse);
-    this.agentManager.on('log', captureConsole);
-
-    // Emit a policy_applied audit event so reviewers see which policy regime
-    // this run was operating under (denylist mode, any extra user rules loaded,
-    // and whether HARDLINE_PATTERNS floor is acknowledged).
-    this._appendLogEvent(logRun, {
-      timestamp: new Date().toISOString(),
-      type: 'policy_applied',
-      policy: 'denylist_auto_authorize',
-      mode: job.autoAuthorize || 'denylist',
-      hardline_protected: true,
-      note: 'hermes-agent HARDLINE_PATTERNS 永远生效；denylist 仅补充后台场景下的额外拦截',
-    });
-
-    let logResult = {
-      status: 'error',
-      error: '任务执行未完成',
-      output: '',
-    };
-    try {
-      const prompt = this._buildJobPrompt(job);
-      const result = await this._executeViaBridge(sessionId, prompt, job);
-      this._saveJobOutput(job.id, result);
-      this._markJobRun(job.id, true, null);
-      logResult = { status: 'success', error: null, output: result };
-    } catch (err) {
-      this._markJobRun(job.id, false, err.message);
-      logResult = { status: 'error', error: err.message, output: '' };
-    } finally {
-      this.agentManager.off('response', captureResponse);
-      this.agentManager.off('log', captureConsole);
-      if (logRun) {
-        try {
-          this.logStore.finishRun(logRun, logResult);
-        } catch (err) {
-          this.logger.error('Failed to finalize cron execution log:', err.message);
-        }
-      }
-      this._sendLogUpdate(job.id, logRun?.runId || null);
-    }
-  }
-
-  _appendLogEvent(logRun, event) {
-    try {
-      return this.logStore.appendEvent(logRun, event);
-    } catch (err) {
-      this.logger.error('Failed to append cron execution log:', err.message);
-      return false;
-    }
-  }
-
-  _appendResponseLog(logRun, event) {
-    const timestamp = event.timestamp || new Date().toISOString();
-    if (event.event === 'chunk') {
-      this._appendLogEvent(logRun, {
-        timestamp,
-        type: 'agent_output',
-        content: typeof event.data === 'string' ? event.data : JSON.stringify(event.data),
-      });
-      return;
-    }
-    if (event.event === 'complete') return;
-
-    if (event.data && typeof event.data === 'object' && !Array.isArray(event.data)) {
-      this._appendLogEvent(logRun, {
-        ...event.data,
-        timestamp,
-        type: event.event.startsWith('tool_') ? event.event : `agent_${event.event}`,
-      });
-      return;
-    }
-    this._appendLogEvent(logRun, {
-      timestamp,
-      type: event.event.startsWith('tool_') ? event.event : `agent_${event.event}`,
-      message: event.data == null ? '' : String(event.data),
-    });
-  }
-
-  _sendLogUpdate(jobId, runId) {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('cron-log-updated', { jobId, runId });
-    }
-  }
-
-  _buildJobPrompt(job) {
-    let prompt = job.prompt || '';
-    const skills = job.skills || (job.skill ? [job.skill] : []);
-    if (skills.length > 0) {
-      prompt = `[Skill: ${skills.join(', ')}]\n\n${prompt}`;
-    }
-    return `[CRON JOB: ${job.name || job.id}]\n\n${prompt}`;
-  }
-
-  async _executeViaBridge(sessionId, prompt, job) {
-    return new Promise((resolve, reject) => {
-      if (!this.agentManager.running) {
-        reject(new Error('Agent 未运行'));
-        return;
-      }
-      let content = '';
-      const handler = (event) => {
-        if (event.sessionId !== sessionId) return;
-        if (event.event === 'chunk') {
-          content += typeof event.data === 'string' ? event.data : '';
-        } else if (event.event === 'complete') {
-          this.agentManager.off('response', handler);
-          resolve(content || (typeof event.data === 'string' ? event.data : ''));
-        } else if (event.event === 'error') {
-          this.agentManager.off('response', handler);
-          reject(new Error(typeof event.data === 'string' ? event.data : '未知错误'));
-        } else if (event.event === 'stopped') {
-          this.agentManager.off('response', handler);
-          reject(new Error('任务执行已停止'));
-        }
-      };
-      this.agentManager.on('response', handler);
-      const result = this.agentManager.sendMessage(sessionId, prompt, [], {
-        isCronSession: true,
-        cronJobId: job?.id || null,
-      });
-      if (!result.success) {
-        this.agentManager.off('response', handler);
-        reject(new Error(result.error));
-      }
-    });
-  }
-
-  _saveJobOutput(jobId, content) {
-    const jobOutputDir = path.join(this._outputDir, jobId);
-    if (!fs.existsSync(jobOutputDir)) fs.mkdirSync(jobOutputDir, { recursive: true, mode: 0o700 });
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const outputFile = path.join(jobOutputDir, `${timestamp}.md`);
-    fs.writeFileSync(outputFile, `# Cron Job\n\n${content}`, 'utf-8');
-  }
-
-  _markJobRun(jobId, success, error) {
-    const jobs = this._loadJobs();
-    const idx = jobs.findIndex(j => j.id === jobId);
-    if (idx === -1) return;
-    const job = jobs[idx];
-    job.last_run_at = new Date().toISOString();
-    job.last_status = success ? 'ok' : 'error';
-    job.last_error = error || null;
-    job.state = 'scheduled';
-
-    if (job.repeat && job.repeat.times) {
-      job.repeat.completed = (job.repeat.completed || 0) + 1;
-      if (job.repeat.completed >= job.repeat.times) {
-        jobs.splice(idx, 1);
-        this._saveJobs(jobs);
-        return;
-      }
-    }
-
-    job.next_run_at = this._computeNextRun(job.schedule, job.last_run_at);
-    this._saveJobs(jobs);
-  }
-
-  _computeNextRun(schedule, lastRunAt) {
-    if (!schedule) return null;
-    const now = new Date();
-    if (schedule.kind === 'once') return null;
-    if (schedule.kind === 'interval') {
-      const base = lastRunAt ? new Date(lastRunAt) : now;
-      base.setMinutes(base.getMinutes() + schedule.minutes);
-      return base.toISOString();
-    }
-    if (schedule.kind === 'cron') {
-      return null;
-    }
-    return null;
-  }
-
   async listJobs(includeDisabled = false) {
     let jobs = this._loadJobs();
-    if (!includeDisabled) jobs = jobs.filter(j => j.enabled !== false);
+    if (!includeDisabled) jobs = jobs.filter((j) => j.enabled !== false);
     return jobs;
   }
 
@@ -345,7 +175,7 @@ class CronManager {
 
   async updateJob(jobId, updates) {
     const jobs = this._loadJobs();
-    const idx = jobs.findIndex(j => j.id === jobId);
+    const idx = jobs.findIndex((j) => j.id === jobId);
     if (idx === -1) return null;
     jobs[idx] = { ...jobs[idx], ...updates };
     if (updates.schedule) {
@@ -357,9 +187,12 @@ class CronManager {
 
   async deleteJob(jobId) {
     const jobs = this._loadJobs();
-    const filtered = jobs.filter(j => j.id !== jobId);
+    const filtered = jobs.filter((j) => j.id !== jobId);
     if (filtered.length === jobs.length) return false;
     this._saveJobs(filtered);
+    // Drop watcher memory for this job
+    this._lastSeenRunAt.delete(jobId);
+    this._lastSeenOutputFile.delete(jobId);
     return true;
   }
 
@@ -369,7 +202,7 @@ class CronManager {
 
   async resumeJob(jobId) {
     const jobs = this._loadJobs();
-    const job = jobs.find(j => j.id === jobId);
+    const job = jobs.find((j) => j.id === jobId);
     if (!job) return null;
     return this.updateJob(jobId, {
       enabled: true,
@@ -379,14 +212,336 @@ class CronManager {
     });
   }
 
+  _computeNextRun(schedule, lastRunAt) {
+    if (!schedule) return null;
+    const now = new Date();
+    if (schedule.kind === 'once') return null;
+    if (schedule.kind === 'interval') {
+      const base = lastRunAt ? new Date(lastRunAt) : now;
+      base.setMinutes(base.getMinutes() + (schedule.minutes || 0));
+      return base.toISOString();
+    }
+    if (schedule.kind === 'cron') {
+      return null;
+    }
+    return null;
+  }
+
+  // ---------- Trigger: just bump next_run_at. The gateway's tick does the rest. ----------
+
+  /**
+   * Mark a job as due-now by setting `next_run_at` to the current time. The
+   * gateway's cron.scheduler (which is already running, ticked every 60s)
+   * will pick it up on its next tick. The watcher detects the resulting
+   * `last_run_at` change and the new `output/<jobId>/*.md` and writes the
+   * audit log entries. Returns immediately.
+   *
+   * Returns a synthetic runId that the renderer can use for optimistic
+   * feedback. The real audit-log run is created by the watcher when the
+   * gateway's last_run_at change is detected; the synthetic runId is
+   * *intentionally distinct* from the eventual real runId.
+   */
   async triggerJob(jobId) {
-    return this.updateJob(jobId, {
+    const job = await this.updateJob(jobId, {
       enabled: true,
       state: 'scheduled',
       paused_at: null,
       next_run_at: new Date().toISOString(),
     });
+    if (!job) {
+      return { success: false, error: '任务不存在' };
+    }
+    return {
+      success: true,
+      job,
+      runId: null,
+      note: '已加入调度队列，由 Gateway 执行；GUI 将自动捕获执行结果。',
+    };
   }
+
+  // ---------- Watcher ----------
+
+  _seedWatchState() {
+    const jobs = this._loadJobs();
+    for (const job of jobs) {
+      // Don't seed _lastSeenRunAt — we want the first poll to fire a
+      // run_start for any job that has a last_run_at, so the GUI sees the
+      // running state. The output-dir scan will finalize it if there's a
+      // matching .md, or the time-based interruptor will fire if not.
+      const outFile = this._latestOutputFile(job.id);
+      if (outFile) this._lastSeenOutputFile.set(job.id, outFile);
+    }
+    // Initialize agent.log offset to current end so we don't replay history
+    try {
+      if (fs.existsSync(this._agentLogPath)) {
+        this._agentLogOffset = fs.statSync(this._agentLogPath).size;
+      }
+    } catch (_) { /* noop */ }
+  }
+
+  _latestOutputFile(jobId) {
+    const dir = path.join(this._outputDir, jobId);
+    if (!fs.existsSync(dir)) return null;
+    let best = null;
+    let bestMtime = 0;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.md')) continue;
+      const full = path.join(dir, name);
+      try {
+        const m = fs.statSync(full).mtimeMs;
+        if (m > bestMtime) { best = full; bestMtime = m; }
+      } catch (_) { /* skip */ }
+    }
+    return best;
+  }
+
+  _pollOnce() {
+    try { this._scanJobStates(); } catch (e) { this.logger.error('scanJobStates:', e.message); }
+    try { this._scanOutputDir(); } catch (e) { this.logger.error('scanOutputDir:', e.message); }
+    try { this._scanAgentLog(); } catch (e) { this.logger.error('scanAgentLog:', e.message); }
+  }
+
+  _scanJobStates() {
+    const jobs = this._loadJobs();
+    if (process.env.CRON_WATCHER_DEBUG) {
+      process.stderr.write(`[cron-watcher] scanJobStates: ${jobs.length} jobs; cache: ${JSON.stringify([...this._lastSeenRunAt.entries()])}\n`);
+    }
+    for (const job of jobs) {
+      const lastRun = job.last_run_at || null;
+      const seen = this._lastSeenRunAt.get(job.id) || null;
+      if (lastRun && lastRun !== seen) {
+        if (process.env.CRON_WATCHER_DEBUG) {
+          process.stderr.write(`[cron-watcher] NEW run for ${job.id}: ${seen} -> ${lastRun}\n`);
+        }
+        this._onNewRunObserved(job, lastRun);
+        this._lastSeenRunAt.set(job.id, lastRun);
+      } else if (!lastRun && seen) {
+        this._lastSeenRunAt.delete(job.id);
+      }
+    }
+  }
+
+  _onNewRunObserved(job, startedAt) {
+    // Try to find an existing pending runId for this job (from triggerJob);
+    // if found, upgrade it. Otherwise create a fresh logRun.
+    let ctx = null;
+    for (const [key, c] of this._watchedRuns.entries()) {
+      if (c.jobId === job.id) { ctx = c; break; }
+    }
+    if (ctx) {
+      // Already have a pending run for this job; promote it to a real run_start
+      this._appendEvent(ctx.logRun, {
+        type: 'run_start',
+        jobId: job.id,
+        jobName: job.name || job.id,
+        startedAt,
+        prompt: job.prompt || '',
+      });
+    } else {
+      let logRun;
+      try { logRun = this.logStore.startRun(job); }
+      catch (err) { this.logger.warn('startRun failed:', err.message); return; }
+      this._appendEvent(logRun, {
+        type: 'run_start',
+        jobId: job.id,
+        jobName: job.name || job.id,
+        startedAt,
+        prompt: job.prompt || '',
+      });
+      ctx = { jobId: job.id, runId: logRun.runId, logRun, startedAt, jobName: job.name || job.id };
+      this._watchedRuns.set(`${job.id}:${startedAt}`, ctx);
+    }
+    this._sendLogUpdate(job.id, ctx.runId);
+  }
+
+  _scanOutputDir() {
+    const jobs = this._loadJobs();
+    for (const job of jobs) {
+      const latest = this._latestOutputFile(job.id);
+      if (!latest) continue;
+      const seen = this._lastSeenOutputFile.get(job.id);
+      if (latest === seen) continue;
+      this._lastSeenOutputFile.set(job.id, latest);
+      // New output file means the run is complete. Find the matching
+      // watched run (most recent one for this job) and finalize it.
+      let ctx = null;
+      let ctxKey = null;
+      for (const [key, c] of this._watchedRuns.entries()) {
+        if (c.jobId === job.id && !c.finalized) { ctx = c; ctxKey = key; break; }
+      }
+      if (!ctx) {
+        // No matching in-memory run — synthesize one from the file.
+        let logRun;
+        try { logRun = this.logStore.startRun(job); }
+        catch (err) { this.logger.warn('startRun failed:', err.message); continue; }
+        this._appendEvent(logRun, {
+          type: 'run_start',
+          jobId: job.id,
+          jobName: job.name || job.id,
+          startedAt: job.last_run_at,
+          prompt: job.prompt || '',
+        });
+        ctx = { jobId: job.id, runId: logRun.runId, logRun, startedAt: job.last_run_at, jobName: job.name || job.id };
+        this._watchedRuns.set(`${job.id}:${job.last_run_at}`, ctx);
+        this._sendLogUpdate(job.id, logRun.runId);
+      }
+      if (ctx.finalized) continue;
+      // Read the markdown and stream it
+      let md = '';
+      try { md = fs.readFileSync(latest, 'utf8'); } catch (_) { /* noop */ }
+      // Stream chunks line-by-line to renderer (live feed); also save as run_end output
+      const lines = md.split(/\r?\n/);
+      for (const line of lines) {
+        if (!line) continue;
+        this._appendEvent(ctx.logRun, { type: 'agent_output', content: line + '\n' });
+      }
+      const finishedAt = new Date().toISOString();
+      const status = job.last_status === 'ok' ? 'success' : (job.last_status === 'error' ? 'error' : 'success');
+      const error = job.last_error || null;
+      this._appendEvent(ctx.logRun, { type: 'run_end', status, error, output: md, finishedAt });
+      try { this.logStore.finishRun(ctx.logRun, { status, error, output: md }); }
+      catch (err) { this.logger.error('finishRun:', err.message); }
+      ctx.finalized = true;
+      this._watchedRuns.delete(ctxKey);
+      this._sendLogUpdate(ctx.jobId, ctx.runId);
+    }
+    // After scan, also finalize any watched runs whose job's last_run_at
+    // has changed but no new output file appeared within a reasonable
+    // window — e.g. an errored run that produced no .md. We detect this by
+    // checking whether the watched run is older than 10 minutes and the job
+    // has moved to a new last_run_at.
+    const now = Date.now();
+    for (const [key, c] of this._watchedRuns.entries()) {
+      if (c.finalized) continue;
+      const ageMs = now - new Date(c.startedAt || 0).getTime();
+      if (ageMs > 10 * 60 * 1000) {
+        const job = this._loadJobs().find((j) => j.id === c.jobId);
+        if (job && job.last_run_at && job.last_run_at !== c.startedAt) {
+          // The job moved on; mark this run as interrupted
+          this._appendEvent(c.logRun, { type: 'run_end', status: 'interrupted', error: 'no output file produced' });
+          try { this.logStore.finishRun(c.logRun, { status: 'interrupted', error: 'no output file produced' }); }
+          catch (_) { /* noop */ }
+          c.finalized = true;
+          this._watchedRuns.delete(key);
+          this._sendLogUpdate(c.jobId, c.runId);
+        }
+      }
+    }
+  }
+
+  _scanAgentLog() {
+    let stat;
+    try { stat = fs.statSync(this._agentLogPath); }
+    catch (_) { return; }
+    if (stat.size < this._agentLogOffset) {
+      // File was truncated/rotated; reset
+      this._agentLogOffset = 0;
+    }
+    if (stat.size === this._agentLogOffset) return;
+    // Read the new chunk
+    const fd = fs.openSync(this._agentLogPath, 'r');
+    try {
+      const len = stat.size - this._agentLogOffset;
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, this._agentLogOffset);
+      this._agentLogOffset = stat.size;
+      const text = buf.toString('utf8');
+      this._processAgentLogChunk(text);
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
+  _processAgentLogChunk(text) {
+    // Look for lines matching the cron job's session id pattern. Format
+    // is `2026-06-15 16:14:31,728 INFO [cron_<jobId>_<timestamp>] ...`
+    // We only keep lines for jobs we know about, and only for runs that
+    // are still being watched (haven't been finalized).
+    const knownJobIds = new Set(this._loadJobs().map((j) => j.id));
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+      if (!line) continue;
+      const m = line.match(/\[(cron_([A-Za-z0-9_-]+)_\d{8}_\d{6})\]/);
+      if (!m) continue;
+      const jobId = m[2];
+      if (!knownJobIds.has(jobId)) continue;
+      // Find the active watched run for this job (most recent un-finalized)
+      let ctx = null;
+      for (const c of this._watchedRuns.values()) {
+        if (c.jobId === jobId && !c.finalized) { ctx = c; break; }
+      }
+      if (!ctx) continue;
+      // Strip the timestamp/level prefix; keep the rest
+      const cleaned = line.replace(/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}(?:,\d+)?\s+\w+\s+/, '').trim();
+      const isTool = /^tools\./.test(cleaned) || /tool_executor/.test(cleaned);
+      const isWarn = /^WARNING/.test(cleaned) || /ERROR/.test(cleaned);
+      this._appendEvent(ctx.logRun, {
+        type: isTool ? 'console' : 'agent_output',
+        level: isWarn ? 'warn' : 'info',
+        content: isTool ? undefined : cleaned,
+        message: isTool ? cleaned : undefined,
+      });
+    }
+  }
+
+  _appendEvent(logRun, event) {
+    try {
+      this.logStore.appendEvent(logRun, { timestamp: new Date().toISOString(), ...event });
+    } catch (err) {
+      this.logger.error('appendEvent:', err.message);
+    }
+  }
+
+  _sendLogUpdate(jobId, runId) {
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('cron-log-updated', { jobId, runId });
+    }
+  }
+
+  // ---------- Stuck-run reconciliation ----------
+
+  _reconcileStaleActiveRuns() {
+    const baseDir = path.join(this._cronDir, 'logs');
+    if (!fs.existsSync(baseDir)) return;
+    const now = Date.now();
+    for (const name of fs.readdirSync(baseDir)) {
+      if (!name.endsWith('.jsonl.active')) continue;
+      const full = path.join(baseDir, name);
+      try {
+        const stat = fs.statSync(full);
+        if (now - stat.mtimeMs < this._staleRunMs) continue;
+        // Walk the JSONL events to find the run_start so we can finalize.
+        let events = [];
+        try {
+          events = fs.readFileSync(full, 'utf8')
+            .split(/\r?\n/).filter(Boolean)
+            .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+            .filter(Boolean);
+        } catch (_) { /* noop */ }
+        const runStart = events.find((e) => e.type === 'run_start');
+        if (!runStart) continue;
+        // Append a synthetic run_end to the .active file, then rename to .jsonl
+        const finishedAt = new Date().toISOString();
+        const endLine = JSON.stringify({
+          timestamp: finishedAt,
+          type: 'run_end',
+          status: 'interrupted',
+          error: 'app restarted before run completed',
+          output: '',
+          durationMs: 0,
+        });
+        try { fs.appendFileSync(full, endLine + '\n', 'utf8'); } catch (_) { /* noop */ }
+        const finalPath = full.replace(/\.jsonl\.active$/, '.jsonl');
+        try { fs.renameSync(full, finalPath); }
+        catch (err) { this.logger.warn('Reconcile rename failed:', err.message); continue; }
+        this._sendLogUpdate(runStart.jobId, runStart.runId);
+      } catch (err) {
+        this.logger.warn('Reconcile scan error:', err.message);
+      }
+    }
+  }
+
+  // ---------- Audit log surface ----------
 
   _getLogMaxMb() {
     const configured = this.configStore?.get()?.cronLogMaxMb;

@@ -111,6 +111,11 @@ function runCLISpawn(cliName, args, timeout = 30000) {
 function setupIPCHandlers(mainWindow) {
   agentManager = new AgentManager(mainWindow);
   cronManager = new CronManager(agentManager, mainWindow, { configStore });
+  // Start the cron watcher immediately on app launch — the audit panel
+  // should reflect background gateway runs even if the user never starts
+  // a chat session (which used to be the only path that triggered
+  // cronManager.start via the agent-start IPC handler).
+  cronManager.start().catch((err) => console.error('cronManager.start failed:', err));
   const { GatewayManager } = require('./gateway-manager');
   const gatewayManager = new GatewayManager(mainWindow);
 
