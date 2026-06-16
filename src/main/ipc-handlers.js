@@ -11,6 +11,23 @@ const { getBundledCliDirMap } = require('./cli-runtime');
 const fsPromises = fs.promises;
 
 const configStore = new ConfigStore();
+
+// Idempotent ipcMain.handle wrapper: clears any existing handler on the same
+// channel before registering. Prevents "Attempted to register a second handler"
+// crashes when setupIPCHandlers() is called more than once (e.g. macOS dock
+// reactivation after window close, or hot reload during dev).
+//
+// Setup teardown is asymmetric — Electron has no native "unregister all handlers
+// from a specific source" API — so we track every channel we register here
+// and remove them defensively at the top of setupIPCHandlers().
+const registeredChannels = new Set();
+function handle(channel, listener) {
+  if (registeredChannels.has(channel)) {
+    ipcMain.removeHandler(channel);
+  }
+  ipcMain.handle(channel, listener);
+  registeredChannels.add(channel);
+}
 let agentManager = null;
 let cronManager = null;
 
@@ -114,23 +131,23 @@ function setupIPCHandlers(mainWindow) {
     gatewayManager.startHealthCheck();
   })();
 
-  ipcMain.handle('config-get', () => configStore.get());
-  ipcMain.handle('config-save', (_, data) => configStore.save(data));
+  handle('config-get', () => configStore.get());
+  handle('config-save', (_, data) => configStore.save(data));
 
-  ipcMain.handle('config-browse-folder', async () => {
+  handle('config-browse-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title: '选择工作空间路径' });
     if (!result.canceled && result.filePaths.length > 0) return result.filePaths[0];
     return null;
   });
 
   // First-run check
-  ipcMain.handle('is-first-run', () => {
+  handle('is-first-run', () => {
     const config = configStore.get();
     return !config.apiKey && (!config.provider || config.provider === 'auto');
   });
 
   // Auth handlers
-  ipcMain.handle('auth-feishu', async () => {
+  handle('auth-feishu', async () => {
     try {
       const result = await runCLI('lark-cli', ['auth', 'login', '--recommend', '--no-wait', '--json']);
       const auth = JSON.parse(result.stdout);
@@ -172,7 +189,7 @@ function setupIPCHandlers(mainWindow) {
     } catch (err) { return { success: false, error: err.message }; }
   });
 
-  ipcMain.handle('auth-dingtalk', async () => {
+  handle('auth-dingtalk', async () => {
     try {
       // DingTalk CLI uses device flow: outputs URL to stderr, then waits for auth
       const result = await runCLISpawn('dws', ['auth', 'login', '--device', '--format', 'json'], 600000);
@@ -193,7 +210,7 @@ function setupIPCHandlers(mainWindow) {
     } catch (err) { return { success: false, error: err.message }; }
   });
 
-  ipcMain.handle('check-auth-status', async () => {
+  handle('check-auth-status', async () => {
     const status = { feishu: { authed: false, userName: '', version: '' }, dingtalk: { authed: false, userName: '', version: '' } };
     const [larkVersion, dwsVersion] = await Promise.all([getCLIVersion('lark-cli'), getCLIVersion('dws')]);
     try {
@@ -215,7 +232,7 @@ function setupIPCHandlers(mainWindow) {
     return status;
   });
 
-  ipcMain.handle('get-auth-permissions', async (_, { cli, page = 1, pageSize = 5, search = '' }) => {
+  handle('get-auth-permissions', async (_, { cli, page = 1, pageSize = 5, search = '' }) => {
     if (!['feishu', 'dingtalk'].includes(cli)) {
       return { success: false, error: 'Invalid CLI type' };
     }
@@ -268,7 +285,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('run-diagnostic', async () => {
+  handle('run-diagnostic', async () => {
     const [lark, dws] = await Promise.allSettled([runCLI('lark-cli', ['doctor']), runCLI('dws', ['doctor'])]);
     let output = '=== 诊断结果 ===\n\n--- 飞书 CLI (lark-cli) ---\n';
     output += lark.status === 'fulfilled' ? lark.value.stdout : `错误: ${lark.reason.message}\n`;
@@ -278,16 +295,16 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Agent handlers
-  ipcMain.handle('agent-start', async (_, config) => {
+  handle('agent-start', async (_, config) => {
     const result = await agentManager.start(config);
     if (result.success && cronManager) cronManager.start();
     return result;
   });
-  ipcMain.handle('agent-stop', async () => {
+  handle('agent-stop', async () => {
     if (cronManager) cronManager.stop();
     return agentManager.stop();
   });
-  ipcMain.handle('agent-restart', async () => {
+  handle('agent-restart', async () => {
     const config = configStore.get();
     await agentManager.stop();
     if (cronManager) cronManager.stop();
@@ -295,14 +312,14 @@ function setupIPCHandlers(mainWindow) {
     if (result.success && cronManager) cronManager.start();
     return result;
   });
-  ipcMain.handle('agent-install-deps', (_, packages) => agentManager.installSkillDeps(packages));
-  ipcMain.handle('agent-stop-generation', (_, sessionId) => agentManager.stopGeneration(sessionId));
-  ipcMain.handle('agent-respond', (_, { sessionId, requestId, answer }) => agentManager.respondToPrompt(sessionId, requestId, answer));
+  handle('agent-install-deps', (_, packages) => agentManager.installSkillDeps(packages));
+  handle('agent-stop-generation', (_, sessionId) => agentManager.stopGeneration(sessionId));
+  handle('agent-respond', (_, { sessionId, requestId, answer }) => agentManager.respondToPrompt(sessionId, requestId, answer));
 
   // Test API connection from main process (no CORS issues)
   // Supports both OpenAI-compatible (/chat/completions) and Anthropic (/v1/messages) formats
   // Simulates Agent behavior by using the same request format and provider-specific headers
-  ipcMain.handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat, provider }) => {
+  handle('test-api-connection', async (_, { baseUrl, apiKey, model, apiFormat, provider }) => {
     const https = require('https');
     const http = require('http');
     const cleanApiKey = (apiKey || '').trim();
@@ -457,7 +474,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Try starting agent and report result
-  ipcMain.handle('try-start-agent', async () => {
+  handle('try-start-agent', async () => {
     const config = configStore.get();
     const result = await agentManager.start(config);
 
@@ -476,10 +493,10 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
-  ipcMain.handle('agent-set-workspace', (_, { sessionId, workspacePath }) => agentManager.setWorkspacePath(sessionId, workspacePath));
+  handle('agent-send-message', (_, { sessionId, text, history }) => agentManager.sendMessage(sessionId, text, history));
+  handle('agent-set-workspace', (_, { sessionId, workspacePath }) => agentManager.setWorkspacePath(sessionId, workspacePath));
 
-  ipcMain.handle('session-export', async (event, { filename, content, options = {} }) => {
+  handle('session-export', async (event, { filename, content, options = {} }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showSaveDialog(win, {
       title: options.title || '保存会话',
@@ -491,7 +508,7 @@ function setupIPCHandlers(mainWindow) {
     return { success: true, filePath: result.filePath };
   });
 
-  ipcMain.handle('select-attachments', async (event) => {
+  handle('select-attachments', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(win, {
       title: '选择附件',
@@ -515,7 +532,7 @@ function setupIPCHandlers(mainWindow) {
     return TEXT_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(basename);
   }
 
-  ipcMain.handle('workspace-list', async (_, { dirPath }) => {
+  handle('workspace-list', async (_, { dirPath }) => {
     try {
       if (!dirPath || !path.isAbsolute(dirPath)) {
         return { success: false, error: 'Invalid directory path' };
@@ -553,7 +570,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('workspace-read', async (_, { filePath }) => {
+  handle('workspace-read', async (_, { filePath }) => {
     try {
       if (!filePath || !path.isAbsolute(filePath)) {
         return { success: false, error: 'Invalid file path' };
@@ -575,7 +592,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('workspace-open', async (_, { filePath }) => {
+  handle('workspace-open', async (_, { filePath }) => {
     try {
       if (!filePath || !path.isAbsolute(filePath)) {
         return { success: false, error: 'Invalid file path' };
@@ -587,7 +604,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('workspace-browse', async () => {
+  handle('workspace-browse', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
       title: '选择 Workspace 目录'
@@ -614,7 +631,7 @@ function setupIPCHandlers(mainWindow) {
     return { valid: true };
   }
 
-  ipcMain.handle('skills:list', async () => {
+  handle('skills:list', async () => {
     try {
       const builtin = await skillScanner.scanBuiltinSkills();
       const user = await skillScanner.scanUserSkills();
@@ -625,7 +642,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:get-detail', async (_, skillPath) => {
+  handle('skills:get-detail', async (_, skillPath) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -636,7 +653,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:set-enabled', async (_, skillName, enabled) => {
+  handle('skills:set-enabled', async (_, skillName, enabled) => {
     try {
       const hermesHome = skillScanner.getHermesHome();
       const configPath = path.join(hermesHome, 'config.yaml');
@@ -684,7 +701,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:create', async (_, skillData) => {
+  handle('skills:create', async (_, skillData) => {
     try {
       if (!skillData.name || skillData.name.includes('..') || skillData.name.includes('/') || skillData.name.includes('\\')) {
         return { success: false, error: 'Invalid skill name' };
@@ -713,7 +730,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:update', async (_, { skillPath, content }) => {
+  handle('skills:update', async (_, { skillPath, content }) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -725,7 +742,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:delete', async (_, skillPath) => {
+  handle('skills:delete', async (_, skillPath) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -736,7 +753,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:archive', async (_, skillPath) => {
+  handle('skills:archive', async (_, skillPath) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -755,7 +772,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:unarchive', async (_, skillPath) => {
+  handle('skills:unarchive', async (_, skillPath) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -776,7 +793,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:get-file', async (_, filePath) => {
+  handle('skills:get-file', async (_, filePath) => {
     const validation = validateSkillPath(filePath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -787,7 +804,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:write-file', async (_, { filePath, content }) => {
+  handle('skills:write-file', async (_, { filePath, content }) => {
     const validation = validateSkillPath(filePath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -798,7 +815,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('skills:list-files', async (_, skillPath) => {
+  handle('skills:list-files', async (_, skillPath) => {
     const validation = validateSkillPath(skillPath);
     if (!validation.valid) return { success: false, error: validation.error };
     try {
@@ -810,7 +827,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Cron IPC handlers
-  ipcMain.handle('cron:list', async (_, includeDisabled = false) => {
+  handle('cron:list', async (_, includeDisabled = false) => {
     try {
       const jobs = await cronManager.listJobs(includeDisabled);
       return { success: true, jobs };
@@ -819,7 +836,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:create', async (_, data) => {
+  handle('cron:create', async (_, data) => {
     try {
       const job = await cronManager.createJob(data);
       return { success: true, job };
@@ -828,7 +845,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:update', async (_, jobId, updates) => {
+  handle('cron:update', async (_, jobId, updates) => {
     try {
       const job = await cronManager.updateJob(jobId, updates);
       return { success: true, job };
@@ -837,7 +854,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:delete', async (_, jobId) => {
+  handle('cron:delete', async (_, jobId) => {
     try {
       const ok = await cronManager.deleteJob(jobId);
       return { success: ok };
@@ -846,7 +863,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:pause', async (_, jobId) => {
+  handle('cron:pause', async (_, jobId) => {
     try {
       const job = await cronManager.pauseJob(jobId);
       return { success: true, job };
@@ -855,7 +872,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:resume', async (_, jobId) => {
+  handle('cron:resume', async (_, jobId) => {
     try {
       const job = await cronManager.resumeJob(jobId);
       return { success: true, job };
@@ -864,7 +881,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:trigger', async (_, jobId) => {
+  handle('cron:trigger', async (_, jobId) => {
     try {
       const job = await cronManager.triggerJob(jobId);
       return { success: true, job };
@@ -873,11 +890,11 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:status', async () => {
+  handle('cron:status', async () => {
     return { success: true, isRunning: cronManager.isRunning };
   });
 
-  ipcMain.handle('cron:start', async () => {
+  handle('cron:start', async () => {
     try {
       await cronManager.start();
       return { success: true };
@@ -886,7 +903,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:stop', async () => {
+  handle('cron:stop', async () => {
     try {
       await cronManager.stop();
       return { success: true };
@@ -895,7 +912,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:logs:list', async (_, options = {}) => {
+  handle('cron:logs:list', async (_, options = {}) => {
     try {
       return { success: true, ...cronManager.listExecutionLogs(options) };
     } catch (err) {
@@ -903,7 +920,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:logs:get', async (_, runId) => {
+  handle('cron:logs:get', async (_, runId) => {
     try {
       const log = cronManager.getExecutionLog(runId);
       if (!log) return { success: false, error: '执行日志不存在' };
@@ -913,7 +930,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:logs:clear', async () => {
+  handle('cron:logs:clear', async () => {
     try {
       return { success: true, ...cronManager.clearExecutionLogs() };
     } catch (err) {
@@ -921,7 +938,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:logs:settings:get', async () => {
+  handle('cron:logs:settings:get', async () => {
     try {
       return { success: true, ...cronManager.getLogSettings() };
     } catch (err) {
@@ -929,7 +946,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:logs:settings:set', async (_, { maxMb } = {}) => {
+  handle('cron:logs:settings:set', async (_, { maxMb } = {}) => {
     try {
       return { success: true, ...cronManager.updateLogSettings(maxMb) };
     } catch (err) {
@@ -938,7 +955,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // ----- Cron auto-authorize policy (黑名单模式) -----
-  ipcMain.handle('cron:policy:get', async () => {
+  handle('cron:policy:get', async () => {
     try {
       return {
         success: true,
@@ -953,7 +970,7 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
-  ipcMain.handle('cron:policy:set', async (_, { policy, extraRules } = {}) => {
+  handle('cron:policy:set', async (_, { policy, extraRules } = {}) => {
     try {
       const valid = ['denylist', 'ask', 'allowlist'];
       if (policy && !valid.includes(policy)) {
@@ -990,7 +1007,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // 供 GUI 实时测试某条命令是否命中黑名单（不影响真实执行）
-  ipcMain.handle('cron:policy:test', async (_, { command } = {}) => {
+  handle('cron:policy:test', async (_, { command } = {}) => {
     try {
       if (typeof command !== 'string') {
         return { success: false, error: 'command 必须是字符串' };
@@ -1043,7 +1060,7 @@ function setupIPCHandlers(mainWindow) {
     return { running: false, source: 'none', pid: null, manager: null, sourceLabel: '未启动', managerLabel: '-' };
   }
 
-  ipcMain.handle('gateway-status', async () => {
+  handle('gateway-status', async () => {
     // Re-verify the current state on every status query so the UI never
     // shows a stale "running" when the underlying process has died.
     await gatewayManager._runHealthCheck();
@@ -1057,10 +1074,10 @@ function setupIPCHandlers(mainWindow) {
     return buildGatewayStatus();
   });
 
-  ipcMain.handle('gateway-start', async () => gatewayManager.start());
-  ipcMain.handle('gateway-stop', async () => gatewayManager.stop());
-  ipcMain.handle('gateway-restart', async () => gatewayManager.restart());
-  ipcMain.handle('gateway-recheck', async () => {
+  handle('gateway-start', async () => gatewayManager.start());
+  handle('gateway-stop', async () => gatewayManager.stop());
+  handle('gateway-restart', async () => gatewayManager.restart());
+  handle('gateway-recheck', async () => {
     // Force a fresh look: clear external state, re-detect, run health check.
     // This picks up external gateways started in another terminal since
     // the last refresh. (The GUI's own PID is filtered out by
@@ -1070,13 +1087,13 @@ function setupIPCHandlers(mainWindow) {
     await gatewayManager._runHealthCheck();
     return buildGatewayStatus();
   });
-  ipcMain.handle('gateway-restart-external', async () => gatewayManager.restartExternal());
-  ipcMain.handle('gateway-takeover', async () => gatewayManager.takeover());
-  ipcMain.handle('gateway-config-get', async () => gatewayManager.getConfig());
-  ipcMain.handle('gateway-config-save', async (_, platform, config) => gatewayManager.saveConfig(platform, config));
-  ipcMain.handle('gateway-qr-auth', async (_, platform) => gatewayManager.qrAuth(platform));
-  ipcMain.handle('gateway-channels', async () => gatewayManager.getChannels());
-  ipcMain.handle('gateway-runtime-status', async () => gatewayManager.getGatewayRuntimeStatus());
+  handle('gateway-restart-external', async () => gatewayManager.restartExternal());
+  handle('gateway-takeover', async () => gatewayManager.takeover());
+  handle('gateway-config-get', async () => gatewayManager.getConfig());
+  handle('gateway-config-save', async (_, platform, config) => gatewayManager.saveConfig(platform, config));
+  handle('gateway-qr-auth', async (_, platform) => gatewayManager.qrAuth(platform));
+  handle('gateway-channels', async () => gatewayManager.getChannels());
+  handle('gateway-runtime-status', async () => gatewayManager.getGatewayRuntimeStatus());
 }
 
 // Expose agentManager for graceful shutdown on app quit
