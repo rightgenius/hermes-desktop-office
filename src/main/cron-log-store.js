@@ -105,6 +105,14 @@ class CronLogStore {
     fs.appendFileSync(filePath, line, { encoding: 'utf8', mode: 0o600 });
   }
 
+  /**
+   * 创建一次 run 的审计文件句柄。**不再内部写 run_start 事件**——
+   * 由调用方（通常是 CronManager watcher）显式 appendEvent('run_start', ...)
+   * 写入，避免双重写。
+   *
+   * 设计原因：之前 store 内部写 + 调用方再追加一次，watcher 路径会产生
+   * 重复的 run_start 事件，让审计列表出现两条一模一样的「开始」。
+   */
   startRun(job) {
     this._ensureDir();
     const runId = this.createId();
@@ -123,21 +131,16 @@ class CronLogStore {
       startedAt,
       truncated: false,
     };
-    const startEvent = {
-      timestamp: startedAt,
-      type: 'run_start',
-      runId,
-      jobId: job.id,
-      jobName: job.name || job.id,
-      prompt: job.prompt || '',
-      schedule: job.schedule_display || job.schedule || null,
-      workdir: job.workdir || null,
-    };
-    const line = this._eventLine(startEvent);
-    if (!this._removeOldestFinalized(byteLength(line), this.endReserveBytes)) {
+    // 预占容量：run_start 事件最长约 256 字节（不含大 prompt），调用方随后会 append。
+    // 这里仅预留一个保守值，避免与旧版「直接写整条 run_start」时的总容量差异过大。
+    const reserved = 512;
+    if (!this._removeOldestFinalized(reserved, this.endReserveBytes)) {
       throw new Error('定时任务日志容量不足，无法创建执行记录');
     }
-    this._appendLine(activePath, line);
+    // 创建空 .jsonl.active 文件，确保后续 appendEvent/finishRun 能写入。
+    // 注意：run_start 事件不再由本方法内部写入——由调用方（watcher）显式
+    // appendEvent({type:'run_start', ...}) 写入，避免 watcher 路径产生重复。
+    fs.writeFileSync(activePath, '', { encoding: 'utf8', mode: 0o600 });
     this._activeRuns.set(runId, handle);
     return handle;
   }

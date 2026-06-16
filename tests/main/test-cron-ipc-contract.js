@@ -58,6 +58,8 @@ describe('cron execution log IPC contract', () => {
       'cron:logs:clear',
       'cron:logs:settings:get',
       'cron:logs:settings:set',
+      'cron:logs:files:list',
+      'cron:logs:files:read',
     ]) {
       const re = new RegExp(`(?:ipcMain\\.)?handle\\('${channel.replaceAll(':', '\\:')}'`);
       assert.match(ipcHandlersJs, re);
@@ -71,6 +73,8 @@ describe('cron execution log IPC contract', () => {
     assert.match(preloadJs, /cronLogsClear:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('cron:logs:clear'/);
     assert.match(preloadJs, /cronLogSettingsGet:\s*\(\)\s*=>\s*ipcRenderer\.invoke\('cron:logs:settings:get'/);
     assert.match(preloadJs, /cronLogSettingsSet:\s*\(maxMb\)\s*=>\s*ipcRenderer\.invoke\('cron:logs:settings:set'/);
+    assert.match(preloadJs, /cronLogFilesList:\s*\(runId,\s*options\)\s*=>\s*ipcRenderer\.invoke\('cron:logs:files:list'/);
+    assert.match(preloadJs, /cronLogFileRead:\s*\(fileId,\s*options\)\s*=>\s*ipcRenderer\.invoke\('cron:logs:files:read'/);
     assert.match(preloadJs, /onCronLogUpdated:\s*\(fn\)\s*=>\s*\{/);
     assert.match(preloadJs, /ipcRenderer\.removeListener\('cron-log-updated',\s*handler\)/);
   });

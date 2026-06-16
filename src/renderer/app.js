@@ -3644,6 +3644,27 @@ const cronEls = {
   logClear: document.getElementById('cron-log-clear'),
   logList: document.getElementById('cron-log-list'),
   logDetail: document.getElementById('cron-log-detail'),
+  logDetailBody: document.getElementById('cron-log-detail-body'),
+  logDetailHeader: document.getElementById('cron-log-detail-header'),
+  logDetailEmpty: document.querySelector('.cron-log-detail-empty'),
+  logViewTabs: document.querySelectorAll('.cron-log-view-tab'),
+  logViewPanes: document.querySelectorAll('[data-cron-view-pane]'),
+  logEventsPane: document.getElementById('cron-log-events-pane'),
+  logEventsContainer: document.getElementById('cron-log-events'),
+  logFilesPane: document.getElementById('cron-log-files-pane'),
+  logFilesTabs: document.getElementById('cron-log-files-tabs'),
+  logFilesRefreshList: document.getElementById('cron-log-files-refresh-list'),
+  logFilesRefreshCurrent: document.getElementById('cron-log-files-refresh-current'),
+  logFilesAutoRefresh: document.getElementById('cron-log-files-auto-refresh'),
+  logFilesInferred: document.getElementById('cron-log-files-inferred'),
+  logFilesSearch: document.getElementById('cron-log-files-search'),
+  logFilesCopy: document.getElementById('cron-log-files-copy'),
+  logFilesInferredBanner: document.getElementById('cron-log-files-inferred-banner'),
+  logFilesContent: document.getElementById('cron-log-files-content'),
+  logFilesSearchBar: document.getElementById('cron-log-files-search-bar'),
+  logFilesSearchCount: document.getElementById('cron-log-files-search-count'),
+  logFilesSearchPrev: document.getElementById('cron-log-files-search-prev'),
+  logFilesSearchNext: document.getElementById('cron-log-files-search-next'),
   // 权限审计 tab
   permissionDecisionFilter: document.getElementById('cron-permission-decision-filter'),
   permissionJobFilter: document.getElementById('cron-permission-job-filter'),
@@ -3660,6 +3681,20 @@ let cronLogRuns = [];
 let selectedCronLogRunId = null;
 let cronPermissionEntries = [];   // 跨所有 run 的 decision + policy_applied 扁平数组
 let cronActiveAuditTab = 'executions';   // 'executions' | 'permissions'
+
+// 文件视图状态
+let cronLogActiveView = 'events';          // 'events' | 'files'
+let cronLogFiles = [];                     // 当前 run 关联的文件清单
+let cronLogSelectedFileId = null;          // 当前选中的 fileId
+let cronLogIncludeInferred = false;
+let cronLogAutoRefresh = false;
+let cronLogAutoRefreshTimer = null;
+let cronLogFilesCurrentContent = '';       // 当前展示的原文
+let cronLogFilesCurrentFile = null;        // 当前展示的 file descriptor (id 等)
+let cronLogFilesSearchMatches = [];        // 当前搜索匹配下标数组 (按字符 offset)
+let cronLogFilesSearchCursor = -1;
+let cronLogFilesLastSize = -1;             // 用于自动刷新时按大小变化判断
+let cronLogFilesLoadedRunId = null;        // 当前加载文件清单的 runId
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
@@ -3842,7 +3877,12 @@ async function loadCronLogs() {
   updateCronLogUsage(result.usageBytes, result.maxBytes);
   if (selectedCronLogRunId && !cronLogRuns.some(run => run.runId === selectedCronLogRunId)) {
     selectedCronLogRunId = null;
-    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    resetCronLogFileViewer();
+    if (cronEls.logDetailBody) cronEls.logDetailBody.hidden = true;
+    if (cronEls.logDetailEmpty) {
+      cronEls.logDetailEmpty.hidden = false;
+      cronEls.logDetailEmpty.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    }
   }
   renderCronLogList();
 }
@@ -3939,97 +3979,430 @@ let _renderedDetailRunId = null;
 let _renderedDetailEventCount = 0;
 
 function renderCronLogDetail(log) {
-  if (!cronEls.logDetail) return;
+  if (!cronEls.logDetail || !cronEls.logDetailBody) return;
   const summary = log.summary || {};
   const status = cronLogStatusMeta(summary.status);
   const events = log.events || [];
   _renderedDetailRunId = log.runId;
   _renderedDetailEventCount = events.length;
-  const eventsHtml = events.map(event => {
-    const view = cronLogEventView(event);
-    return `
-      <div class="cron-log-entry ${view.className}">
-        <div class="cron-log-entry-header">
-          <span>${escapeHtml(view.label)}</span>
-          <time>${escapeHtml(formatCronLogDate(event.timestamp))}</time>
-        </div>
-        <pre>${escapeHtml(view.text)}</pre>
-      </div>
-    `;
-  }).join('');
+  // Header
+  cronEls.logDetailHeader.innerHTML = renderCronLogDetailHeaderHTML(summary, status);
+  // Events pane
+  cronEls.logEventsContainer.innerHTML = events.length > 0
+    ? events.map(renderCronLogEntryHTML).join('')
+    : '<div class="empty-state-text">没有可显示的事件</div>';
+  // Auto-scroll to bottom so new events stream in
+  cronEls.logEventsContainer.scrollTop = cronEls.logEventsContainer.scrollHeight;
+  // Toggle body vs empty placeholder
+  cronEls.logDetailEmpty.hidden = true;
+  cronEls.logDetailBody.hidden = false;
+  // 默认事件视图；如果该 run 是 active/unknown，自动开启自动刷新开关（仅设置，不立即启动）
+  syncCronLogFileViewerForRun(summary);
+}
+
+function renderCronLogDetailHeaderHTML(summary, status) {
   const runningBadge = status.className === 'running' || status.className === 'unknown'
     ? '<span class="cron-log-spinner" aria-label="运行中"></span>'
     : '';
-  cronEls.logDetail.innerHTML = `
-    <div class="cron-log-detail-header">
-      <div>
-        <h4>${escapeHtml(summary.jobName || summary.jobId || '未知任务')}</h4>
-        <span>${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}</span>
-      </div>
-      <span class="cron-log-run-status ${status.className}">${runningBadge}${escapeHtml(status.label)}</span>
+  return `
+    <div>
+      <h4>${escapeHtml(summary.jobName || summary.jobId || '未知任务')}</h4>
+      <span>${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}</span>
     </div>
-    <div class="cron-log-events">${eventsHtml || '<div class="empty-state-text">没有可显示的事件</div>'}</div>
+    <span class="cron-log-run-status ${status.className}">${runningBadge}${escapeHtml(status.label)}</span>
   `;
-  // Auto-scroll to bottom so new events stream in
-  const eventsDiv = cronEls.logDetail.querySelector('.cron-log-events');
-  if (eventsDiv) eventsDiv.scrollTop = eventsDiv.scrollHeight;
 }
 
-function appendCronLogEvents(log) {
-  if (!cronEls.logDetail) return;
-  if (log.runId !== _renderedDetailRunId) return; // not the one we're showing
-  const allEvents = log.events || [];
-  const newEvents = allEvents.slice(_renderedDetailEventCount);
-  if (newEvents.length === 0) return;
-  const eventsDiv = cronEls.logDetail.querySelector('.cron-log-events');
-  if (!eventsDiv) return;
-  // Remove the "no events" placeholder if it's there
-  const placeholder = eventsDiv.querySelector('.empty-state-text');
-  if (placeholder) placeholder.remove();
-  const fragment = newEvents.map(event => {
-    const view = cronLogEventView(event);
-    const div = document.createElement('div');
-    div.className = `cron-log-entry ${view.className}`;
-    div.innerHTML = `
+function renderCronLogEntryHTML(event) {
+  const view = cronLogEventView(event);
+  return `
+    <div class="cron-log-entry ${view.className}">
       <div class="cron-log-entry-header">
         <span>${escapeHtml(view.label)}</span>
         <time>${escapeHtml(formatCronLogDate(event.timestamp))}</time>
       </div>
       <pre>${escapeHtml(view.text)}</pre>
-    `;
-    return div;
-  }).forEach((el) => eventsDiv.appendChild(el));
+    </div>
+  `;
+}
+
+function appendCronLogEvents(log) {
+  if (!cronEls.logDetail || !cronEls.logDetailBody) return;
+  if (log.runId !== _renderedDetailRunId) return; // not the one we're showing
+  const allEvents = log.events || [];
+  const newEvents = allEvents.slice(_renderedDetailEventCount);
+  if (newEvents.length === 0) return;
+  // Remove the "no events" placeholder if it's there
+  const placeholder = cronEls.logEventsContainer.querySelector('.empty-state-text');
+  if (placeholder) placeholder.remove();
+  const eventsDiv = cronEls.logEventsContainer;
+  const fragment = document.createDocumentFragment();
+  for (const event of newEvents) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = renderCronLogEntryHTML(event);
+    fragment.appendChild(wrap.firstElementChild);
+  }
+  eventsDiv.appendChild(fragment);
   _renderedDetailEventCount = allEvents.length;
   // Update the status badge if the run is now finished
   const summary = log.summary || {};
   const status = cronLogStatusMeta(summary.status);
-  const headerRight = cronEls.logDetail.querySelector('.cron-log-detail-header > :last-child');
-  if (headerRight) {
-    const runningBadge = status.className === 'running' || status.className === 'unknown'
-      ? '<span class="cron-log-spinner" aria-label="运行中"></span>'
-      : '';
-    headerRight.className = `cron-log-run-status ${status.className}`;
-    headerRight.innerHTML = `${runningBadge}${escapeHtml(status.label)}`;
-  }
-  // Update duration
-  const headerSpan = cronEls.logDetail.querySelector('.cron-log-detail-header > div > span');
-  if (headerSpan && summary) {
-    headerSpan.textContent = `${escapeHtml(formatCronLogDate(summary.startedAt))} · ${escapeHtml(formatCronLogDuration(summary.durationMs))}`;
-  }
+  // Re-render header (simple, since it's small)
+  cronEls.logDetailHeader.innerHTML = renderCronLogDetailHeaderHTML(summary, status);
   // Auto-scroll to bottom
   eventsDiv.scrollTop = eventsDiv.scrollHeight;
+  // 如果 run 已不再是 active，关掉自动刷新
+  if (status.className !== 'running' && status.className !== 'unknown') {
+    setCronLogAutoRefresh(false);
+  }
 }
 
 async function selectCronLogRun(runId) {
   selectedCronLogRunId = runId;
+  // 切换 run：重置文件视图状态
+  resetCronLogFileViewer();
   renderCronLogList();
-  cronEls.logDetail.innerHTML = '<div class="empty-state-text">加载中...</div>';
+  if (cronEls.logDetailEmpty) cronEls.logDetailEmpty.hidden = true;
+  if (cronEls.logDetailBody) {
+    cronEls.logDetailBody.hidden = false;
+    cronEls.logDetailHeader.innerHTML = '<div class="empty-state-text">加载中...</div>';
+    cronEls.logEventsContainer.innerHTML = '';
+  }
+  setCronLogActiveView('events');
   const result = await window.api.cronLogsGet(runId);
   if (!result.success) {
-    cronEls.logDetail.innerHTML = `<div class="empty-state-text">详情加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    if (cronEls.logDetailHeader) cronEls.logDetailHeader.innerHTML = '';
+    cronEls.logEventsContainer.innerHTML = `<div class="empty-state-text">详情加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
     return;
   }
   renderCronLogDetail(result.log);
+}
+
+// ---- 文件视图：tab 切换 / 文件清单 / 内容读取 / 自动刷新 ----
+
+function resetCronLogFileViewer() {
+  cronLogFiles = [];
+  cronLogSelectedFileId = null;
+  cronLogFilesCurrentContent = '';
+  cronLogFilesCurrentFile = null;
+  cronLogFilesSearchMatches = [];
+  cronLogFilesSearchCursor = -1;
+  cronLogFilesLastSize = -1;
+  cronLogFilesLoadedRunId = null;
+  cronLogIncludeInferred = false;
+  if (cronEls.logFilesInferred) cronEls.logFilesInferred.checked = false;
+  if (cronEls.logFilesInferredBanner) cronEls.logFilesInferredBanner.hidden = true;
+  setCronLogAutoRefresh(false);
+}
+
+function syncCronLogFileViewerForRun(summary) {
+  const isLive = summary.status === 'running' || summary.status === 'unknown';
+  // 默认 active 文件自动开启；如果非 running，默认关闭（保持 spec 要求）
+  if (cronEls.logFilesAutoRefresh) {
+    cronLogAutoRefresh = isLive;
+    cronEls.logFilesAutoRefresh.checked = isLive;
+  }
+  // 默认显示「事件」视图
+  setCronLogActiveView('events');
+}
+
+function setCronLogActiveView(view) {
+  cronLogActiveView = view === 'files' ? 'files' : 'events';
+  cronEls.logViewTabs.forEach((btn) => {
+    const active = btn.dataset.cronView === cronLogActiveView;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  cronEls.logViewPanes.forEach((pane) => {
+    pane.hidden = pane.dataset.cronViewPane !== cronLogActiveView;
+  });
+  if (cronLogActiveView === 'files' && cronLogFilesLoadedRunId !== selectedCronLogRunId) {
+    loadCronLogFiles({ preserveSelectedFile: false });
+  }
+}
+
+async function loadCronLogFiles({ preserveSelectedFile = true } = {}) {
+  if (!selectedCronLogRunId || !cronEls.logFilesContent) return;
+  const runId = selectedCronLogRunId;
+  const previousFileId = preserveSelectedFile ? cronLogSelectedFileId : null;
+  cronEls.logFilesContent.innerHTML = '<div class="empty-state-text">加载文件列表…</div>';
+  const result = await window.api.cronLogFilesList(runId, { includeInferred: cronLogIncludeInferred });
+  if (!result.success) {
+    cronEls.logFilesContent.innerHTML = `<div class="empty-state-text">文件列表加载失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  cronLogFiles = result.files || [];
+  cronLogFilesLoadedRunId = runId;
+  renderCronLogFilesTabs();
+  // 推断日志 banner
+  if (cronEls.logFilesInferredBanner) {
+    const hasInferred = cronLogFiles.some((f) => f.confidence === 'time-window');
+    cronEls.logFilesInferredBanner.hidden = !hasInferred;
+  }
+  // 选择默认文件
+  let nextFileId = null;
+  if (previousFileId && cronLogFiles.some((f) => f.id === previousFileId)) {
+    nextFileId = previousFileId;
+  } else if (cronLogFiles.length > 0) {
+    nextFileId = cronLogFiles[0].id;
+  }
+  if (nextFileId) {
+    selectCronLogFile(nextFileId);
+  } else {
+    cronEls.logFilesContent.innerHTML = '<div class="empty-state-text">没有关联日志文件</div>';
+    cronLogSelectedFileId = null;
+  }
+}
+
+function renderCronLogFilesTabs() {
+  if (!cronEls.logFilesTabs) return;
+  if (cronLogFiles.length === 0) {
+    cronEls.logFilesTabs.innerHTML = '';
+    return;
+  }
+  cronEls.logFilesTabs.innerHTML = cronLogFiles.map((f) => {
+    const active = f.id === cronLogSelectedFileId ? ' active' : '';
+    const badge = f.confidence === 'time-window'
+      ? '<span class="cron-log-file-badge inferred" title="按时间窗口推断">推断</span>'
+      : (f.confidence === 'time-near'
+        ? '<span class="cron-log-file-badge near" title="仅时间接近，非精确匹配">近似</span>'
+        : '');
+    const liveDot = f.active
+      ? '<span class="cron-log-file-live" title="文件还在增长">●</span>'
+      : '';
+    return `
+      <button class="cron-log-file-tab${active}" data-file-id="${escapeHtml(f.id)}" role="tab" title="${escapeHtml(f.path)} · ${escapeHtml(f.confidence)}">
+        <span class="cron-log-file-tab-label">${liveDot}${escapeHtml(f.label)}${badge}</span>
+        <span class="cron-log-file-tab-size">${escapeHtml(formatCronLogBytes(f.sizeBytes))}</span>
+      </button>
+    `;
+  }).join('');
+  cronEls.logFilesTabs.querySelectorAll('.cron-log-file-tab').forEach((btn) => {
+    btn.addEventListener('click', () => selectCronLogFile(btn.dataset.fileId));
+  });
+}
+
+async function selectCronLogFile(fileId) {
+  cronLogSelectedFileId = fileId;
+  // Update tab active state
+  cronEls.logFilesTabs.querySelectorAll('.cron-log-file-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.fileId === fileId);
+  });
+  await readCronLogCurrentFile({ force: true });
+}
+
+async function readCronLogCurrentFile({ force = false } = {}) {
+  if (!cronLogSelectedFileId) return;
+  const fileId = cronLogSelectedFileId;
+  const result = await window.api.cronLogFileRead(fileId, {});
+  if (!result.success) {
+    cronEls.logFilesContent.innerHTML = `<div class="empty-state-text">读取失败：${escapeHtml(result.error || '未知错误')}</div>`;
+    return;
+  }
+  const newSize = result.sizeBytes;
+  // 如果大小没变且不是 force 模式，不重绘（保持滚动位置）
+  if (!force && newSize === cronLogFilesLastSize && cronLogFilesCurrentFile && cronLogFilesCurrentFile.id === fileId) {
+    return;
+  }
+  cronLogFilesLastSize = newSize;
+  cronLogFilesCurrentContent = result.content || '';
+  cronLogFilesCurrentFile = cronLogFiles.find((f) => f.id === fileId) || { id: fileId, label: '文件' };
+  renderCronLogFileContent(result);
+  // 当前文件大小变化时（active 刷新），同步更新 tab 上的大小展示
+  renderCronLogFilesTabs();
+  // 重新跑搜索
+  if (cronEls.logFilesSearch && cronEls.logFilesSearch.value) {
+    runCronLogFileSearch(cronEls.logFilesSearch.value);
+  }
+}
+
+function renderCronLogFileContent(result) {
+  const file = cronLogFilesCurrentFile;
+  const container = cronEls.logFilesContent;
+  // 渲染原文
+  const pre = document.createElement('pre');
+  pre.className = 'cron-log-file-pre';
+  pre.textContent = cronLogFilesCurrentContent || '(空)';
+  // 大文件提示条
+  const banners = [];
+  if (result.truncatedBefore) {
+    banners.push('<div class="cron-log-file-banner">已显示文件末尾内容，可点击「刷新列表 + 加载更早内容」回看历史</div>');
+  }
+  if (result.truncatedAfter) {
+    banners.push('<div class="cron-log-file-banner">已截断：仅显示当前 offset 起的内容，文件后续还有更多</div>');
+  }
+  if (file && file.virtual && file.filterDescription) {
+    banners.push(`<div class="cron-log-file-banner filter">过滤规则：${escapeHtml(file.filterDescription)}</div>`);
+  }
+  container.innerHTML = banners.join('') + '<div class="cron-log-file-pre-wrap"></div>';
+  container.querySelector('.cron-log-file-pre-wrap').appendChild(pre);
+  // 自动滚到底（仅当用户在底部 24px 内）
+  const wasAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 24;
+  if (wasAtBottom) {
+    // Force layout then scroll
+    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+  }
+}
+
+function setCronLogAutoRefresh(enabled) {
+  cronLogAutoRefresh = Boolean(enabled);
+  if (cronEls.logFilesAutoRefresh) cronEls.logFilesAutoRefresh.checked = cronLogAutoRefresh;
+  if (cronLogAutoRefreshTimer) {
+    clearInterval(cronLogAutoRefreshTimer);
+    cronLogAutoRefreshTimer = null;
+  }
+  if (cronLogAutoRefresh) {
+    cronLogAutoRefreshTimer = setInterval(() => {
+      // 自动刷新只针对当前选中的文件
+      readCronLogCurrentFile({ force: false });
+    }, 2000);
+  }
+}
+
+// ---- 文件视图搜索 ----
+
+function runCronLogFileSearch(query) {
+  const content = cronLogFilesCurrentContent;
+  const matches = [];
+  if (!query) {
+    cronLogFilesSearchMatches = matches;
+    cronLogFilesSearchCursor = -1;
+    updateCronLogSearchBar();
+    clearCronLogSearchHighlights();
+    return;
+  }
+  let from = 0;
+  while (true) {
+    const idx = content.indexOf(query, from);
+    if (idx === -1) break;
+    matches.push(idx);
+    from = idx + Math.max(1, query.length);
+  }
+  cronLogFilesSearchMatches = matches;
+  cronLogFilesSearchCursor = matches.length > 0 ? 0 : -1;
+  updateCronLogSearchBar();
+  applyCronLogSearchHighlights();
+  jumpToCronLogSearchMatch(0);
+}
+
+function updateCronLogSearchBar() {
+  if (!cronEls.logFilesSearchBar) return;
+  const q = cronEls.logFilesSearch?.value || '';
+  if (!q) {
+    cronEls.logFilesSearchBar.hidden = true;
+    return;
+  }
+  cronEls.logFilesSearchBar.hidden = false;
+  const total = cronLogFilesSearchMatches.length;
+  if (total === 0) {
+    cronEls.logFilesSearchCount.textContent = '0 个匹配';
+  } else {
+    cronEls.logFilesSearchCount.textContent = `${cronLogFilesSearchCursor + 1} / ${total}`;
+  }
+}
+
+function clearCronLogSearchHighlights() {
+  const pre = cronEls.logFilesContent.querySelector('.cron-log-file-pre');
+  if (pre) pre.innerHTML = escapeHtml(cronLogFilesCurrentContent || '');
+}
+
+function applyCronLogSearchHighlights() {
+  const content = cronLogFilesCurrentContent || '';
+  const matches = cronLogFilesSearchMatches;
+  const query = cronEls.logFilesSearch?.value || '';
+  if (!query || matches.length === 0) {
+    clearCronLogSearchHighlights();
+    return;
+  }
+  // 简单按区间切片高亮
+  let html = '';
+  let cursor = 0;
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i];
+    const end = start + query.length;
+    html += escapeHtml(content.slice(cursor, start));
+    const isCurrent = i === cronLogFilesSearchCursor;
+    html += `<mark class="cron-log-file-mark${isCurrent ? ' current' : ''}">${escapeHtml(content.slice(start, end))}</mark>`;
+    cursor = end;
+  }
+  html += escapeHtml(content.slice(cursor));
+  const pre = cronEls.logFilesContent.querySelector('.cron-log-file-pre');
+  if (pre) pre.innerHTML = html;
+}
+
+function jumpToCronLogSearchMatch(direction) {
+  const total = cronLogFilesSearchMatches.length;
+  if (total === 0) return;
+  let next = cronLogFilesSearchCursor + direction;
+  if (next < 0) next = total - 1;
+  if (next >= total) next = 0;
+  cronLogFilesSearchCursor = next;
+  applyCronLogSearchHighlights();
+  updateCronLogSearchBar();
+  // 滚动到匹配位置
+  const marks = cronEls.logFilesContent.querySelectorAll('.cron-log-file-mark');
+  const el = marks[next];
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+// ---- 文件视图事件绑定 ----
+
+function bindCronLogFileViewer() {
+  if (cronEls.logViewTabs) {
+    cronEls.logViewTabs.forEach((btn) => {
+      btn.addEventListener('click', () => setCronLogActiveView(btn.dataset.cronView));
+    });
+  }
+  if (cronEls.logFilesRefreshList) {
+    cronEls.logFilesRefreshList.addEventListener('click', () => loadCronLogFiles({ preserveSelectedFile: true }));
+  }
+  if (cronEls.logFilesRefreshCurrent) {
+    cronEls.logFilesRefreshCurrent.addEventListener('click', () => readCronLogCurrentFile({ force: true }));
+  }
+  if (cronEls.logFilesAutoRefresh) {
+    cronEls.logFilesAutoRefresh.addEventListener('change', (e) => setCronLogAutoRefresh(e.target.checked));
+  }
+  if (cronEls.logFilesInferred) {
+    cronEls.logFilesInferred.addEventListener('change', (e) => {
+      cronLogIncludeInferred = Boolean(e.target.checked);
+      loadCronLogFiles({ preserveSelectedFile: true });
+    });
+  }
+  if (cronEls.logFilesSearch) {
+    let searchDebounce = null;
+    cronEls.logFilesSearch.addEventListener('input', (e) => {
+      clearTimeout(searchDebounce);
+      const value = e.target.value;
+      searchDebounce = setTimeout(() => runCronLogFileSearch(value), 120);
+    });
+  }
+  if (cronEls.logFilesSearchPrev) {
+    cronEls.logFilesSearchPrev.addEventListener('click', () => jumpToCronLogSearchMatch(-1));
+  }
+  if (cronEls.logFilesSearchNext) {
+    cronEls.logFilesSearchNext.addEventListener('click', () => jumpToCronLogSearchMatch(1));
+  }
+  if (cronEls.logFilesCopy) {
+    cronEls.logFilesCopy.addEventListener('click', async () => {
+      if (!cronLogFilesCurrentContent) return;
+      try {
+        await navigator.clipboard.writeText(cronLogFilesCurrentContent);
+        const orig = cronEls.logFilesCopy.textContent;
+        cronEls.logFilesCopy.textContent = '已复制';
+        setTimeout(() => { cronEls.logFilesCopy.textContent = orig; }, 1200);
+      } catch (err) {
+        // 退化为 textarea + execCommand
+        const ta = document.createElement('textarea');
+        ta.value = cronLogFilesCurrentContent;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) { /* noop */ }
+        document.body.removeChild(ta);
+      }
+    });
+  }
 }
 
 async function showCronLogsForJob(jobId) {
@@ -4041,6 +4414,7 @@ async function showCronLogsForJob(jobId) {
 }
 
 async function initCronLogs() {
+  bindCronLogFileViewer();
   await Promise.all([loadCronLogSettings(), loadCronLogs()]);
 }
 

@@ -962,6 +962,23 @@ function setupIPCHandlers(mainWindow) {
     }
   });
 
+  // ----- Cron execution log file aggregation (审计 + output + 全局日志过滤) -----
+  handle('cron:logs:files:list', async (_, runId, options = {}) => {
+    try {
+      return cronManager.listExecutionLogFiles(runId, options || {});
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  handle('cron:logs:files:read', async (_, fileId, options = {}) => {
+    try {
+      return cronManager.readExecutionLogFile(fileId, options || {});
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
   // ----- Cron auto-authorize policy (黑名单模式) -----
   handle('cron:policy:get', async () => {
     try {
