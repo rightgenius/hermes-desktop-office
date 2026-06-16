@@ -888,8 +888,11 @@ function setupIPCHandlers(mainWindow) {
 
   handle('cron:trigger', async (_, jobId) => {
     try {
-      const job = await cronManager.triggerJob(jobId);
-      return { success: true, job };
+      const result = await cronManager.triggerJob(jobId);
+      // triggerJob returns { success, job, runId, note } — pass it through
+      // verbatim so the renderer's contract (result.note, result.runId) is
+      // satisfied. Do NOT wrap in another {success, job} layer.
+      return result;
     } catch (err) {
       return { success: false, error: err.message };
     }

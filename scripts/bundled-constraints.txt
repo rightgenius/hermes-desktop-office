@@ -4,8 +4,8 @@
 # 
 # To regenerate: FORCE_RELOCK=1 bash scripts/bundle-agent-deps.sh
 #
-# websockets: dingtalk-stream 0.24.x uses async with websockets.connect(), broken
-# on websockets <10 and has compatibility issues with >=14 due to the async
-# context manager protocol. Range 13.x is the only known-good window for both
-# dingtalk-stream and other consumers (firecrawl-py, fal-client, openai[realtime]).
-websockets>=13,<14
+# websockets: hermes-agent 0.16.0 (submodule c6b0eb4) pins websockets==15.0.1
+# directly. The previous dingtalk-stream-only rationale for <14 is no longer
+# applicable — dingtalk-stream 0.24.x works fine with websockets 15.x. If we
+# pin <14 here the bundle step dies with "ResolutionImpossible".
+websockets>=13,<16
