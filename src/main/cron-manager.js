@@ -10,6 +10,19 @@ const {
 const { CronPolicy } = require('./cron-policy');
 
 /**
+ * Format a Date as "YYYY-MM-DD HH:MM" in the local timezone. Used as the
+ * `display` text for `kind: "once"` schedules so it matches hermes-agent's
+ * own `parse_schedule` rendering.
+ */
+function formatLocalYmdHm(dt) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ` +
+    `${pad(dt.getHours())}:${pad(dt.getMinutes())}`
+  );
+}
+
+/**
  * CronManager — GUI-side observer and CRUD layer for cron jobs.
  *
  * Scheduling authority lives in hermes-agent's own `cron.scheduler`
@@ -145,24 +158,29 @@ class CronManager {
   async listJobs(includeDisabled = false) {
     let jobs = this._loadJobs();
     if (!includeDisabled) jobs = jobs.filter((j) => j.enabled !== false);
-    return jobs;
+    // Read-only normalize schedule for UI display. We don't migrate to disk
+    // here — `updateJob` / `createJob` will rewrite as a structured object the
+    // next time the job is saved, and the gateway can read legacy strings via
+    // hermes-agent's own `parse_schedule()`.
+    return jobs.map((j) => this._normalizeJobForRead(j));
   }
 
   async createJob(data) {
     const jobs = this._loadJobs();
+    const schedule = this.parseCronScheduleInput(data.schedule);
     const job = {
       id: Math.random().toString(36).substring(2, 14),
       name: data.name || (data.prompt || '').substring(0, 50),
       prompt: data.prompt,
       skills: data.skills || [],
       skill: (data.skills && data.skills[0]) || null,
-      schedule: data.schedule,
-      schedule_display: data.schedule_display || data.schedule,
+      schedule,
+      schedule_display: schedule.display,
       repeat: { times: data.repeat || null, completed: 0 },
       enabled: true,
       state: 'scheduled',
       created_at: new Date().toISOString(),
-      next_run_at: this._computeNextRun(data.schedule),
+      next_run_at: this._computeNextRun(schedule, null),
       last_run_at: null,
       last_status: null,
       last_error: null,
@@ -186,12 +204,197 @@ class CronManager {
     const jobs = this._loadJobs();
     const idx = jobs.findIndex((j) => j.id === jobId);
     if (idx === -1) return null;
-    jobs[idx] = { ...jobs[idx], ...updates };
-    if (updates.schedule) {
-      jobs[idx].next_run_at = this._computeNextRun(updates.schedule, jobs[idx].last_run_at);
+    const merged = { ...jobs[idx], ...updates };
+    if (Object.prototype.hasOwnProperty.call(updates, 'schedule')) {
+      // Caller is touching the schedule — always normalize whatever they passed
+      // (string or already-structured). The legacy persisted schedule, if any,
+      // is preserved only if the caller didn't pass `schedule` at all.
+      merged.schedule = this.parseCronScheduleInput(updates.schedule);
+      merged.schedule_display = merged.schedule.display;
+      merged.next_run_at = this._computeNextRun(merged.schedule, merged.last_run_at);
+    } else if (merged.schedule && typeof merged.schedule === 'string') {
+      // Legacy: persisted schedule was still a string but the caller didn't
+      // pass a new one. Normalize for the in-memory job and the next run
+      // computation; rewrite to disk in structured form so the gateway stops
+      // seeing a raw string. Don't touch next_run_at if the caller already
+      // supplied one (e.g. triggerJob sets it to "now").
+      const normalized = this.parseCronScheduleInput(merged.schedule);
+      merged.schedule = normalized;
+      merged.schedule_display = normalized.display;
+      if (!Object.prototype.hasOwnProperty.call(updates, 'next_run_at')) {
+        merged.next_run_at = this._computeNextRun(normalized, merged.last_run_at);
+      }
     }
+    jobs[idx] = merged;
     this._saveJobs(jobs);
     return jobs[idx];
+  }
+
+  // ---------- Schedule parsing (GUI-side equivalent of hermes-agent parse_schedule) ----------
+
+  /**
+   * Parse a free-form schedule input into a structured object compatible with
+   * hermes-agent's `cron.jobs.parse_schedule` output. The GUI is intentionally
+   * limited to the input shapes the renderer can produce — see
+   * `docs/cron-schedule-editing-spec.md`. The function is pure / synchronous
+   * so it can be used both at write time (createJob / updateJob) and at read
+   * time (listJobs / edit-form prefill).
+   *
+   * Accepts either a structured schedule (returned as-is, with display filled
+   * in if missing) or a string in one of these shapes:
+   *   - "every <N>m|h|d"   → recurring interval
+   *   - "<N>m|h|d"         → one-shot, N minutes/hours/days from now
+   *   - "0 9 * * *"        → 5-field cron expression
+   *   - "2026-06-16T15:30" → ISO-ish local timestamp (one-shot)
+   *   - 6-field cron       → accepted and passed through (matches hermes-agent)
+   *
+   * Throws on truly unparseable input — caller (GUI form) is expected to
+   * validate before reaching this code path. We do not silently fall back to
+   * "30m" anymore, because that was the bug spec documents: it would
+   * overwrite the original schedule on every edit.
+   */
+  parseCronScheduleInput(scheduleInput) {
+    if (scheduleInput === null || scheduleInput === undefined) {
+      throw new Error('schedule is required');
+    }
+    if (typeof scheduleInput === 'object') {
+      return this.normalizeCronSchedule(scheduleInput);
+    }
+    if (typeof scheduleInput !== 'string') {
+      throw new Error(`schedule must be string or object, got ${typeof scheduleInput}`);
+    }
+    const original = scheduleInput;
+    const schedule = scheduleInput.trim();
+    if (!schedule) {
+      throw new Error('schedule is empty');
+    }
+    const scheduleLower = schedule.toLowerCase();
+
+    // "every X" → recurring interval
+    if (scheduleLower.startsWith('every ')) {
+      const duration = schedule.slice(6).trim();
+      const minutes = this._parseDurationMinutes(duration);
+      return {
+        kind: 'interval',
+        minutes,
+        display: `every ${minutes}m`,
+      };
+    }
+
+    // 5/6-field cron: all parts made of digits, *, -, comma, slash
+    const parts = schedule.split(/\s+/);
+    if (parts.length >= 5 && parts.length <= 6 && parts.slice(0, 5).every((p) => /^[0-9*\-,/]+$/.test(p))) {
+      return {
+        kind: 'cron',
+        expr: schedule,
+        display: schedule,
+      };
+    }
+
+    // ISO-like timestamp
+    if (schedule.includes('T') || /^\d{4}-\d{2}-\d{2}/.test(schedule)) {
+      // datetime-local produces "2026-06-16T15:30" without timezone. We treat
+      // naive timestamps as the local zone and store ISO with offset, matching
+      // hermes-agent's `parse_schedule` behavior.
+      const dt = new Date(schedule);
+      if (Number.isNaN(dt.getTime())) {
+        throw new Error(`Invalid timestamp '${original}'`);
+      }
+      const display = `once at ${formatLocalYmdHm(dt)}`;
+      return {
+        kind: 'once',
+        run_at: dt.toISOString(),
+        display,
+      };
+    }
+
+    // "30m" / "2h" / "1d" — one-shot relative offset
+    const minutes = this._parseDurationMinutes(schedule);
+    const runAt = new Date(Date.now() + minutes * 60_000);
+    return {
+      kind: 'once',
+      run_at: runAt.toISOString(),
+      display: `once in ${scheduleLower}`,
+    };
+  }
+
+  /**
+   * Normalize an already-structured schedule so it always has a `display`
+   * field. Pass-through for legacy strings — they get parsed.
+   */
+  normalizeCronSchedule(schedule) {
+    if (!schedule) return schedule;
+    if (typeof schedule === 'string') {
+      return this.parseCronScheduleInput(schedule);
+    }
+    const kind = schedule.kind;
+    if (kind === 'interval') {
+      const minutes = Number(schedule.minutes);
+      if (!Number.isFinite(minutes) || minutes <= 0) {
+        throw new Error(`Invalid interval minutes: ${schedule.minutes}`);
+      }
+      return {
+        kind: 'interval',
+        minutes,
+        display: schedule.display || `every ${minutes}m`,
+      };
+    }
+    if (kind === 'cron') {
+      const expr = String(schedule.expr || '').trim();
+      if (!expr) throw new Error('cron schedule requires expr');
+      return {
+        kind: 'cron',
+        expr,
+        display: schedule.display || expr,
+      };
+    }
+    if (kind === 'once') {
+      const runAt = schedule.run_at;
+      if (!runAt) throw new Error('once schedule requires run_at');
+      const dt = new Date(runAt);
+      if (Number.isNaN(dt.getTime())) {
+        throw new Error(`Invalid run_at: ${runAt}`);
+      }
+      return {
+        kind: 'once',
+        run_at: dt.toISOString(),
+        display: schedule.display || `once at ${formatLocalYmdHm(dt)}`,
+      };
+    }
+    throw new Error(`Unknown schedule kind: ${kind}`);
+  }
+
+  _parseDurationMinutes(s) {
+    const trimmed = String(s).trim().toLowerCase();
+    const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/.exec(trimmed);
+    if (!match) {
+      throw new Error(`Invalid duration '${s}'. Use '30m', '2h', or '1d'`);
+    }
+    const value = parseInt(match[1], 10);
+    const unit = match[2][0]; // m / h / d
+    const multipliers = { m: 1, h: 60, d: 1440 };
+    return value * multipliers[unit];
+  }
+
+  _normalizeJobForRead(job) {
+    if (!job || !job.schedule) return job;
+    if (typeof job.schedule === 'object') {
+      // Make sure `display` is filled in for legacy structured schedules
+      try {
+        job.schedule = this.normalizeCronSchedule(job.schedule);
+      } catch (_) { /* leave as-is */ }
+      return job;
+    }
+    // Legacy string schedule — keep the original for display, but also fill
+    // in a best-effort structured view so the edit form can prefill its
+    // controls. We do NOT save the structured form until the user actually
+    // edits the job (spec §"历史数据兼容").
+    try {
+      const parsed = this.parseCronScheduleInput(job.schedule);
+      return { ...job, _parsedSchedule: parsed };
+    } catch (_) {
+      return job;
+    }
   }
 
   async deleteJob(jobId) {
@@ -223,14 +426,27 @@ class CronManager {
 
   _computeNextRun(schedule, lastRunAt) {
     if (!schedule) return null;
-    const now = new Date();
-    if (schedule.kind === 'once') return null;
-    if (schedule.kind === 'interval') {
-      const base = lastRunAt ? new Date(lastRunAt) : now;
-      base.setMinutes(base.getMinutes() + (schedule.minutes || 0));
-      return base.toISOString();
+    let normalized = schedule;
+    if (typeof normalized === 'string') {
+      try {
+        normalized = this.parseCronScheduleInput(normalized);
+      } catch (_) {
+        return null;
+      }
     }
-    if (schedule.kind === 'cron') {
+    const now = new Date();
+    if (normalized.kind === 'once') {
+      return normalized.run_at;
+    }
+    if (normalized.kind === 'interval') {
+      const base = lastRunAt ? new Date(lastRunAt) : now;
+      return new Date(base.getTime() + (normalized.minutes || 0) * 60_000).toISOString();
+    }
+    if (normalized.kind === 'cron') {
+      // GUI doesn't bundle a cron parser (avoiding a croniter dep for the
+      // desktop app). The gateway has the real parser; it'll recompute
+      // next_run_at on its next tick. We just need to make sure the
+      // schedule itself is structured so that works.
       return null;
     }
     return null;
