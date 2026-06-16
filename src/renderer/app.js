@@ -4064,7 +4064,80 @@ function editCronJob(jobId) {
   const authValue = job.autoAuthorize || 'denylist';
   const authRadio = document.querySelector(`input[name="cron-auto-authorize"][value="${authValue}"]`);
   if (authRadio) authRadio.checked = true;
+  // 回填调度方式：必须先填好再让用户编辑，否则保存会落到默认 every 30m。
+  // 优先用 listJobs() 注入的 _parsedSchedule（兼容历史字符串），其次用结构化 schedule。
+  prefillCronScheduleForm(job);
   openCronModal();
+}
+
+function prefillCronScheduleForm(job) {
+  // Defaults
+  cronEls.scheduleValue.value = 30;
+  cronEls.scheduleUnit.value = 'm';
+  cronEls.recurring.checked = true;
+  cronEls.scheduleCron.value = '';
+  cronEls.scheduleOnce.value = '';
+
+  const sched = (job && job._parsedSchedule) || (job && job.schedule);
+  if (!sched) {
+    setCronScheduleType('interval');
+    return;
+  }
+
+  // Legacy string schedule
+  if (typeof sched === 'string') {
+    cronEls.scheduleCron.value = sched;
+    setCronScheduleType('cron');
+    return;
+  }
+
+  if (sched.kind === 'interval') {
+    setCronScheduleType('interval');
+    const mins = Number(sched.minutes) || 0;
+    if (mins >= 60 && mins % 60 === 0) {
+      cronEls.scheduleValue.value = String(mins / 60);
+      cronEls.scheduleUnit.value = 'h';
+    } else if (mins >= 1440 && mins % 1440 === 0) {
+      cronEls.scheduleValue.value = String(mins / 1440);
+      cronEls.scheduleUnit.value = 'd';
+    } else {
+      cronEls.scheduleValue.value = String(mins);
+      cronEls.scheduleUnit.value = 'm';
+    }
+    cronEls.recurring.checked = true; // 间隔执行本身就是 recurring
+    return;
+  }
+
+  if (sched.kind === 'cron') {
+    setCronScheduleType('cron');
+    cronEls.scheduleCron.value = sched.expr || '';
+    return;
+  }
+
+  if (sched.kind === 'once') {
+    setCronScheduleType('once');
+    if (sched.run_at) {
+      // ISO → datetime-local 本地时间字符串 (YYYY-MM-DDTHH:mm)
+      const dt = new Date(sched.run_at);
+      if (!Number.isNaN(dt.getTime())) {
+        const pad = (n) => String(n).padStart(2, '0');
+        cronEls.scheduleOnce.value = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+      }
+    }
+    return;
+  }
+
+  // 未知 kind → 退回 interval 默认值
+  setCronScheduleType('interval');
+}
+
+function setCronScheduleType(type) {
+  const radio = document.querySelector(`input[name="cron-schedule-type"][value="${type}"]`);
+  if (radio) radio.checked = true;
+  // 同步显隐
+  cronEls.scheduleIntervalGroup.style.display = type === 'interval' ? '' : 'none';
+  cronEls.scheduleCronGroup.style.display = type === 'cron' ? '' : 'none';
+  cronEls.scheduleOnceGroup.style.display = type === 'once' ? '' : 'none';
 }
 
 function openCronModal() {
@@ -4078,14 +4151,25 @@ function closeCronModal() {
   cronEls.prompt.value = '';
   cronEls.repeat.value = '';
   cronEls.workdir.value = '';
+  // 重置回新建默认值
+  setCronScheduleType('interval');
   cronEls.scheduleValue.value = 30;
   cronEls.scheduleUnit.value = 'm';
   cronEls.recurring.checked = true;
   cronEls.scheduleCron.value = '';
   cronEls.scheduleOnce.value = '';
+  // 重置自动授权策略回默认
+  const defaultAuth = document.querySelector('input[name="cron-auto-authorize"][value="denylist"]');
+  if (defaultAuth) defaultAuth.checked = true;
 }
 
-function getCronSchedule() {
+/**
+ * Read the schedule sub-form as a free-form input string that the main
+ * process's parseCronScheduleInput() will normalize. This is intentionally a
+ * *form-read* helper, not the final storage shape — the storage shape is
+ * the structured object built by cron-manager.js.
+ */
+function getCronScheduleInput() {
   const type = document.querySelector('input[name="cron-schedule-type"]:checked').value;
   if (type === 'interval') {
     const value = cronEls.scheduleValue.value;
@@ -4100,11 +4184,10 @@ function getCronSchedule() {
   if (type === 'once') {
     const val = cronEls.scheduleOnce.value;
     if (val) return val;
-    const value = cronEls.scheduleValue.value;
-    const unit = cronEls.scheduleUnit.value;
-    return `${value}${unit}`;
+    // 兜底: 一次性没填时间就给个 1h, 让 main process 至少能解析
+    return '1h';
   }
-  return '30m';
+  return 'every 30m';
 }
 
 async function saveCronJob() {
@@ -4118,11 +4201,27 @@ async function saveCronJob() {
   const autoAuthorizeRadio = document.querySelector('input[name="cron-auto-authorize"]:checked');
   const autoAuthorize = autoAuthorizeRadio ? autoAuthorizeRadio.value : 'denylist';
 
+  // 编辑模式下: 如果用户没碰过调度控件, 把现有 schedule 透传过去, 防止
+  // GUI 表单的默认值 (every 30m) 覆盖原调度。spec §"保存编辑时...".
+  let scheduleInput;
+  if (editingCronJobId) {
+    const job = cronJobs.find((j) => j.id === editingCronJobId);
+    const existing = job && (job._parsedSchedule || job.schedule);
+    if (existing) {
+      // 直接传结构化对象回去, 让 main process normalize / 写回;
+      // 不要再让 form 默认值覆盖。
+      scheduleInput = existing;
+    } else {
+      scheduleInput = getCronScheduleInput();
+    }
+  } else {
+    scheduleInput = getCronScheduleInput();
+  }
+
   const data = {
     name: cronEls.name.value.trim() || undefined,
     prompt,
-    schedule: getCronSchedule(),
-    schedule_display: getCronSchedule(),
+    schedule: scheduleInput,
     repeat: cronEls.repeat.value ? parseInt(cronEls.repeat.value) : null,
     workdir: cronEls.workdir.value.trim() || null,
     autoAuthorize,

@@ -3067,37 +3067,71 @@ body {
 }
 
 .cron-modal {
-  max-width: 560px;
-  width: 90%;
+  width: min(860px, calc(100vw - 48px));
+  max-width: none; /* override the generic modal-content max-width */
+  max-height: min(88vh, 760px);
+  min-height: 0;
+}
+
+.cron-modal .modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cron-modal .modal-footer {
+  flex: 0 0 auto;
 }
 
 .cron-schedule-type {
   display: flex;
-  gap: 16px;
+  gap: 8px;
   margin-bottom: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .cron-schedule-type label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 14px;
   color: var(--text-primary);
   cursor: pointer;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.cron-schedule-type label:hover {
+  background: var(--bg-tertiary);
+}
+
+.cron-schedule-type input[type="radio"]:checked + span {
+  color: var(--accent);
+}
+.cron-schedule-type label:has(input[type="radio"]:checked) {
+  background: var(--accent-soft, var(--bg-tertiary));
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .cron-interval-inputs {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .cron-recurring-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-left: 8px;
   font-size: 13px;
   color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .cron-quick-times {
@@ -3105,6 +3139,43 @@ body {
   gap: 8px;
   margin-top: 8px;
   flex-wrap: wrap;
+}
+
+/* Prompt textarea fills the modal content area */
+#cron-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 220px;
+  resize: vertical;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  line-height: 1.55;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+#cron-prompt:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+#cron-modal .form-group input[type="text"],
+#cron-modal .form-group input[type="number"],
+#cron-modal .form-group select {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+#cron-modal .form-group input:focus,
+#cron-modal .form-group select:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 .cron-audit-card {
@@ -3512,34 +3583,66 @@ body {
   margin-left: var(--space-xs);
 }
 
-/* 自动授权策略 radio 选项排版 */
+/* 自动授权策略 — 卡片化 segmented radio, 三列横排 */
 .cron-auto-authorize {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
   font-size: 12px;
   color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
 }
 .cron-auto-authorize label {
   display: flex;
   align-items: flex-start;
   gap: var(--space-xs);
   cursor: pointer;
-  padding: var(--space-xs);
-  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  min-width: 0;
 }
 .cron-auto-authorize label:hover {
+  border-color: var(--accent);
   background: var(--bg-tertiary);
 }
 .cron-auto-authorize input[type="radio"] {
   margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.cron-auto-authorize input[type="radio"]:checked {
+  /* Native accent-color handles the dot; we drive the card style via :has below. */
+}
+.cron-auto-authorize label:has(input[type="radio"]:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--bg-tertiary));
+  color: var(--text-primary);
 }
 .cron-auto-authorize strong {
   color: var(--text-primary);
-  margin-right: 4px;
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+.cron-auto-authorize .cron-auth-desc {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
 }
 .cron-auto-authorize + .form-hint {
   margin-top: var(--space-xs);
+}
+
+@media (max-width: 720px) {
+  .cron-auto-authorize {
+    grid-template-columns: 1fr;
+  }
+  .cron-schedule-type {
+    flex-wrap: wrap;
+  }
 }
 
 .cron-log-entry-header {
