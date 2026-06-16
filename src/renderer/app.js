@@ -3614,6 +3614,8 @@ autoStartAgent();
 const cronEls = {
   list: document.getElementById('cron-list'),
   statusBadge: document.getElementById('cron-status-badge'),
+  syncResumeBtn: document.getElementById('cron-sync-resume-btn'),
+  syncHint: document.getElementById('cron-sync-hint'),
   newBtn: document.getElementById('new-cron-btn'),
   modal: document.getElementById('cron-modal'),
   modalTitle: document.getElementById('cron-modal-title'),
@@ -3670,15 +3672,27 @@ async function loadCronJobs() {
 
 function updateCronStatusUI() {
   if (!cronEls.statusBadge) return;
+
+  // syncStopped = agent is up but GUI watcher has stopped observing
+  // jobs / output / audit files. NOT the same as Gateway scheduler stopping.
+  const syncStopped = agentRunning && !cronEngineRunning;
+
   if (!agentRunning) {
     cronEls.statusBadge.textContent = 'Agent 未启动';
     cronEls.statusBadge.className = 'cron-status-badge no-agent';
   } else if (cronEngineRunning) {
-    cronEls.statusBadge.textContent = '执行中';
+    cronEls.statusBadge.textContent = 'GUI 同步中';
     cronEls.statusBadge.className = 'cron-status-badge running';
   } else {
-    cronEls.statusBadge.textContent = '已停止';
+    cronEls.statusBadge.textContent = 'GUI 同步已停止';
     cronEls.statusBadge.className = 'cron-status-badge stopped';
+  }
+
+  if (cronEls.syncResumeBtn) {
+    cronEls.syncResumeBtn.style.display = syncStopped ? '' : 'none';
+  }
+  if (cronEls.syncHint) {
+    cronEls.syncHint.style.display = syncStopped ? '' : 'none';
   }
 }
 
@@ -4248,6 +4262,32 @@ if (cronEls.newBtn) cronEls.newBtn.addEventListener('click', () => {
   openCronModal();
 });
 
+// Resume GUI sync (filesystem watcher) after a user-initiated stop. This only
+// affects the GUI's auto-refresh; Gateway's cron scheduler continues running
+// regardless of this button.
+if (cronEls.syncResumeBtn) cronEls.syncResumeBtn.addEventListener('click', async () => {
+  const btn = cronEls.syncResumeBtn;
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = '恢复中...';
+  try {
+    const result = await window.api.cronStart();
+    if (!result?.success) {
+      alert(`恢复 GUI 同步失败: ${result?.error || '未知错误'}`);
+      return;
+    }
+    cronEngineRunning = true;
+    updateCronStatusUI();
+    await loadCronJobs();
+    await loadCronLogs();
+  } catch (err) {
+    alert(`恢复 GUI 同步异常: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
+});
+
 if (cronEls.modalClose) cronEls.modalClose.addEventListener('click', closeCronModal);
 if (cronEls.modalCancel) cronEls.modalCancel.addEventListener('click', closeCronModal);
 if (cronEls.modalSave) cronEls.modalSave.addEventListener('click', saveCronJob);
@@ -4573,6 +4613,16 @@ const _origShowPage = showPage;
 showPage = function(pageName) {
   _origShowPage(pageName);
   if (pageName === 'cron') {
+    // Reconcile with main process: the cron-status IPC event can lag
+    // behind agent-start (and is lost entirely if the listener registers
+    // after the event fires). Fetch the authoritative value now so the
+    // status badge never shows 'GUI 同步已停止' on first paint.
+    window.api.cronStatus().then((res) => {
+      if (res && res.success) {
+        cronEngineRunning = Boolean(res.isRunning);
+        updateCronStatusUI();
+      }
+    }).catch(() => {});
     loadCronJobs();
     updateCronStatusUI();
     initCronLogs();
@@ -4720,6 +4770,15 @@ function updateGatewayStatus(status) {
   const dotEl = document.getElementById('status-gateway-dot');
   if (dotEl) {
     dotEl.className = 'status-dot' + (status.running ? ' success' : '');
+  }
+
+  // External Gateway CLI risk hint — shown only when Gateway is running and
+  // managed by an external process (CLI / launchd / systemd / manual).
+  // GUI-managed, stopped, and unknown states must clear the hint.
+  const externalCliWarning = document.getElementById('gateway-external-cli-warning');
+  if (externalCliWarning) {
+    const showExternalCliWarning = status.running && status.source === 'external';
+    externalCliWarning.style.display = showExternalCliWarning ? '' : 'none';
   }
 }
 
