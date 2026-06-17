@@ -112,20 +112,34 @@ function findAuditFileForRun(logsDir, runId) {
 
 function summarizeRun(auditFile) {
   const events = readJsonl(auditFile.path);
-  const start = events.find((e) => e.type === 'run_start') || {};
   const end = [...events].reverse().find((e) => e.type === 'run_end');
+  const start = selectSummaryStartEvent(events, end);
   const isActive = ACTIVE_TIMESTAMP_RE.test(auditFile.name);
   return {
     runId: start.runId || null,
     jobId: start.jobId || null,
     jobName: start.jobName || null,
-    startedAt: start.timestamp || null,
+    startedAt: start.startedAt || start.timestamp || null,
+    observedAt: start.timestamp || null,
     finishedAt: end?.timestamp || null,
     output: end?.output || '',
     status: end?.status || (isActive ? 'running' : 'interrupted'),
     active: isActive,
     events,
   };
+}
+
+function selectSummaryStartEvent(events, end) {
+  const starts = events.filter((e) => e.type === 'run_start');
+  if (starts.length === 0) return {};
+  if (!end?.timestamp) return starts[starts.length - 1];
+  const endMs = parseTimestampMs(end.timestamp);
+  if (endMs == null) return starts[starts.length - 1];
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    const startMs = parseTimestampMs(starts[i].timestamp || starts[i].startedAt);
+    if (startMs == null || startMs <= endMs) return starts[i];
+  }
+  return starts[starts.length - 1];
 }
 
 // 时间窗口（毫秒）
@@ -738,6 +752,7 @@ module.exports = {
     summarizeRun,
     findAuditFileForRun,
     findOutputFiles,
+    selectSummaryStartEvent,
     listGlobalFiles,
     filterAgentOrError,
     filterGateway,

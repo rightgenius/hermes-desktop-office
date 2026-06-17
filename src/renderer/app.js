@@ -3749,8 +3749,8 @@ function renderCronList() {
       completed: '已完成',
     }[statusClass] || statusClass;
 
-    const nextRun = job.next_run_at ? formatRelativeTime(job.next_run_at) : '-';
-    const lastRun = job.last_run_at ? formatRelativeTime(job.last_run_at) : '-';
+    const nextRun = job.next_run_at ? formatCronListDateTime(job.next_run_at) : '-';
+    const lastRun = job.last_run_at ? formatCronListDateTime(job.last_run_at) : '-';
     const schedule = typeof job.schedule_display === 'string' ? job.schedule_display : (typeof job.schedule === 'string' ? job.schedule : '-');
 
     html += `
@@ -3761,8 +3761,8 @@ function renderCronList() {
         </div>
         <div class="cron-card-meta">
           <span>📅 ${escapeHtml(schedule)}</span>
-          <span>⏰ 下次: ${nextRun}</span>
-          <span>🕐 上次: ${lastRun}</span>
+          <span>⏰ 下次: ${escapeHtml(nextRun)}</span>
+          <span>🕐 上次: ${escapeHtml(lastRun)}</span>
         </div>
         ${job.prompt ? `<div class="cron-card-prompt">${escapeHtml(job.prompt)}</div>` : ''}
         <div class="cron-card-actions">
@@ -3800,15 +3800,14 @@ function renderCronList() {
   });
 }
 
-function formatRelativeTime(isoString) {
-  const now = new Date();
-  const target = new Date(isoString);
-  const diff = Math.floor((target - now) / 1000);
-  if (diff < 0) return Math.abs(diff) < 60 ? `${Math.abs(diff)}秒前` : Math.abs(diff) < 3600 ? `${Math.floor(Math.abs(diff) / 60)}分钟前` : `${Math.floor(Math.abs(diff) / 3600)}小时前`;
-  if (diff < 60) return `${diff}秒后`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟后`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时后`;
-  return `${Math.floor(diff / 86400)}天后`;
+function formatCronListDateTime(isoString) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return isoString;
+  const pad = (value) => String(value).padStart(2, '0');
+  return [
+    `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`,
+    `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`,
+  ].join(' ');
 }
 
 function updateCronLogJobFilter() {
@@ -3877,12 +3876,7 @@ async function loadCronLogs() {
   updateCronLogUsage(result.usageBytes, result.maxBytes);
   if (selectedCronLogRunId && !cronLogRuns.some(run => run.runId === selectedCronLogRunId)) {
     selectedCronLogRunId = null;
-    resetCronLogFileViewer();
-    if (cronEls.logDetailBody) cronEls.logDetailBody.hidden = true;
-    if (cronEls.logDetailEmpty) {
-      cronEls.logDetailEmpty.hidden = false;
-      cronEls.logDetailEmpty.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
-    }
+    showCronLogDetailPlaceholder();
   }
   renderCronLogList();
 }
@@ -3910,6 +3904,23 @@ function renderCronLogList() {
   cronEls.logList.querySelectorAll('.cron-log-run').forEach(row => {
     row.addEventListener('click', () => selectCronLogRun(row.dataset.runId));
   });
+}
+
+function showCronLogDetailPlaceholder(message = '选择一条执行记录查看详情') {
+  if (cronEls.logDetailEmpty) {
+    cronEls.logDetailEmpty.hidden = false;
+    cronEls.logDetailEmpty.innerHTML = `<div class="empty-state-text">${escapeHtml(message)}</div>`;
+  }
+  if (cronEls.logDetailBody) {
+    cronEls.logDetailBody.hidden = true;
+  }
+  if (cronEls.logDetailHeader) {
+    cronEls.logDetailHeader.innerHTML = '';
+  }
+  if (cronEls.logEventsContainer) {
+    cronEls.logEventsContainer.innerHTML = '';
+  }
+  resetCronLogFileViewer();
 }
 
 function cronLogEventView(event) {
@@ -4693,7 +4704,7 @@ document.querySelectorAll('.cron-quick-times .btn-sm').forEach(btn => {
 if (cronEls.logJobFilter) {
   cronEls.logJobFilter.addEventListener('change', () => {
     selectedCronLogRunId = null;
-    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    showCronLogDetailPlaceholder();
     loadCronLogs();
   });
 }
@@ -4732,7 +4743,7 @@ if (cronEls.logClear) {
       return;
     }
     selectedCronLogRunId = null;
-    cronEls.logDetail.innerHTML = '<div class="empty-state-text">选择一条执行记录查看详情</div>';
+    showCronLogDetailPlaceholder();
     await loadCronLogs();
   });
 }

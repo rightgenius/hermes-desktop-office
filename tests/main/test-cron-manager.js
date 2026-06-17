@@ -141,6 +141,33 @@ describe('CronManager (observer + disk watcher)', () => {
     }
   });
 
+  test('start seeds existing last_run_at without creating phantom active run', async () => {
+    const job = {
+      id: 'job-existing', name: 'Existing', prompt: 'p',
+      skills: [], skill: null,
+      schedule: { kind: 'interval', minutes: 1, display: 'every 1m' },
+      schedule_display: 'every 1m',
+      repeat: { times: null, completed: 0 },
+      enabled: true, state: 'scheduled',
+      created_at: new Date().toISOString(),
+      next_run_at: null,
+      last_run_at: '2026-06-16T07:03:02.878Z',
+      last_status: 'ok',
+      last_error: null,
+    };
+    writeJobs([job]);
+
+    const m = makeManager();
+    await m.start();
+    try {
+      await new Promise((r) => setTimeout(r, 120));
+      assert.deepStrictEqual(logStore.listRuns({}).runs, []);
+      assert.strictEqual(m._lastSeenRunAt.get('job-existing'), job.last_run_at);
+    } finally {
+      await m.stop();
+    }
+  });
+
   test('watcher emits policy_applied event after each new run_start', async () => {
     writeJobs([]);
     const m = makeManager();
@@ -194,9 +221,11 @@ describe('CronManager (observer + disk watcher)', () => {
         enabled: true, state: 'scheduled',
         created_at: new Date().toISOString(),
         next_run_at: null,
-        last_run_at: new Date().toISOString(), last_status: 'ok', last_error: null,
+        last_run_at: null, last_status: null, last_error: null,
       };
       writeJobs([job]);
+      await new Promise((r) => setTimeout(r, 80));
+      writeJobs([{ ...job, last_run_at: new Date().toISOString(), last_status: 'ok' }]);
       // Wait for run_start to be emitted (no .md yet)
       await new Promise((r) => setTimeout(r, 80));
       const runsAfterStart = logStore.listRuns({}).runs;
@@ -210,6 +239,7 @@ describe('CronManager (observer + disk watcher)', () => {
       const detail = logStore.getRun(finalRuns[0].runId);
       const runEnd = detail.events.find((e) => e.type === 'run_end');
       assert.ok(runEnd, 'run_end should be recorded');
+      assert.strictEqual(detail.events.filter((e) => e.type === 'run_end').length, 1);
       assert.match(runEnd.output, /Result: 42/);
       const agentOutputs = detail.events.filter((e) => e.type === 'agent_output');
       assert.ok(agentOutputs.length > 0, 'agent_output events should be appended for streamed .md lines');
@@ -218,9 +248,53 @@ describe('CronManager (observer + disk watcher)', () => {
     }
   });
 
+  test('new last_run_at while prior run is open creates a separate audit run', async () => {
+    writeJobs([]);
+    const m = makeManager();
+    await m.start();
+    try {
+      const job = {
+        id: 'job-overlap', name: 'Overlap', prompt: 'p',
+        skills: [], skill: null,
+        schedule: { kind: 'interval', minutes: 1, display: 'every 1m' },
+        schedule_display: 'every 1m',
+        repeat: { times: null, completed: 0 },
+        enabled: true, state: 'scheduled',
+        created_at: new Date().toISOString(),
+        next_run_at: null,
+        last_run_at: null,
+        last_status: null,
+        last_error: null,
+      };
+      writeJobs([job]);
+      await new Promise((r) => setTimeout(r, 80));
+      writeJobs([{ ...job, last_run_at: '2026-06-17T05:28:10.255Z', last_status: 'ok' }]);
+      await new Promise((r) => setTimeout(r, 80));
+      writeJobs([{ ...job, last_run_at: '2026-06-17T05:34:14.979Z', last_status: 'ok' }]);
+      await new Promise((r) => setTimeout(r, 120));
+
+      const runs = logStore.listRuns({}).runs;
+      assert.strictEqual(runs.length, 2);
+      const details = runs.map((run) => logStore.getRun(run.runId));
+      assert.ok(details.some((detail) => detail.summary.status === 'interrupted'));
+      assert.ok(details.some((detail) => detail.summary.status === 'running'));
+      for (const detail of details) {
+        assert.strictEqual(
+          detail.events.filter((event) => event.type === 'run_start').length,
+          1,
+          'each audit file should contain one run_start',
+        );
+        if (detail.summary.status === 'interrupted') {
+          assert.strictEqual(detail.events.filter((event) => event.type === 'run_end').length, 1);
+        }
+      }
+    } finally {
+      await m.stop();
+    }
+  });
+
+
   test('watcher tails agent.log for [cron_<jobId>_*] lines', async () => {
-    // Start with the job already past its first run: write jobs.json
-    // with last_run_at set BEFORE start() so the seed captures it.
     const job = {
       id: 'job-4', name: 'J4', prompt: 'p',
       skills: [], skill: null,
@@ -230,7 +304,7 @@ describe('CronManager (observer + disk watcher)', () => {
       enabled: true, state: 'scheduled',
       created_at: new Date().toISOString(),
       next_run_at: null,
-      last_run_at: new Date().toISOString(), last_status: 'ok', last_error: null,
+      last_run_at: null, last_status: null, last_error: null,
     };
     writeJobs([job]);
     // Pre-create agent.log empty so the watcher has a file to tail
@@ -239,7 +313,8 @@ describe('CronManager (observer + disk watcher)', () => {
     const m = makeManager();
     await m.start();
     try {
-      // Wait for seed + initial poll to register the run_start
+      writeJobs([{ ...job, last_run_at: new Date().toISOString(), last_status: 'ok' }]);
+      // Wait for the watcher to register the new run_start
       await new Promise((r) => setTimeout(r, 100));
       // Now append a cron-related line and an unrelated line
       fs.appendFileSync(

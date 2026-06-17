@@ -232,15 +232,16 @@ class CronLogStore {
 
   _summaryForFile(file) {
     const events = this._readEvents(file.path);
-    const start = events.find((event) => event.type === 'run_start') || {};
     const end = [...events].reverse().find((event) => event.type === 'run_end');
+    const start = this._summaryStartEvent(events, end);
     const isCurrent = start.runId && this._activeRuns.has(start.runId);
     const status = end?.status || (isCurrent ? 'running' : 'interrupted');
+    const startedAt = start.startedAt || start.timestamp || new Date(file.mtimeMs).toISOString();
     return {
       runId: start.runId || null,
       jobId: start.jobId || null,
       jobName: start.jobName || start.jobId || '未知任务',
-      startedAt: start.timestamp || new Date(file.mtimeMs).toISOString(),
+      startedAt,
       finishedAt: end?.timestamp || null,
       durationMs: end?.durationMs ?? null,
       status,
@@ -248,6 +249,19 @@ class CronLogStore {
       truncated: Boolean(end?.truncated || events.some((event) => event.type === 'log_truncated')),
       sizeBytes: file.size,
     };
+  }
+
+  _summaryStartEvent(events, end) {
+    const starts = events.filter((event) => event.type === 'run_start');
+    if (starts.length === 0) return {};
+    if (!end?.timestamp) return starts[starts.length - 1];
+    const endMs = new Date(end.timestamp).getTime();
+    if (!Number.isFinite(endMs)) return starts[starts.length - 1];
+    for (let i = starts.length - 1; i >= 0; i -= 1) {
+      const startMs = new Date(starts[i].timestamp || starts[i].startedAt || 0).getTime();
+      if (!Number.isFinite(startMs) || startMs <= endMs) return starts[i];
+    }
+    return starts[starts.length - 1];
   }
 
   listRuns(options = {}) {

@@ -201,6 +201,55 @@ describe('CronLogFiles (file aggregation for run detail view)', () => {
     assert.strictEqual(outputFile.confidence, 'time-near');
   });
 
+  test('output association uses gateway startedAt instead of watcher timestamp', () => {
+    const observedAt = '2026-06-17T05:30:33.354Z';
+    const gatewayStartedAt = '2026-06-17T05:28:10.255Z';
+    const jobId = 'job-output-gateway-start';
+    const runId = 'output-gateway-start-run';
+    writeRunAudit(logsDir, runId, observedAt, [
+      {
+        type: 'run_start',
+        runId,
+        jobId,
+        jobName: 'x',
+        startedAt: gatewayStartedAt,
+        prompt: 'p',
+      },
+    ], { active: true });
+    const outputPath = writeOutputMd(outputDir, jobId, '2026-06-17_13-28-10.md', 'body');
+    const mtime = new Date(gatewayStartedAt).getTime();
+    fs.utimesSync(outputPath, mtime / 1000, mtime / 1000);
+
+    const agg = makeAggregator({ now: () => Date.parse('2026-06-17T05:30:40.000Z') });
+    const result = agg.listFiles(runId);
+    const outputFile = result.files.find((f) => f.kind === 'output-md');
+    assert.ok(outputFile, 'should associate output near the real gateway start time');
+    assert.strictEqual(outputFile.path, outputPath);
+  });
+
+  test('summary chooses the run_start paired with the final run_end when a legacy audit file has multiple starts', () => {
+    const firstStartedAt = '2026-06-17T05:28:10.255Z';
+    const secondStartedAt = '2026-06-17T05:34:14.979Z';
+    const jobId = 'job-multi-start';
+    const runId = 'multi-start-run';
+    writeRunAudit(logsDir, runId, '2026-06-17T05:33:39.480Z', [
+      { type: 'run_start', runId, jobId, jobName: 'x', startedAt: firstStartedAt, prompt: 'p' },
+      { type: 'run_start', runId, jobId, jobName: 'x', startedAt: secondStartedAt, prompt: 'p' },
+      { type: 'run_end', runId, jobId, status: 'success', output: 'done', timestamp: '2026-06-17T05:34:15.575Z' },
+    ]);
+    const firstOutput = writeOutputMd(outputDir, jobId, '2026-06-17_13-28-10.md', 'first');
+    const secondOutput = writeOutputMd(outputDir, jobId, '2026-06-17_13-34-14.md', 'second');
+    fs.utimesSync(firstOutput, Date.parse(firstStartedAt) / 1000, Date.parse(firstStartedAt) / 1000);
+    fs.utimesSync(secondOutput, Date.parse(secondStartedAt) / 1000, Date.parse(secondStartedAt) / 1000);
+
+    const agg = makeAggregator({ now: () => Date.parse('2026-06-17T05:34:20.000Z') });
+    const result = agg.listFiles(runId);
+    const outputFile = result.files.find((f) => f.kind === 'output-md');
+    assert.ok(outputFile, 'should associate one output file');
+    assert.strictEqual(outputFile.path, secondOutput);
+  });
+
+
   test('output file outside window is not associated', () => {
     const startedAt = '2026-06-16T07:03:06.700Z';
     const finishedAt = '2026-06-16T07:03:09.300Z';

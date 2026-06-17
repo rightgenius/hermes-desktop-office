@@ -3263,6 +3263,7 @@ body {
 .cron-audit-grid {
   display: grid;
   grid-template-columns: minmax(260px, 34%) minmax(0, 1fr);
+  height: clamp(420px, calc(100vh - 180px), 620px);
   min-height: 420px;
   max-height: 620px;
   margin-top: var(--space-md);
@@ -3272,6 +3273,7 @@ body {
 }
 
 .cron-log-list {
+  min-height: 0;
   overflow-y: auto;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
@@ -3362,8 +3364,11 @@ body {
 }
 
 .cron-log-detail {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: var(--space-lg);
   background: var(--bg-primary);
 }
@@ -3387,6 +3392,9 @@ body {
 .cron-log-events {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
   gap: var(--space-sm);
   padding-top: var(--space-md);
 }
@@ -4105,7 +4113,7 @@ body {
 .cron-log-detail-body {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -4113,7 +4121,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cron-log-detail-empty[hidden],
+.cron-log-detail-body[hidden],
+.cron-log-view-pane[hidden],
+.cron-log-files-inferred-banner[hidden],
+.cron-log-files-search-bar[hidden] {
+  display: none !important;
 }
 
 .cron-log-view-switch {
@@ -4148,10 +4165,6 @@ body {
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-}
-
-#cron-log-files-pane[hidden] {
-  display: none;
 }
 
 .cron-log-files-toolbar {
@@ -4284,6 +4297,7 @@ body {
 
 .cron-log-files-content {
   flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);

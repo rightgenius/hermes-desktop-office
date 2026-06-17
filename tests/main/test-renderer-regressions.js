@@ -123,6 +123,17 @@ describe('renderer regressions', () => {
     assert.match(stylesCss, /\.cron-log-run\.selected/);
   });
 
+  test('cron task cards show concrete next and last run timestamps', () => {
+    const renderListBody = appJs.match(/function\s+renderCronList\s*\(\)\s*\{([\s\S]*?)\n\}\n\nfunction\s+/);
+    assert.ok(renderListBody, 'renderCronList body should be findable');
+    assert.match(renderListBody[1], /formatCronListDateTime\(job\.next_run_at\)/);
+    assert.match(renderListBody[1], /formatCronListDateTime\(job\.last_run_at\)/);
+    assert.doesNotMatch(renderListBody[1], /formatRelativeTime\(job\.(?:next_run_at|last_run_at)\)/);
+
+    assert.match(appJs, /function\s+formatCronListDateTime\s*\(/);
+    assert.doesNotMatch(appJs, /分钟前|分钟后|小时前|小时后|秒前|秒后/);
+  });
+
   test('cron log detail streams new events without re-rendering (live tail)', () => {
     // The watcher polls disk and emits cron-log-updated on every state
     // change. The renderer should append new events to the detail panel
@@ -138,5 +149,33 @@ describe('renderer regressions', () => {
     // spinner class exists
     assert.match(stylesCss, /\.cron-log-spinner/);
     assert.match(stylesCss, /@keyframes\s+cron-log-spin/);
+  });
+
+  test('cron log detail reset preserves the detail skeleton DOM', () => {
+    assert.match(appJs, /function\s+showCronLogDetailPlaceholder\s*\(/);
+    assert.doesNotMatch(appJs, /cronEls\.logDetail\.innerHTML\s*=/);
+    assert.match(stylesCss, /\.cron-log-detail-body\[hidden\][\s\S]*display\s*:\s*none\s*!important/);
+    assert.match(stylesCss, /\.cron-log-detail-empty\[hidden\][\s\S]*display\s*:\s*none\s*!important/);
+    assert.match(stylesCss, /\.cron-log-detail\s*\{[\s\S]*display\s*:\s*flex/);
+  });
+
+  test('cron log detail constrains outer height and scrolls inner content panes', () => {
+    const auditGridRule = stylesCss.match(/\.cron-audit-grid\s*\{([\s\S]*?)\n\}/);
+    assert.ok(auditGridRule, '.cron-audit-grid rule should exist');
+    assert.match(auditGridRule[1], /height\s*:\s*clamp\(420px,\s*calc\(100vh - 180px\),\s*620px\)/);
+
+    const detailRule = stylesCss.match(/\.cron-log-detail\s*\{([\s\S]*?)\n\}/);
+    assert.ok(detailRule, '.cron-log-detail rule should exist');
+    assert.match(detailRule[1], /overflow\s*:\s*hidden/);
+
+    const eventsRule = stylesCss.match(/\.cron-log-events\s*\{([\s\S]*?)\n\}/);
+    assert.ok(eventsRule, '.cron-log-events rule should exist');
+    assert.match(eventsRule[1], /overflow\s*:\s*auto/);
+    assert.match(eventsRule[1], /min-height\s*:\s*0/);
+
+    const filesContentRule = stylesCss.match(/\.cron-log-files-content\s*\{([\s\S]*?)\n\}/);
+    assert.ok(filesContentRule, '.cron-log-files-content rule should exist');
+    assert.match(filesContentRule[1], /overflow\s*:\s*auto/);
+    assert.match(filesContentRule[1], /min-height\s*:\s*0/);
   });
 });

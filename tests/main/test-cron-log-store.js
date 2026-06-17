@@ -98,6 +98,23 @@ describe('CronLogStore', () => {
     assert.strictEqual(restartedStore.getRun(run.runId).events[1].message, 'last line');
   });
 
+  test('summaries prefer gateway startedAt over watcher timestamp', () => {
+    const store = createStore();
+    const run = store.startRun({ id: 'job-1', name: '真实开始时间', prompt: 'work' });
+    store.appendEvent(run, {
+      timestamp: '2026-06-17T05:30:33.354Z',
+      type: 'run_start',
+      runId: run.runId,
+      jobId: 'job-1',
+      jobName: '真实开始时间',
+      startedAt: '2026-06-17T05:28:10.255Z',
+      prompt: 'work',
+    });
+
+    const result = store.listRuns({});
+    assert.strictEqual(result.runs[0].startedAt, '2026-06-17T05:28:10.255Z');
+  });
+
   test('deletes the oldest finalized runs before exceeding the global limit', () => {
     const store = createStore({ maxBytes: 1500, endReserveBytes: 128 });
     const first = startRunWithStartEvent(store, { id: 'job-1', name: '旧任务', prompt: 'old' });

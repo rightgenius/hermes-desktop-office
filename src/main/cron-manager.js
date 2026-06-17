@@ -497,10 +497,10 @@ class CronManager {
   _seedWatchState() {
     const jobs = this._loadJobs();
     for (const job of jobs) {
-      // Don't seed _lastSeenRunAt — we want the first poll to fire a
-      // run_start for any job that has a last_run_at, so the GUI sees the
-      // running state. The output-dir scan will finalize it if there's a
-      // matching .md, or the time-based interruptor will fire if not.
+      // Seed existing last_run_at values so restarting the GUI watcher does
+      // not synthesize a fresh audit run for historical executions. Only a
+      // later disk change to last_run_at represents a new gateway run.
+      if (job.last_run_at) this._lastSeenRunAt.set(job.id, job.last_run_at);
       const outFile = this._latestOutputFile(job.id);
       if (outFile) this._lastSeenOutputFile.set(job.id, outFile);
     }
@@ -555,38 +555,47 @@ class CronManager {
   }
 
   _onNewRunObserved(job, startedAt) {
-    // Try to find an existing pending runId for this job (from triggerJob);
-    // if found, upgrade it. Otherwise create a fresh logRun.
+    // A job can report a new last_run_at while an older watcher-created run
+    // is still waiting for output. Keep each gateway run in its own audit
+    // file; otherwise detail views merge two executions and associate the
+    // wrong output Markdown.
     let ctx = null;
+    let ctxKey = null;
     for (const [key, c] of this._watchedRuns.entries()) {
-      if (c.jobId === job.id) { ctx = c; break; }
+      if (c.jobId === job.id) { ctx = c; ctxKey = key; break; }
     }
     if (ctx) {
-      // Already have a pending run for this job; promote it to a real run_start
-      this._appendEvent(ctx.logRun, {
-        type: 'run_start',
-        runId: ctx.runId,
-        jobId: job.id,
-        jobName: job.name || job.id,
-        startedAt,
-        prompt: job.prompt || '',
-      });
-    } else {
-      let logRun;
-      try { logRun = this.logStore.startRun(job); }
-      catch (err) { this.logger.warn('startRun failed:', err.message); return; }
-      this._appendEvent(logRun, {
-        type: 'run_start',
-        runId: logRun.runId,
-        jobId: job.id,
-        jobName: job.name || job.id,
-        startedAt,
-        prompt: job.prompt || '',
-      });
-      this._appendPolicyApplied(logRun, job);
-      ctx = { jobId: job.id, runId: logRun.runId, logRun, startedAt, jobName: job.name || job.id };
-      this._watchedRuns.set(`${job.id}:${startedAt}`, ctx);
+      if (ctx.startedAt === startedAt) {
+        this._sendLogUpdate(job.id, ctx.runId);
+        return;
+      }
+      try {
+        this.logStore.finishRun(ctx.logRun, {
+          status: 'interrupted',
+          error: 'superseded by a newer cron run before output file was observed',
+        });
+      } catch (err) {
+        this.logger.warn('finish superseded run failed:', err.message);
+      }
+      ctx.finalized = true;
+      this._watchedRuns.delete(ctxKey);
+      this._sendLogUpdate(ctx.jobId, ctx.runId);
     }
+
+    let logRun;
+    try { logRun = this.logStore.startRun(job); }
+    catch (err) { this.logger.warn('startRun failed:', err.message); return; }
+    this._appendEvent(logRun, {
+      type: 'run_start',
+      runId: logRun.runId,
+      jobId: job.id,
+      jobName: job.name || job.id,
+      startedAt,
+      prompt: job.prompt || '',
+    });
+    this._appendPolicyApplied(logRun, job);
+    ctx = { jobId: job.id, runId: logRun.runId, logRun, startedAt, jobName: job.name || job.id };
+    this._watchedRuns.set(`${job.id}:${startedAt}`, ctx);
     this._sendLogUpdate(job.id, ctx.runId);
   }
 
@@ -636,7 +645,6 @@ class CronManager {
       const finishedAt = new Date().toISOString();
       const status = job.last_status === 'ok' ? 'success' : (job.last_status === 'error' ? 'error' : 'success');
       const error = job.last_error || null;
-      this._appendEvent(ctx.logRun, { type: 'run_end', status, error, output: md, finishedAt });
       try { this.logStore.finishRun(ctx.logRun, { status, error, output: md }); }
       catch (err) { this.logger.error('finishRun:', err.message); }
       ctx.finalized = true;
@@ -656,7 +664,6 @@ class CronManager {
         const job = this._loadJobs().find((j) => j.id === c.jobId);
         if (job && job.last_run_at && job.last_run_at !== c.startedAt) {
           // The job moved on; mark this run as interrupted
-          this._appendEvent(c.logRun, { type: 'run_end', status: 'interrupted', error: 'no output file produced' });
           try { this.logStore.finishRun(c.logRun, { status: 'interrupted', error: 'no output file produced' }); }
           catch (_) { /* noop */ }
           c.finalized = true;
