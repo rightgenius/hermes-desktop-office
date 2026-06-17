@@ -85,6 +85,10 @@ class CronManager {
     // Polling interval
     this._pollIntervalMs = options.pollIntervalMs || 2000;
     this._pollTimer = null;
+    // Skill inlining throttle: post-processor reads SKILL.md from disk
+    // and rewrites jobs.json; we don't want to do it on every 2s tick.
+    this._lastInlineAt = 0;
+    this._inlineThrottleMs = options.inlineThrottleMs || 5000;
     // Stuck-run reconciliation: any `.jsonl.active` file older than this is
     // force-finalized as 'interrupted' on startup.
     this._staleRunMs = options.staleRunMs || 30 * 60 * 1000;
@@ -138,6 +142,263 @@ class CronManager {
     }
   }
 
+  // ---------- Skill resolution (inlined into cron prompt) ----------
+
+  /**
+   * Return the list of skill directories that could contain a SKILL.md,
+   * in priority order. Used by `resolveSkills()` to look up a skill by
+   * bare name. Mirrors the search order in `agent/skill_utils.py`
+   * (hermes-agent scheduler) plus the GUI's bundled office skills.
+   *
+   * Order matters: the FIRST directory that contains a matching
+   * `<name>/SKILL.md` wins.
+   */
+  _skillSearchDirs() {
+    const home = this._home();
+    const resourcesDir = process.resourcesPath || path.join(process.execPath, '..', 'Resources');
+    const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked');
+    const appDir = path.join(__dirname, '..');
+    const devHermesAgent = path.join(appDir, 'hermes-agent');
+    const dirs = [];
+
+    // 1) Bundled office skills (ship with the app, dev + prod)
+    const officeCandidates = [
+      path.join(unpackedDir, 'skills', 'office'),
+      path.join(resourcesDir, 'skills', 'office'),
+      path.join(appDir, '..', 'skills', 'office'),
+    ];
+    for (const cand of officeCandidates) {
+      if (!dirs.includes(cand) && fs.existsSync(cand)) dirs.push(cand);
+    }
+
+    // 2) hermes-agent submodule skills (dev: src/hermes-agent, prod: Resources/hermes-agent)
+    const hermesAgentCandidates = [
+      devHermesAgent,
+      path.join(resourcesDir, 'hermes-agent'),
+    ];
+    for (const cand of hermesAgentCandidates) {
+      if (!dirs.includes(cand) && fs.existsSync(cand)) {
+        dirs.push(path.join(cand, 'skills'));
+        dirs.push(path.join(cand, 'optional-skills'));
+      }
+    }
+
+    // 3) User-installed skills (only if present)
+    const userDirs = [
+      path.join(home, '.agents', 'skills'),
+      path.join(home, '.hermes', 'skills'),
+    ];
+    for (const d of userDirs) {
+      if (!dirs.includes(d) && fs.existsSync(d)) dirs.push(d);
+    }
+    return dirs;
+  }
+
+  /**
+   * Resolve a list of skill names to their on-disk SKILL.md content.
+   * Returns a map of `{name: {found, content, path, source, sizeBytes, error}}`.
+   *
+   * Used by the GUI to inline skill content into cron prompts at job-save
+   * time, so the cron job becomes self-contained and doesn't depend on
+   * the hermes-agent scheduler being able to find the skills at runtime.
+   */
+  async resolveSkills(names) {
+    const result = {};
+    const seen = new Set();
+    const searchDirs = this._skillSearchDirs();
+
+    for (const rawName of names || []) {
+      const name = String(rawName || '').trim();
+      if (!name) continue;
+      // Dedupe: if user passes the same name twice, only resolve once
+      if (seen.has(name)) continue;
+      seen.add(name);
+
+      if (!/^[A-Za-z0-9_.\-/]+$/.test(name)) {
+        result[name] = { found: false, error: 'invalid skill name', path: null, source: null, content: null, sizeBytes: 0 };
+        continue;
+      }
+
+      // 1) Direct hit: <root>/<name>/SKILL.md
+      // 2) Category-scoped: <root>/<cat>/<name>/SKILL.md (hermes-agent layout)
+      let resolved = null;
+      for (const root of searchDirs) {
+        const direct = path.join(root, name, 'SKILL.md');
+        if (fs.existsSync(direct)) {
+          resolved = { path: direct, source: this._classifySource(root) };
+          break;
+        }
+        try {
+          const entries = fs.readdirSync(root, { withFileTypes: true });
+          for (const e of entries) {
+            if (!e.isDirectory()) continue;
+            const nested = path.join(root, e.name, name, 'SKILL.md');
+            if (fs.existsSync(nested)) {
+              resolved = { path: nested, source: this._classifySource(root) };
+              break;
+            }
+          }
+        } catch { /* ignore unreadable roots */ }
+        if (resolved) break;
+      }
+
+      if (!resolved) {
+        result[name] = { found: false, error: 'SKILL.md not found in any known skills directory', path: null, source: null, content: null, sizeBytes: 0 };
+        continue;
+      }
+
+      try {
+        const content = fs.readFileSync(resolved.path, 'utf-8');
+        result[name] = {
+          found: true,
+          content,
+          path: resolved.path,
+          source: resolved.source,
+          sizeBytes: Buffer.byteLength(content, 'utf-8'),
+        };
+      } catch (err) {
+        result[name] = { found: false, error: `read failed: ${err.message}`, path: resolved.path, source: resolved.source, content: null, sizeBytes: 0 };
+      }
+    }
+    return result;
+  }
+
+  _classifySource(rootDir) {
+    const home = this._home();
+    if (rootDir.startsWith(path.join(home, '.agents', 'skills'))) return 'user';
+    if (rootDir.startsWith(path.join(home, '.hermes', 'skills'))) return 'agent';
+    if (rootDir.endsWith(path.join('skills', 'office'))) return 'bundled-office';
+    if (rootDir.endsWith(path.sep + 'skills') || rootDir.endsWith(path.sep + 'optional-skills')) return 'hermes-agent';
+    return 'unknown';
+  }
+
+  /**
+   * Assemble a final cron prompt by inlining the selected skills' content
+   * ahead of the user's task prompt. The format mirrors what
+   * `hermes-agent/cron/scheduler.py::_build_job_prompt` produces when it
+   * successfully resolves `job.skills` — so the inlined prompt reads the
+   * same to the agent whether the content was inlined at save time or at
+   * run time.
+   *
+   * If a skill is not `found`, an inline `⚠️` notice is emitted instead of
+   * the content, so the agent can mention it in its report (matches the
+   * scheduler's own behaviour).
+   */
+  async buildInlinedPrompt(taskPrompt, skillNames) {
+    const trimmedTask = String(taskPrompt || '').trim();
+    const names = (skillNames || []).map((n) => String(n || '').trim()).filter(Boolean);
+    if (names.length === 0) {
+      return { prompt: trimmedTask, resolved: {}, missing: [] };
+    }
+    const resolved = await this.resolveSkills(names);
+    const parts = [];
+    const missing = [];
+    for (const name of names) {
+      const entry = resolved[name];
+      if (entry && entry.found) {
+        parts.push(
+          `[IMPORTANT: The user has invoked the "${name}" skill, indicating they want you to follow its instructions. The full skill content is loaded below.]\n`,
+          '',
+          entry.content,
+          ''
+        );
+      } else {
+        missing.push(name);
+      }
+    }
+    if (missing.length > 0) {
+      parts.unshift(
+        `[IMPORTANT: The following skill(s) were listed for this job but could not be found and were skipped: ${missing.join(', ')}. Start your response with a brief notice so the user is aware, e.g.: '⚠️ Skill(s) not found and skipped: ${missing.join(', ')}']\n`
+      );
+    }
+    if (trimmedTask) {
+      parts.push('', `# === User task ===`, '', trimmedTask);
+    }
+    return { prompt: parts.join('\n'), resolved, missing };
+  }
+
+  // ---------- Skill inlining post-processor (jobs.json) ----------
+
+  /**
+   * Check whether `job.skills` has already been inlined into `job.prompt`.
+   * Returns true when the inlined marker matches the skills list AND a
+   * non-empty prompt is present, false when re-inlining is required.
+   *
+   * Treats `null` / `undefined` `inlinedSkills` as "not inlined yet". A
+   * mismatch (e.g. user added or removed a skill) triggers re-inlining.
+   */
+  _skillsAreInlined(job) {
+    const skills = Array.isArray(job.skills) ? job.skills.filter(Boolean) : [];
+    const inlined = Array.isArray(job.inlinedSkills) ? job.inlinedSkills.filter(Boolean) : [];
+    if (skills.length === 0 && inlined.length === 0) return true;
+    if (skills.length !== inlined.length) return false;
+    const a = new Set(skills);
+    const b = new Set(inlined);
+    for (const x of a) if (!b.has(x)) return false;
+    return true;
+  }
+
+  /**
+   * Post-process jobs.json: for any job whose `skills` field lists names
+   * that haven't been inlined into `prompt` yet, read each SKILL.md from
+   * the same paths the GUI form uses and rewrite the job's `prompt` with
+   * the inlined content. This guarantees the cron prompt is
+   * self-contained regardless of who created the job (GUI form, chat
+   * agent via `cronjob` tool, TUI, or `hermes cron add`).
+   *
+   * Throttled to run at most every `inlineThrottleMs` (default 5s) so
+   * heavy `readFile` work doesn't dominate the watcher loop.
+   */
+  async _maybeInlineSkills() {
+    const now = Date.now();
+    if (now - (this._lastInlineAt || 0) < (this._inlineThrottleMs || 5000)) return;
+    this._lastInlineAt = now;
+
+    const jobs = this._loadJobs();
+    if (jobs.length === 0) return;
+
+    const dirty = [];
+    for (const job of jobs) {
+      if (this._skillsAreInlined(job)) continue;
+      dirty.push(job);
+    }
+    if (dirty.length === 0) return;
+
+    for (const job of dirty) {
+      try {
+        const skillList = (job.skills || []).filter(Boolean);
+        // If the user prompt already has inlined content (e.g. the GUI
+        // form assembled it), don't double-inline. The form sets
+        // `inlinedSkills` so this branch normally doesn't fire — it's
+        // the chat-agent path that hits this.
+        const { prompt, missing } = await this.buildInlinedPrompt(job.prompt || '', skillList);
+        // Preserve the user's original input as taskPrompt so the edit
+        // form can round-trip back to the same source text. If the chat
+        // agent has already supplied taskPrompt, leave it alone.
+        if (!job.taskPrompt) job.taskPrompt = job.prompt || '';
+        job.prompt = prompt;
+        job.inlinedSkills = skillList.slice();
+        job.inlinedSkillsAt = new Date().toISOString();
+        if (missing.length > 0) {
+          job.inlinedSkillsMissing = missing;
+          this.logger.warn(
+            `[cron] job '${job.name || job.id}' inlined ${skillList.length - missing.length}/${skillList.length} skills; missing: ${missing.join(', ')}`
+          );
+        } else {
+          delete job.inlinedSkillsMissing;
+          this.logger.info(
+            `[cron] job '${job.name || job.id}' auto-inlined ${skillList.length} skill(s) into prompt`
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `[cron] job '${job.name || job.id}' auto-inline failed: ${err.message}`
+        );
+      }
+    }
+    this._saveJobs(jobs);
+  }
+
   // ---------- CRUD on jobs.json (GUI's read/write of the shared source of truth) ----------
 
   _ensureDirs() {
@@ -176,10 +437,24 @@ class CronManager {
   async createJob(data) {
     const jobs = this._loadJobs();
     const schedule = this.parseCronScheduleInput(data.schedule);
+    // Use `taskPrompt` (the user's original input) as the name seed when
+    // the GUI pre-inlined skill content into `prompt`. Falling back to
+    // `prompt` keeps the legacy path working.
+    const nameSeed = data.taskPrompt || data.prompt || '';
     const job = {
       id: Math.random().toString(36).substring(2, 14),
-      name: data.name || (data.prompt || '').substring(0, 50),
+      name: data.name || nameSeed.substring(0, 50),
+      // `prompt` is the final, self-contained prompt (skills inlined).
       prompt: data.prompt,
+      // `taskPrompt` is the user's original input (without inlined skill
+      // content). The renderer reads this back to populate the form on
+      // edit. May be `null` for legacy jobs created before this feature.
+      taskPrompt: data.taskPrompt ?? null,
+      // Names of skills that were inlined into `prompt` at save time.
+      // Empty array when the user didn't select any. Persisted as a hint
+      // for the GUI but not used by the hermes-agent scheduler (which
+      // sees only the inlined `prompt`).
+      inlinedSkills: Array.isArray(data.inlinedSkills) ? data.inlinedSkills : [],
       skills: data.skills || [],
       skill: (data.skills && data.skills[0]) || null,
       schedule,
@@ -213,6 +488,14 @@ class CronManager {
     const idx = jobs.findIndex((j) => j.id === jobId);
     if (idx === -1) return null;
     const merged = { ...jobs[idx], ...updates };
+    // Defensive: when the caller (e.g. a non-GUI scheduler) sends a partial
+    // update without these new fields, preserve whatever was persisted
+    // before rather than wiping them to undefined.
+    for (const k of ['taskPrompt', 'inlinedSkills']) {
+      if (!Object.prototype.hasOwnProperty.call(updates, k)) {
+        merged[k] = jobs[idx][k];
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(updates, 'schedule')) {
       // Caller is touching the schedule — always normalize whatever they passed
       // (string or already-structured). The legacy persisted schedule, if any,
@@ -532,6 +815,10 @@ class CronManager {
     try { this._scanJobStates(); } catch (e) { this.logger.error('scanJobStates:', e.message); }
     try { this._scanOutputDir(); } catch (e) { this.logger.error('scanOutputDir:', e.message); }
     try { this._scanAgentLog(); } catch (e) { this.logger.error('scanAgentLog:', e.message); }
+    // Fire-and-forget: rewrite jobs.json with inlined skill content for any
+    // job that has a `skills` field but no `inlinedSkills` marker. Throttled
+    // inside `_maybeInlineSkills` so it doesn't run on every tick.
+    this._maybeInlineSkills().catch((e) => this.logger.error('inlineSkills:', e.message));
   }
 
   _scanJobStates() {

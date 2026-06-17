@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('api', {
   cronPolicyGet: () => ipcRenderer.invoke('cron:policy:get'),
   cronPolicySet: (data) => ipcRenderer.invoke('cron:policy:set', data),
   cronPolicyTest: (command) => ipcRenderer.invoke('cron:policy:test', { command }),
+  cronResolveSkills: (names) => ipcRenderer.invoke('cron:resolve-skills', names),
+  cronBuildInlinedPrompt: (payload) => ipcRenderer.invoke('cron:build-inlined-prompt', payload),
   onCronStatus: (fn) => {
     const handler = (_, data) => fn(data);
     ipcRenderer.on('cron-status', handler);

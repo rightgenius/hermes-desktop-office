@@ -3672,6 +3672,12 @@ const cronEls = {
   permissionRefresh: document.getElementById('cron-permission-refresh'),
   permissionStats: document.getElementById('cron-permission-stats'),
   permissionList: document.getElementById('cron-permission-list'),
+  // 内嵌技能选择器
+  skillList: document.getElementById('cron-skill-list'),
+  skillSummary: document.getElementById('cron-skill-summary'),
+  skillRefresh: document.getElementById('cron-skill-refresh'),
+  skillSearch: document.getElementById('cron-skill-search'),
+  skillToolbarCount: document.getElementById('cron-skill-toolbar-count'),
 };
 
 let cronJobs = [];
@@ -3695,6 +3701,16 @@ let cronLogFilesSearchMatches = [];        // 当前搜索匹配下标数组 (�
 let cronLogFilesSearchCursor = -1;
 let cronLogFilesLastSize = -1;             // 用于自动刷新时按大小变化判断
 let cronLogFilesLoadedRunId = null;        // 当前加载文件清单的 runId
+
+// 内嵌技能选择器状态
+// availableSkills: 从 window.api.skillsList() 拉到的所有技能（去重后的最新数据）
+// selectedSkillNames: Set<string> — 用户在当前模态框里勾选的技能名
+// preselectSkillNames: string[] — 编辑模式时从 job.inlinedSkills 读出的初选集合
+// skillSearchQuery: string — 当前搜索框里的关键词（小写）
+let availableSkills = [];
+let selectedSkillNames = new Set();
+let preselectSkillNames = [];
+let skillSearchQuery = '';
 
 async function loadCronJobs() {
   const result = await window.api.cronList();
@@ -4455,14 +4471,19 @@ function editCronJob(jobId) {
   if (!job) return;
   editingCronJobId = jobId;
   cronEls.modalTitle.textContent = '编辑定时任务';
+  // 优先显示用户的原始 taskPrompt；如果 job 是老格式（没有 taskPrompt），
+  // 直接把 job.prompt 显示出来即可（用户可能想完整重写）。
   cronEls.name.value = job.name || '';
-  cronEls.prompt.value = job.prompt || '';
+  cronEls.prompt.value = job.taskPrompt != null ? job.taskPrompt : (job.prompt || '');
   cronEls.repeat.value = job.repeat?.times || '';
   cronEls.workdir.value = job.workdir || '';
   // 回填自动授权策略：默认 denylist
   const authValue = job.autoAuthorize || 'denylist';
   const authRadio = document.querySelector(`input[name="cron-auto-authorize"][value="${authValue}"]`);
   if (authRadio) authRadio.checked = true;
+  // 预选之前内嵌过的技能（保存时会被重新解析）
+  preselectSkillNames = Array.isArray(job.inlinedSkills) ? job.inlinedSkills.slice() : [];
+  selectedSkillNames = new Set(preselectSkillNames);
   // 回填调度方式：必须先填好再让用户编辑，否则保存会落到默认 every 30m。
   // 优先用 listJobs() 注入的 _parsedSchedule（兼容历史字符串），其次用结构化 schedule。
   prefillCronScheduleForm(job);
@@ -4541,6 +4562,8 @@ function setCronScheduleType(type) {
 
 function openCronModal() {
   cronEls.modal.style.display = 'flex';
+  // 每次打开都重新拉取技能列表，确保内嵌的总是最新内容
+  loadCronSkillPicker();
 }
 
 function closeCronModal() {
@@ -4560,6 +4583,158 @@ function closeCronModal() {
   // 重置自动授权策略回默认
   const defaultAuth = document.querySelector('input[name="cron-auto-authorize"][value="denylist"]');
   if (defaultAuth) defaultAuth.checked = true;
+  // 重置技能选择器
+  selectedSkillNames = new Set();
+  preselectSkillNames = [];
+  availableSkills = [];
+  skillSearchQuery = '';
+  if (cronEls.skillSearch) cronEls.skillSearch.value = '';
+  renderCronSkillPicker();
+}
+
+// ---------- 内嵌技能选择器 ----------
+
+/**
+ * Load the list of available skills from the main process and render the
+ * picker. Called on every modal open so the user always sees the latest
+ * bundled skill content (skills/office/ changes with new app versions).
+ */
+async function loadCronSkillPicker() {
+  if (!cronEls.skillList) return;
+  cronEls.skillList.innerHTML = '<div class="cron-skill-empty">加载中...</div>';
+  try {
+    const result = await window.api.skillsList();
+    if (!result?.success) {
+      cronEls.skillList.innerHTML = '<div class="cron-skill-empty">加载技能列表失败</div>';
+      return;
+    }
+    const all = [
+      ...(result.builtin || []),
+      ...(result.user || []),
+      ...(result.agent || []),
+    ];
+    // Dedupe by skill name (frontmatter `name:`), preferring the first source
+    // (builtin > user > agent). This keeps the picker stable when the same
+    // skill exists in multiple locations.
+    const seen = new Map();
+    for (const s of all) {
+      const key = s.name || (s.path ? s.path.split('/').pop() : null);
+      if (!key) continue;
+      if (!seen.has(key)) seen.set(key, s);
+    }
+    availableSkills = Array.from(seen.values()).sort((a, b) => {
+      const an = a.name || '';
+      const bn = b.name || '';
+      return an.localeCompare(bn);
+    });
+  } catch (err) {
+    cronEls.skillList.innerHTML = `<div class="cron-skill-empty">加载失败: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  renderCronSkillPicker();
+}
+
+function renderCronSkillPicker() {
+  if (!cronEls.skillList) return;
+
+  // 搜索过滤：匹配 name / description / path（不区分大小写）
+  const q = skillSearchQuery.trim().toLowerCase();
+  const filtered = q
+    ? availableSkills.filter((s) => {
+        const name = (s.name || '').toLowerCase();
+        const desc = (s.description || '').toLowerCase();
+        const path = (s.path || '').toLowerCase();
+        return name.includes(q) || desc.includes(q) || path.includes(q);
+      })
+    : availableSkills;
+
+  // 工具栏计数：显示「过滤后 / 总数」，搜出 0 条时给强提示
+  if (cronEls.skillToolbarCount) {
+    if (availableSkills.length === 0) {
+      cronEls.skillToolbarCount.textContent = '0';
+    } else if (q) {
+      cronEls.skillToolbarCount.textContent = `${filtered.length} / ${availableSkills.length}`;
+    } else {
+      cronEls.skillToolbarCount.textContent = `${availableSkills.length}`;
+    }
+  }
+
+  if (availableSkills.length === 0) {
+    cronEls.skillList.innerHTML = '<div class="cron-skill-empty">没有可用技能</div>';
+  } else if (filtered.length === 0) {
+    cronEls.skillList.innerHTML = `<div class="cron-skill-empty">没有匹配 “${escapeHtml(q)}” 的技能</div>`;
+  } else {
+    const rows = filtered.map((s) => {
+      const name = escapeHtml(s.name || '');
+      const desc = highlightMatch(escapeHtml(s.description || ''), q);
+      const source = s.source || 'unknown';
+      const path = s.path || '';
+      const checked = selectedSkillNames.has(s.name) ? 'checked' : '';
+      return `
+        <label class="cron-skill-row" data-skill-name="${escapeHtml(s.name)}">
+          <input type="checkbox" data-skill-checkbox="${escapeHtml(s.name)}" ${checked}>
+          <div class="cron-skill-name">
+            <span title="${name}">${name}</span>
+            <span class="cron-skill-source ${escapeHtml(source)}">${escapeHtml(sourceLabel(source))}</span>
+          </div>
+          <div class="cron-skill-row-desc" title="${escapeHtml(s.description || '')}">${desc || '<span style="opacity:0.5">（无描述）</span>'}</div>
+          ${path ? `<div class="cron-skill-row-path" title="${escapeHtml(path)}">${escapeHtml(path)}</div>` : ''}
+        </label>
+      `;
+    }).join('');
+    cronEls.skillList.innerHTML = rows;
+    // 绑定 checkbox 事件
+    cronEls.skillList.querySelectorAll('input[type="checkbox"][data-skill-checkbox]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const name = cb.getAttribute('data-skill-checkbox');
+        if (cb.checked) selectedSkillNames.add(name);
+        else selectedSkillNames.delete(name);
+        updateCronSkillSummary();
+      });
+    });
+  }
+  updateCronSkillSummary();
+}
+
+/**
+ * Wrap case-insensitive matches of `query` in <mark> tags. The query is
+ * already escaped at the caller (we just regex against escaped text), so
+ * here we only need to escape regex metacharacters.
+ */
+function highlightMatch(escapedText, query) {
+  if (!query) return escapedText;
+  const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  return escapedText.replace(re, (m) => `<mark>${m}</mark>`);
+}
+
+function sourceLabel(source) {
+  switch (source) {
+    case 'builtin': return '内置';
+    case 'user': return '用户';
+    case 'agent': return 'Agent';
+    case 'bundled-office': return '打包·办公';
+    case 'hermes-agent': return '内置';
+    default: return source || '未知';
+  }
+}
+
+function updateCronSkillSummary() {
+  if (!cronEls.skillSummary) return;
+  const selected = Array.from(selectedSkillNames);
+  if (selected.length === 0) {
+    cronEls.skillSummary.classList.remove('active');
+    cronEls.skillSummary.innerHTML = '';
+    return;
+  }
+  // Renderer has no `Buffer`; use TextEncoder to compute UTF-8 bytes.
+  const enc = new TextEncoder();
+  const totalBytes = availableSkills
+    .filter((s) => selectedSkillNames.has(s.name))
+    .reduce((sum, s) => sum + (s.skillMdContent ? enc.encode(s.skillMdContent).length : 0), 0);
+  const totalKb = (totalBytes / 1024).toFixed(1);
+  const warn = totalBytes > 50_000 ? ' <span class="warn">(内嵌内容较大，可能影响 LLM 缓存复用)</span>' : '';
+  cronEls.skillSummary.classList.add('active');
+  cronEls.skillSummary.innerHTML = `已选 <strong>${selected.length}</strong> 个技能，预估内嵌体积约 <strong>${totalKb} KB</strong>${warn}`;
 }
 
 /**
@@ -4590,8 +4765,8 @@ function getCronScheduleInput() {
 }
 
 async function saveCronJob() {
-  const prompt = cronEls.prompt.value.trim();
-  if (!prompt) {
+  const taskPrompt = cronEls.prompt.value.trim();
+  if (!taskPrompt) {
     alert('请输入提示词');
     return;
   }
@@ -4617,9 +4792,36 @@ async function saveCronJob() {
     scheduleInput = getCronScheduleInput();
   }
 
+  // 把勾选的技能内容拼到 prompt 顶部，让定时任务自带上下文
+  const inlinedSkills = Array.from(selectedSkillNames);
+  let finalPrompt = taskPrompt;
+  let missingSkills = [];
+  if (inlinedSkills.length > 0) {
+    const result = await window.api.cronBuildInlinedPrompt({
+      prompt: taskPrompt,
+      skills: inlinedSkills,
+    });
+    if (result?.success) {
+      finalPrompt = result.prompt;
+      missingSkills = result.missing || [];
+      if (missingSkills.length > 0) {
+        const proceed = confirm(
+          `以下技能在磁盘上找不到 SKILL.md，保存时会跳过：\n  - ${missingSkills.join('\n  - ')}\n\n` +
+          '是否仍然保存？（保存后定时任务的 prompt 里会缺少这些技能的内容）'
+        );
+        if (!proceed) return;
+      }
+    } else {
+      alert('拼装技能内容失败: ' + (result?.error || '未知错误'));
+      return;
+    }
+  }
+
   const data = {
     name: cronEls.name.value.trim() || undefined,
-    prompt,
+    taskPrompt,                       // 用户的原始提示词（不含内嵌技能）
+    prompt: finalPrompt,              // 最终送进 LLM 的完整 prompt
+    inlinedSkills,                    // 记录哪些技能被内嵌（编辑时用）
     schedule: scheduleInput,
     repeat: cronEls.repeat.value ? parseInt(cronEls.repeat.value) : null,
     workdir: cronEls.workdir.value.trim() || null,
@@ -4676,6 +4878,11 @@ if (cronEls.syncResumeBtn) cronEls.syncResumeBtn.addEventListener('click', async
 if (cronEls.modalClose) cronEls.modalClose.addEventListener('click', closeCronModal);
 if (cronEls.modalCancel) cronEls.modalCancel.addEventListener('click', closeCronModal);
 if (cronEls.modalSave) cronEls.modalSave.addEventListener('click', saveCronJob);
+if (cronEls.skillRefresh) cronEls.skillRefresh.addEventListener('click', () => loadCronSkillPicker());
+if (cronEls.skillSearch) cronEls.skillSearch.addEventListener('input', (e) => {
+  skillSearchQuery = e.target.value || '';
+  renderCronSkillPicker();
+});
 
 if (cronEls.browseWorkdir) cronEls.browseWorkdir.addEventListener('click', async () => {
   const p = prompt('输入工作目录路径:');

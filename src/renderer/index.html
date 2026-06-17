@@ -717,6 +717,28 @@
               <textarea id="cron-prompt" placeholder="任务执行内容，如：检查邮件并总结未回复的邮件"></textarea>
             </div>
             <div class="form-group">
+              <label>
+                内嵌技能（保存时把 SKILL.md 内容拼到 prompt 前部）
+                <button type="button" class="btn-link" id="cron-skill-refresh">刷新</button>
+              </label>
+              <div class="cron-skill-picker">
+                <div class="cron-skill-toolbar">
+                  <input type="search" id="cron-skill-search" placeholder="搜索技能名称或描述..." autocomplete="off">
+                  <span class="cron-skill-toolbar-count" id="cron-skill-toolbar-count"></span>
+                </div>
+                <div id="cron-skill-list" class="cron-skill-list">
+                  <div class="cron-skill-empty">加载中...</div>
+                </div>
+                <div class="cron-skill-summary" id="cron-skill-summary"></div>
+              </div>
+              <small class="form-hint">
+                勾选的技能会在保存时把完整 <code>SKILL.md</code> 内容拼接到 prompt 顶部，
+                让定时任务自带上下文，<strong>不依赖运行时能否找到技能</strong>（解决部分
+                打包技能在 <code>skills/office/</code> 下不被 hermes-agent 默认搜索的问题）。
+                修改打包技能后记得回来「刷新」重新内嵌。
+              </small>
+            </div>
+            <div class="form-group">
               <label>自动授权策略</label>
               <div class="cron-auto-authorize">
                 <label>

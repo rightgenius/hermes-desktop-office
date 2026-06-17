@@ -30,6 +30,7 @@ function handle(channel, listener) {
 }
 let agentManager = null;
 let cronManager = null;
+let gatewayManager = null;
 
 function getCLIBinaryPath(cliName) {
   const platform = process.platform;
@@ -117,7 +118,7 @@ function setupIPCHandlers(mainWindow) {
   // cronManager.start via the agent-start IPC handler).
   cronManager.start().catch((err) => console.error('cronManager.start failed:', err));
   const { GatewayManager } = require('./gateway-manager');
-  const gatewayManager = new GatewayManager(mainWindow);
+  gatewayManager = new GatewayManager(mainWindow);
 
   // Auto-detect external gateway on startup, then start periodic health checks
   (async () => {
@@ -1046,6 +1047,69 @@ function setupIPCHandlers(mainWindow) {
           action: hit.rule.action,
           description: hit.rule.description,
         } : null,
+      };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // ----- Cron skill resolution (inlined into job prompt at save time) -----
+  // Returns the on-disk SKILL.md content + metadata for each requested name.
+  // Used by the GUI to build a self-contained cron prompt that doesn't
+  // depend on the hermes-agent scheduler being able to find the skills at
+  // run time (especially important for skills in `skills/office/` that
+  // the scheduler's skill_view() doesn't search by default).
+  handle('cron:resolve-skills', async (_, names) => {
+    try {
+      if (!Array.isArray(names)) {
+        return { success: false, error: 'names 必须是字符串数组' };
+      }
+      const resolved = await cronManager.resolveSkills(names);
+      const skills = [];
+      for (const name of names) {
+        const entry = resolved[name] || { found: false, error: 'not resolved', path: null, source: null, content: null, sizeBytes: 0 };
+        skills.push({
+          name,
+          found: !!entry.found,
+          path: entry.path,
+          source: entry.source,
+          sizeBytes: entry.sizeBytes || 0,
+          error: entry.error || null,
+          // Only include content on demand — callers can re-fetch via
+          // buildInlinedPrompt to avoid a huge IPC payload when previewing
+          // a long list. For backwards compat, include it when the caller
+          // is going to use it (the GUI always does).
+          content: entry.found ? entry.content : null,
+        });
+      }
+      return { success: true, skills };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
+
+  // Build a self-contained cron prompt with the given skills inlined ahead
+  // of the task prompt. Returns the final prompt string + metadata about
+  // which skills were resolved and which were missing.
+  handle('cron:build-inlined-prompt', async (_, { prompt, skills } = {}) => {
+    try {
+      if (typeof prompt !== 'string') {
+        return { success: false, error: 'prompt 必须是字符串' };
+      }
+      const result = await cronManager.buildInlinedPrompt(prompt, Array.isArray(skills) ? skills : []);
+      return {
+        success: true,
+        prompt: result.prompt,
+        missing: result.missing,
+        resolved: Object.fromEntries(
+          Object.entries(result.resolved).map(([k, v]) => [k, {
+            found: !!v.found,
+            path: v.path,
+            source: v.source,
+            sizeBytes: v.sizeBytes || 0,
+            error: v.error || null,
+          }])
+        ),
       };
     } catch (err) {
       return { success: false, error: err.message };
