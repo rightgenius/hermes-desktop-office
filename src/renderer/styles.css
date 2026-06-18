@@ -3028,6 +3028,23 @@ body {
   border-color: var(--accent);
 }
 
+/* Paused jobs: keep them visible (pausing must never look like deletion),
+   but visually subordinate them so users can scan the list at a glance. */
+.cron-card.paused {
+  border-style: dashed;
+  border-color: #4a3f1a;
+  opacity: 0.78;
+}
+
+.cron-card.paused:hover {
+  opacity: 1;
+}
+
+.cron-card.paused .cron-card-status.paused {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
 .cron-card-header {
   display: flex;
   align-items: center;

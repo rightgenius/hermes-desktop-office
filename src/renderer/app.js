@@ -3782,17 +3782,18 @@ function renderCronList() {
     const statusText = {
       scheduled: '等待中',
       running: '执行中',
-      paused: '已暂停',
+      paused: '⏸ 已暂停',
       error: '错误',
       completed: '已完成',
     }[statusClass] || statusClass;
+    const isPaused = job.state === 'paused' || job.enabled === false;
 
     const nextRun = job.next_run_at ? formatCronListDateTime(job.next_run_at) : '-';
     const lastRun = job.last_run_at ? formatCronListDateTime(job.last_run_at) : '-';
     const schedule = typeof job.schedule_display === 'string' ? job.schedule_display : (typeof job.schedule === 'string' ? job.schedule : '-');
 
     html += `
-      <div class="cron-card" data-job-id="${job.id}">
+      <div class="cron-card${isPaused ? ' paused' : ''}" data-job-id="${job.id}">
         <div class="cron-card-header">
           <div class="cron-card-title">
             <span class="cron-card-name">${escapeHtml(job.name || '未命名任务')}</span>

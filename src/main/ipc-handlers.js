@@ -833,7 +833,7 @@ function setupIPCHandlers(mainWindow) {
   });
 
   // Cron IPC handlers
-  handle('cron:list', async (_, includeDisabled = false) => {
+  handle('cron:list', async (_, includeDisabled = true) => {
     try {
       const jobs = await cronManager.listJobs(includeDisabled);
       return { success: true, jobs };

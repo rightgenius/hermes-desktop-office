@@ -424,7 +424,7 @@ class CronManager {
     fs.renameSync(tmp, this._jobsFile);
   }
 
-  async listJobs(includeDisabled = false) {
+  async listJobs(includeDisabled = true) {
     let jobs = this._loadJobs();
     if (!includeDisabled) jobs = jobs.filter((j) => j.enabled !== false);
     // Read-only normalize schedule for UI display. We don't migrate to disk
