@@ -2302,44 +2302,66 @@ async function selectAttachments() {
   }
 }
 
-async function sendMessage() {
-  const text = chatInput.value.trim();
-  const attachments = [...selectedAttachments];
-  if (!text && attachments.length === 0) return;
+// Send a chat message to the agent. Shared by the chat input (sendMessage)
+// and by the cron "立即执行" button, which builds a new chat session from a
+// cron job's prompt and then dispatches it through the same code path.
+//
+// `options.title` overrides the session's auto-generated title — used by the
+// cron trigger to mark the session with a ⏰ prefix in the sidebar.
+async function sendChatMessage(text, options = {}) {
+  if (!text || !text.trim()) return;
   if (!agentRunning) {
     addMessage('Agent 暂未连接，请在日志页面启动 Agent 后重试。', 'agent');
     return;
   }
 
-  // Create new session if this is the first message
   if (!currentSessionId) {
     currentSessionId = createNewSession();
   }
 
-  const messageForAgent = buildMessageWithAttachments(text, attachments);
-  const userMessageIndex = addMessageToSession(messageForAgent, 'user');
-  addMessage(messageForAgent, 'user', false, '', [], '', userMessageIndex);
-  chatInput.value = '';
-  chatInput.style.height = 'auto';
-  selectedAttachments = [];
-  renderSelectedAttachments();
-  updateChatLayout();
+  const userMessageIndex = addMessageToSession(text, 'user');
+  addMessage(text, 'user', false, '', [], '', userMessageIndex);
+
+  // addMessageToSession auto-titles from the first user message; override it
+  // when the caller asked for a specific title (e.g. cron-triggered runs).
+  if (options.title) {
+    const sessions = loadSessions();
+    if (sessions[currentSessionId]) {
+      sessions[currentSessionId].title = options.title;
+      saveSessions(sessions);
+      renderSessionList();
+    }
+  }
 
   sendBtn.disabled = true;
   sendBtn.textContent = '发送中...';
   if (stopBtn) stopBtn.style.display = '';
 
-  // Build conversation history from current session
   const history = buildConversationHistory();
 
   try {
-    const result = await window.api.agentSendMessage(currentSessionId, messageForAgent, history);
+    const result = await window.api.agentSendMessage(currentSessionId, text, history);
     if (!result.success) {
       addMessage(result.error || '发送失败', 'agent');
     }
   } catch (err) {
     addMessage(`发送异常: ${err.message}`, 'agent');
   }
+}
+
+async function sendMessage() {
+  const text = chatInput.value.trim();
+  const attachments = [...selectedAttachments];
+  if (!text && attachments.length === 0) return;
+
+  const messageForAgent = buildMessageWithAttachments(text, attachments);
+  chatInput.value = '';
+  chatInput.style.height = 'auto';
+  selectedAttachments = [];
+  renderSelectedAttachments();
+  updateChatLayout();
+
+  await sendChatMessage(messageForAgent);
 }
 
 function buildConversationHistory() {
@@ -3772,7 +3794,10 @@ function renderCronList() {
     html += `
       <div class="cron-card" data-job-id="${job.id}">
         <div class="cron-card-header">
-          <span class="cron-card-name">${escapeHtml(job.name || '未命名任务')}</span>
+          <div class="cron-card-title">
+            <span class="cron-card-name">${escapeHtml(job.name || '未命名任务')}</span>
+            <button type="button" class="cron-card-id" data-job-id="${job.id}" title="点击复制 ID" aria-label="复制任务 ID">${escapeHtml(job.id)}</button>
+          </div>
           <span class="cron-card-status ${statusClass}">${statusText}</span>
         </div>
         <div class="cron-card-meta">
@@ -3814,6 +3839,41 @@ function renderCronList() {
   cronEls.list.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', () => deleteCronJob(btn.dataset.jobId));
   });
+  cronEls.list.querySelectorAll('.cron-card-id').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyCronJobId(btn);
+    });
+  });
+}
+
+async function copyCronJobId(btn) {
+  const id = btn.dataset.jobId;
+  if (!id) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(id);
+    } else {
+      // Fallback for environments without async Clipboard API
+      const ta = document.createElement('textarea');
+      ta.value = id;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    const original = btn.textContent;
+    btn.textContent = '已复制';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = original;
+      btn.classList.remove('copied');
+    }, 1200);
+  } catch (err) {
+    console.warn('[cron] failed to copy id', err);
+  }
 }
 
 function formatCronListDateTime(isoString) {
@@ -4456,8 +4516,40 @@ async function resumeCronJob(jobId) {
 }
 
 async function triggerCronJob(jobId) {
-  const result = await window.api.cronTrigger(jobId);
-  if (result.success) await loadCronJobs();
+  const job = cronJobs.find(j => j.id === jobId);
+  if (!job) {
+    console.warn('[cron] trigger: job not found', jobId);
+    return;
+  }
+
+  // Use the inlined prompt (what the cron scheduler would actually run).
+  // Fall back to the user's original taskPrompt for legacy jobs that were
+  // created before the inlined-skill feature.
+  const prompt = (job.prompt && job.prompt.trim()) || job.taskPrompt;
+  if (!prompt || !prompt.trim()) {
+    alert('该定时任务没有可执行的 Prompt。');
+    return;
+  }
+
+  // Build a new chat session dedicated to this run so the user can watch the
+  // agent's response stream in real time. The session inherits the cron's
+  // workdir so the agent runs in the same directory the cron would.
+  const newSessionId = createNewSession();
+  const sessions = loadSessions();
+  if (sessions[newSessionId]) {
+    const titleSeed = job.name || prompt;
+    sessions[newSessionId].title = `⏰ ${titleSeed}`.slice(0, 30);
+    sessions[newSessionId].workspacePath = job.workdir || null;
+    saveSessions(sessions);
+  }
+
+  // Switch to the chat page and load the new session (this also syncs the
+  // workspace path to the agent and renders the empty state).
+  showPage('chat');
+  loadSession(newSessionId);
+
+  const title = sessions[newSessionId]?.title || `⏰ ${job.name || prompt}`.slice(0, 30);
+  await sendChatMessage(prompt, { title });
 }
 
 async function deleteCronJob(jobId) {

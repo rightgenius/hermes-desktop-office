@@ -3032,12 +3032,52 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.cron-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .cron-card-name {
   font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cron-card-id {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.cron-card-id:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.cron-card-id.copied {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--bg-secondary);
 }
 
 .cron-card-status {
@@ -3240,15 +3280,25 @@ body {
 }
 
 .cron-skill-row {
-  display: grid;
-  grid-template-columns: 18px 200px 1fr;
-  align-items: center;
-  gap: 10px;
+  /* !important: the parent .cron-skill-list is `display: flex`, which makes
+     these <label> children flex items. Chromium blockifies flex items'
+     display property and downgrades `grid` to `block` (a long-standing
+     deviation from the CSS Display spec, which only blockifies inline-level
+     values). Without !important the row collapses to block layout and the
+     checkbox floats above the name text. See tests/cron-skill-row-alignment.spec.js. */
+  display: grid !important;
+  /* 2 columns: checkbox | content. Description and path sit on their own
+     rows under the name so long descriptions never push the checkbox or
+     the next skill's row out of vertical alignment. */
+  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-items: start;
+  column-gap: 10px;
+  row-gap: 4px;
   padding: 8px 10px;
   border-radius: var(--radius-sm, 4px);
   cursor: pointer;
   transition: background 0.12s ease;
-  min-height: 40px;
 }
 
 .cron-skill-row:hover {
@@ -3256,21 +3306,27 @@ body {
 }
 
 .cron-skill-row input[type="checkbox"] {
+  grid-column: 1;
+  grid-row: 1;
   margin: 0;
-  flex: 0 0 auto;
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
   cursor: pointer;
   justify-self: center;
+  /* Keep the checkbox top-aligned with the first line of the name, even
+     when the "内置/agent" badge wraps to a second line below the title. */
+  align-self: start;
 }
 
 .cron-skill-row .cron-skill-name {
+  grid-column: 2;
+  grid-row: 1;
   font-weight: 500;
   font-size: 13px;
   color: var(--text-primary);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   flex-wrap: wrap;
   min-width: 0;
@@ -3312,6 +3368,8 @@ body {
 }
 
 .cron-skill-row .cron-skill-row-desc {
+  grid-column: 2;
+  grid-row: 2;
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;
@@ -3329,13 +3387,13 @@ body {
 }
 
 .cron-skill-row .cron-skill-row-path {
-  grid-column: 2 / -1;
+  grid-column: 2;
+  grid-row: 3;
   font-size: 10px;
   color: var(--text-tertiary, var(--text-secondary));
   font-family: var(--font-mono, ui-monospace, monospace);
   word-break: break-all;
   opacity: 0.65;
-  margin-top: 2px;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
@@ -3836,11 +3894,11 @@ body {
   margin-left: var(--space-xs);
 }
 
-/* 自动授权策略 — 卡片化 radio, 单列竖排 */
+/* 自动授权策略 — 卡片化 segmented radio, 三列横排 */
 .cron-auto-authorize {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
   font-size: 12px;
   color: var(--text-secondary);
   margin-bottom: var(--space-xs);
@@ -3898,6 +3956,9 @@ body {
 }
 
 @media (max-width: 720px) {
+  .cron-auto-authorize {
+    grid-template-columns: 1fr;
+  }
   .cron-schedule-type {
     flex-wrap: wrap;
   }
