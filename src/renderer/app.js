@@ -1694,7 +1694,15 @@ async function initWorkspace() {
   }
 }
 
-function loadSession(sessionId) {
+
+// ============================
+// History Lazy Loading
+// ============================
+
+const MESSAGES_INITIAL_LOAD = 30;  // Initial messages to load
+const MESSAGES_PAGE_SIZE = 20;     // Messages per page when loading more
+
+function loadSession(sessionId, loadAll = false) {
   currentSessionId = sessionId;
   const sessions = loadSessions();
   const session = sessions[sessionId];
