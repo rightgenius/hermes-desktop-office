@@ -43,6 +43,7 @@
   "hermesPath": "/Users/nius/.hermes/hermes-agent",
   "startedAt": "2026-06-18T05:28:43.568Z",
   "spawnId": "550e8400-e29b-41d4-a716-446655440000",
+  "parentGuiPid": 6789,
   "platform": "darwin",
   "pythonCmd": "/Users/nius/.hermes/hermes-agent/venv/bin/python3"
 }
@@ -54,20 +55,25 @@
 | `hermesPath` | 记录用的是哪个 hermes-agent 路径，方便日志/调试 |
 | `startedAt` | 排查"为什么这个 gateway 跑这么久了" |
 | `spawnId` | 区分"这个 PID 是不是我启的"——多 GUI 实例下，JSON 里的 `spawnId` 不等于当前 `GatewayManager._spawnId` → 视为别人启的 |
+| **`parentGuiPid`** | **关键**：写 JSON 的 GUI 主进程 PID；用于 `cleanupOrphanGateway` 区分"父 GUI 仍在跑"vs"父 GUI 崩溃留的孤儿" |
 | `platform` | 跨平台调试辅助 |
 | `pythonCmd` | 调试用；不参与逻辑判断 |
 
-**写入时机**：`_verifyStartup()` 之后、第一次 `emitStatusChange({running: true})` 之前。
+**写入时机**：`_verifyStartup()` 之后、第一次 `emitStatusChange({running: true})` 之前；`parentGuiPid = process.pid`。
 **删除时机**：`stop()` 成功后；`takeover()` 杀掉外部后写自己的；`process.on('exit')` 兜底删除。
 
 ### 2. 检测优先级
 
 `detectExternalGateway()` 顺序（任一命中即返回）：
 
-1. **`gateway.gui-managed.json`**（新增，最高优先）
-   - 读 JSON → `pid` 活 + cmdline 是 gateway → 标记 external（**这是多实例场景的核心**：后启动的 GUI 读到前一个 GUI 的 JSON，把它的 gateway 当 external）
-   - `pid` 活 + cmdline 不是 gateway → 删 JSON（这种情况意味着 JSON 被改坏了或不匹配），fallthrough
-   - `pid` 死 → 删 JSON（孤儿），fallthrough
+1. **`gateway.gui-managed.json`**（新增，最高优先）—— **必须看 `parentGuiPid`，与 `cleanupOrphanGateway` 逻辑一致**：
+   - 读 JSON
+   - JSON 缺失 / 解析失败 → fallthrough
+   - `JSON.spawnId === this._spawnId`（自己启的）→ fallthrough（自己的 gateway 走 `running` 分支，不算 external）
+   - `JSON.parentGuiPid` 活（kill -0 成功）+ `JSON.pid` 活 + cmdline 是 gateway → **标记 external**（多实例场景核心：另一个 GUI 仍在跑）
+   - `JSON.parentGuiPid` **死** + `JSON.pid` 活 → 删 JSON（孤儿，下一帧 `cleanupOrphanGateway` 会清；这里先摘掉避免误识别为 external），fallthrough
+   - `JSON.pid` 死 → 删 JSON，fallthrough
+   - 其它异常（PID 被复用等）→ 删 JSON，fallthrough
 2. **`gateway.pid`**（现有，`_detectViaPidFile`）—— 不动
 3. **launchd / systemd 服务**（现有，`_checkSystemService`）—— 不动
 4. **`ps -A` 进程扫描**（现有，`_scanGatewayProcesses`）—— 不动
@@ -84,6 +90,8 @@ _isManagedPid(pid) {
 ```
 
 `_readManagedSpawnId()` 读 JSON 文件取 `spawnId`，文件不存在则返回 `null`。
+
+**为什么 `detectExternalGateway` 也要看 `parentGuiPid` 而不只是 `pid`**：调用 `detectExternalGateway` 的路径（`gateway-recheck`、`takeover()`、`restartExternal()`）不一定先经过 `cleanupOrphanGateway`。如果只看 `pid`，会把"父 GUI 死了留的孤儿"误识别成 external 观察起来，UI 上看到"有 gateway"但其实是垃圾。统一两条路径的判断逻辑。
 
 ### 3. 进程组杀整树
 
@@ -132,12 +140,23 @@ function killProcessTree(child, signal = 'SIGTERM') {
 })();
 ```
 
-`cleanupOrphanGateway()`（新增）：
-- 读 `gateway.gui-managed.json`
-- 若 `pid` 活 + cmdline 是 gateway：`killProcessTree({pid})` + 等 500ms + `unlink` JSON
-- 若 `pid` 死：直接 `unlink`
-- 若文件不存在：no-op
-- 若当前 GUI 的 `this._spawnId === JSON.spawnId`：no-op（自己写的，没理由清）
+`cleanupOrphanGateway()`（新增）——**关键**是区分"父 GUI 仍在跑"vs"父 GUI 崩溃留的孤儿"：
+
+```
+1. 读 gateway.gui-managed.json
+   ├─ 文件不存在 → no-op
+   ├─ JSON.spawnId === this._spawnId → no-op（自己启的，没理由清）
+   ├─ JSON.parentGuiPid 活（kill -0 成功）→ no-op（其他 GUI 仍在跑，**别动它的 gateway**）
+   └─ 其它情况 = 父 GUI 已死 / PID 已被复用 / JSON 损坏
+       ├─ JSON.pid 活 + cmdline 是 gateway → killProcessTree({pid}) + 等 500ms + unlink JSON
+       ├─ JSON.pid 死 → 直接 unlink
+       └─ JSON.pid 活但 cmdline 不是 gateway（被 PID 复用）→ unlink
+```
+
+**为什么用 `parentGuiPid` 而不是 `spawnId`**：
+- 同一 GUI 实例热重载时 `spawnId` 不变（同一个 `GatewayManager` 对象），但 **不是这种情况的问题**——热重载会重建 `GatewayManager`，`spawnId` 也会变
+- 真正要识别的是"**写这个 JSON 的 GUI 进程还活着吗**"。`spawnId` 是逻辑身份，`parentGuiPid` 是物理身份。物理身份死了 = 那个 GUI 崩溃了 → JSON 是孤儿
+- `process.pid` 在 Electron 主进程里直接拿到，写入成本几乎为零
 
 **`start()` 入口**（`gateway-manager.js:395`）开头加：
 
@@ -201,13 +220,20 @@ process.on('exit', () => {
 | `killProcessTree` 在 Windows 上 `taskkill` 不存在 | 退化到 `child.kill('SIGTERM')` 单进程（保留现有 fallback） |
 | GUI 启之前 PID 文件已存在且指向活 gateway | 走 `gateway.pid` 检测，标 external（现状） |
 | 多 GUI 实例：两个 JSON 文件都被写 | 不会发生——JSON 是单文件，所有 GUI 写同一份 |
+| **GUI A 崩溃，GUI B 启动** | `cleanupOrphanGateway` 看到 `parentGuiPid` 死了 → 杀孤儿 + 删 JSON → 正常流程 |
+| **GUI A 正常跑，GUI B 启动** | `cleanupOrphanGateway` 看到 `parentGuiPid` 活着 → no-op → GUI B 进入观察模式 |
+| **GUI A 正常退出（before-quit 跑完）** | A 删 JSON + 杀 gateway → GUI B 下次重扫时找不到 → 进入"无 gateway"状态，等用户操作 |
 
 ### 7. 数据流
 
 ```
 GUI 启动
   │
-  ├─ cleanupOrphanGateway()          ← 读 JSON 杀孤儿 + 删 JSON
+  ├─ cleanupOrphanGateway()
+  │   ├─ 读 gateway.gui-managed.json
+  │   ├─ spawnId 匹配自己 → no-op
+  │   ├─ parentGuiPid 活（其他 GUI 仍在跑）→ no-op
+  │   └─ 其它（父 GUI 已死）→ kill gateway + unlink JSON
   │
   ├─ detectExternalGateway()
   │   ├─ gateway.gui-managed.json  ← 多实例场景核心
@@ -221,7 +247,7 @@ GUI 启动
   │
   ├─ start() 入口 cleanupOrphanGateway()（防 last-second 孤儿）
   ├─ 检查 externalGateway
-  └─ 自启：spawn(detached) → _verifyStartup → 写 JSON
+  └─ 自启：spawn(detached) → _verifyStartup → 写 JSON（带 parentGuiPid=process.pid）
                                           → emitStatusChange({source: 'gui'})
 
 健康检查 30s
@@ -232,8 +258,8 @@ before-quit
   └─ process.on('exit') 兜底
 
 process.exit (崩溃)
-  └─ process.on('exit') 同步 best-effort
-  └─ 下次启动 cleanupOrphanGateway() 真正兜底
+  ├─ process.on('exit') 同步 best-effort
+  └─ 下次启动 cleanupOrphanGateway() 真正兜底（靠 parentGuiPid 死了触发）
 ```
 
 ### 8. 文件变更清单
@@ -278,6 +304,7 @@ process.exit (崩溃)
   - 场景 B：dev 启一个 + 终端启一个 → dev 启动时 `start()` 应被拒，UI 显示"外部 Gateway 运行中"
   - 场景 C：硬 kill 父 GUI（kill -9 electron）→ 再开 GUI → 进入 Gateway 页 → 旧 gateway 应在 ≤ 1s 内被识别为孤儿杀干净
   - 场景 D：开 dev + packaged 两个 GUI → 第二个启动时第一个已启的 gateway 应被识别为"非本实例管理"，第二个进观察模式
+  - 场景 F：**GUI A 崩溃后 GUI B 启动** → 验证 `parentGuiPid` 检测：GUI B 进入 `cleanupOrphanGateway` → 杀孤儿 + 删 JSON → 进入正常自启流程（这是关键的崩溃恢复路径）
   - 场景 E：feishu/dingtalk app_id 锁竞争回归——确保杀掉主进程时 channel workers 也死（`detached` 起的进程组，`ps -A` 看不到遗留 workers）
 
 ## 待定
