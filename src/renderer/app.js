@@ -1858,6 +1858,85 @@ function getStreamingMessageEl(sessionId) {
   return chatMessages.querySelector(`.message.agent.streaming[data-session-id="${sessionId}"]`);
 }
 
+// ============================
+// Markdown Render Optimization
+// ============================
+
+const pendingRenders = new Map(); // sessionId -> timeoutId
+const RENDER_DEBOUNCE_MS = 100;   // Debounce markdown rendering
+
+function hasComplexMarkdown(text) {
+  // Check if text contains markdown that needs full rendering
+  return /```[\s\S]*?```|\*\*|#{1,3}\s|\[.*?\]\(.*?\)|^\||```/.test(text);
+}
+
+function cancelScheduledRender(sessionId) {
+  if (pendingRenders.has(sessionId)) {
+    clearTimeout(pendingRenders.get(sessionId));
+    pendingRenders.delete(sessionId);
+  }
+}
+
+function scheduleRenderMarkdown(sessionId) {
+  // Cancel previous render
+  cancelScheduledRender(sessionId);
+  
+  const timeoutId = setTimeout(() => {
+    const msg = getStreamingMessageEl(sessionId);
+    if (msg) {
+      const bubble = msg.querySelector('.message-bubble');
+      if (bubble && bubble._rawText !== undefined) {
+        // Full markdown render
+        bubble.innerHTML = renderMarkdown(bubble._rawText);
+        
+        // Preserve tool calls position
+        const toolCallsContainer = bubble.querySelector('.message-tool-calls');
+        if (toolCallsContainer) {
+          bubble.insertBefore(toolCallsContainer, bubble.firstChild);
+        }
+        
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    }
+    pendingRenders.delete(sessionId);
+  }, RENDER_DEBOUNCE_MS);
+  
+  pendingRenders.set(sessionId, timeoutId);
+}
+
+// Optimized streaming update - incremental DOM append for simple text
+function updateStreamingMessageFast(sessionId, chunk) {
+  const msg = getStreamingMessageEl(sessionId);
+  if (!msg) return;
+  
+  const bubble = msg.querySelector('.message-bubble');
+  if (!bubble) return;
+  
+  // Use incremental append for streaming
+  const streamingSpan = bubble.querySelector('.streaming-text');
+  if (streamingSpan) {
+    streamingSpan.textContent = bubble._rawText;
+  } else {
+    // First chunk - create streaming span
+    const span = document.createElement('span');
+    span.className = 'streaming-text';
+    span.textContent = bubble._rawText;
+    bubble.appendChild(span);
+  }
+  
+  // Check if we need full markdown render (complex content detected)
+  if (!bubble._needsFullRender && hasComplexMarkdown(chunk)) {
+    bubble._needsFullRender = true;
+    // Clear and schedule full render
+    bubble.innerHTML = '';
+    scheduleRenderMarkdown(sessionId);
+  } else if (!bubble._needsFullRender) {
+    // No complex markdown yet - continue with simple text
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
+
+
 function updateStreamingMessage(sessionId, chunk) {
   // Update memory (always, regardless of DOM visibility)
   if (sessionId) {
@@ -1872,13 +1951,11 @@ function updateStreamingMessage(sessionId, chunk) {
     const msg = getStreamingMessageEl(sessionId);
     if (msg) {
       const bubble = msg.querySelector('.message-bubble');
-      const toolCallsContainer = bubble.querySelector('.message-tool-calls');
       bubble._rawText = (bubble._rawText || '') + chunk;
-      bubble.innerHTML = renderMarkdown(bubble._rawText);
-      if (toolCallsContainer) {
-        bubble.insertBefore(toolCallsContainer, bubble.firstChild);
-      }
-      chatMessages.scrollTop = chatMessages.scrollHeight;
+      
+      // Use optimized rendering
+      updateStreamingMessageFast(sessionId, chunk);
+      
       currentAgentMessageEl = msg;
     }
   }
