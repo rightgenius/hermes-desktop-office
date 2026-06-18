@@ -121,13 +121,20 @@ describe('Cron modal — renderer logic (cron-schedule-editing-spec)', () => {
     assert.match(fn[0], /typeof\s+sched\s*===\s*['"]string['"]/);
   });
 
-  test('saveCronJob passes the existing schedule through when editing (no default override)', () => {
-    // spec: "保存编辑时, 如果用户没有触碰调度控件, 应仍提交当前回填后的调度值;
-    //        不得落回默认 every 30m."
+  test('saveCronJob always reads the schedule from the form (which is pre-filled on edit)', () => {
+    // spec: "保存编辑时, 表单控件已经由 prefillCronScheduleForm() 回填了原值;
+    //        用户改动表单后保存, 必须把新值提交给 main process, 不能绕过表单
+    //        透传旧值 (历史 bug: 编辑改时间不生效)."
     const saveFn = appJs.match(/async\s+function\s+saveCronJob\(\)\s*\{[\s\S]*?\n\}/);
     assert.ok(saveFn);
-    assert.match(saveFn[0], /editingCronJobId/);
-    assert.match(saveFn[0], /job\s*&&\s*\(\s*job\._parsedSchedule\s*\|\|\s*job\.schedule\s*\)/);
+    // Always call getCronScheduleInput() — no edit-mode branch that bypasses
+    // the form by re-sending job._parsedSchedule / job.schedule.
+    assert.match(saveFn[0], /getCronScheduleInput\(\)/);
+    assert.doesNotMatch(
+      saveFn[0],
+      /job\s*&&\s*\(\s*job\._parsedSchedule\s*\|\|\s*job\.schedule\s*\)/,
+      'saveCronJob must not bypass the form on edit (it discards user changes)',
+    );
     // Must NOT send schedule_display anymore (the main process owns the
     // canonical display field, derived from the structured schedule).
     assert.doesNotMatch(saveFn[0], /schedule_display\s*:/);

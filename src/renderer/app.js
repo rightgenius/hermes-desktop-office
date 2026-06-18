@@ -4867,22 +4867,11 @@ async function saveCronJob() {
   const autoAuthorizeRadio = document.querySelector('input[name="cron-auto-authorize"]:checked');
   const autoAuthorize = autoAuthorizeRadio ? autoAuthorizeRadio.value : 'denylist';
 
-  // 编辑模式下: 如果用户没碰过调度控件, 把现有 schedule 透传过去, 防止
-  // GUI 表单的默认值 (every 30m) 覆盖原调度。spec §"保存编辑时...".
-  let scheduleInput;
-  if (editingCronJobId) {
-    const job = cronJobs.find((j) => j.id === editingCronJobId);
-    const existing = job && (job._parsedSchedule || job.schedule);
-    if (existing) {
-      // 直接传结构化对象回去, 让 main process normalize / 写回;
-      // 不要再让 form 默认值覆盖。
-      scheduleInput = existing;
-    } else {
-      scheduleInput = getCronScheduleInput();
-    }
-  } else {
-    scheduleInput = getCronScheduleInput();
-  }
+  // 编辑模式下: editCronJob() 已经调用 prefillCronScheduleForm() 把现有
+  // schedule 回填到表单控件了, 所以这里直接读表单就行 —— 用户改了就用
+  // 新值, 没改就用预填的原值。绝不能再绕过表单, 否则用户改动会被丢弃
+  // (历史 bug: 保存后时间不生效, 始终是 5 分钟)。
+  const scheduleInput = getCronScheduleInput();
 
   // 把勾选的技能内容拼到 prompt 顶部，让定时任务自带上下文
   const inlinedSkills = Array.from(selectedSkillNames);
