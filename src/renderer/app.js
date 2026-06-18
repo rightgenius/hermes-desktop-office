@@ -849,6 +849,80 @@ function getToolDisplayName(name) {
 
 const SESSIONS_KEY = 'hermes-chat-sessions';
 
+
+// ============================
+// Message Limit Configuration
+// ============================
+
+const MAX_MESSAGES_PER_SESSION = 100;   // Max messages per session
+const MAX_TOTAL_STORAGE_MB = 4;        // Max localStorage size (MB)
+
+function trimSessionMessages(session) {
+  if (!session || !session.messages) return session;
+  
+  if (session.messages.length > MAX_MESSAGES_PER_SESSION) {
+    // Keep the most recent messages
+    session.messages = session.messages.slice(-MAX_MESSAGES_PER_SESSION);
+  }
+  
+  return session;
+}
+
+function checkStorageLimit() {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY) || '{}';
+    const sizeBytes = new Blob([raw]).size;
+    const sizeMB = sizeBytes / (1024 * 1024);
+    
+    if (sizeMB > MAX_TOTAL_STORAGE_MB) {
+      console.warn(`localStorage size (${sizeMB.toFixed(2)}MB) exceeds limit`);
+      // Clean up oldest sessions
+      const sessions = loadSessions();
+      const sorted = Object.values(sessions)
+        .sort((a, b) => (b.messages?.length || 0) - (a.messages?.length || 0));
+      
+      // Prioritize cleaning old sessions with many messages
+      while (sizeMB > MAX_TOTAL_STORAGE_MB * 0.8 && sorted.length > 3) {
+        const oldest = sorted.pop();
+        delete sessions[oldest.id];
+        const rawAfter = JSON.stringify(sessions);
+        const newSizeBytes = new Blob([rawAfter]).size;
+        sizeMB = newSizeBytes / (1024 * 1024);
+      }
+      saveSessions(sessions);
+    }
+  } catch (e) {
+    console.error('Storage limit check failed:', e);
+    // Emergency cleanup - keep only current session
+    const sessions = loadSessions();
+    Object.keys(sessions).forEach(id => {
+      if (id !== currentSessionId) {
+        delete sessions[id];
+      }
+    });
+    saveSessions(sessions);
+  }
+}
+
+function saveSessionsWithLimit(sessions) {
+  try {
+    // Check and trim before saving
+    checkStorageLimit();
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      console.error('localStorage quota exceeded, forcing cleanup');
+      // Force cleanup - keep only current session
+      const sessions = loadSessions();
+      const fresh = {};
+      if (currentSessionId && sessions[currentSessionId]) {
+        fresh[currentSessionId] = sessions[currentSessionId];
+      }
+      localStorage.setItem(SESSIONS_KEY, JSON.stringify(fresh));
+    }
+  }
+}
+
 function loadSessions() {
   try {
     const data = localStorage.getItem(SESSIONS_KEY);
@@ -857,7 +931,7 @@ function loadSessions() {
 }
 
 function saveSessions(sessions) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  saveSessionsWithLimit(sessions);
 }
 
 function restoreStreamingState() {
@@ -898,7 +972,6 @@ function addMessageToSessionById(sessionId, text, sender, reasoning = '', toolCa
   if (!sessionId) return;
   const sessions = loadSessions();
   if (sessions[sessionId]) {
-    const messageIndex = sessions[sessionId].messages.length;
     sessions[sessionId].messages.push({
       text, 
       sender, 
@@ -909,12 +982,16 @@ function addMessageToSessionById(sessionId, text, sender, reasoning = '', toolCa
         ...tc
       }))
     });
+    
+    // Auto-trim if session is too long
+    sessions[sessionId] = trimSessionMessages(sessions[sessionId]);
+    
     if (sender === 'user' && sessions[sessionId].messages.length <= 2) {
       sessions[sessionId].title = text.slice(0, 30);
     }
     saveSessions(sessions);
     renderSessionList();
-    return messageIndex;
+    return sessions[sessionId].messages.length - 1;
   }
 }
 
