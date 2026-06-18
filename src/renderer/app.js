@@ -2136,7 +2136,257 @@ async function submitPrompt(answer) {
   }
 }
 
-function finalizeStreamingMessage(sessionId, errorText = null) {
+
+// ============================
+// Error Rendering and Auto-Retry
+// ============================
+
+// Error category display configuration
+const ERROR_CATEGORIES = {
+  'auth_failed': { icon: '🔑', color: '#ef4444', bg: '#fef2f2', border: '#ef4444' },
+  '401': { icon: '🔑', color: '#ef4444', bg: '#fef2f2', border: '#ef4444' },
+  'rate_limit': { icon: '⏳', color: '#f97316', bg: '#fff7ed', border: '#f97316' },
+  '429': { icon: '⏳', color: '#f97316', bg: '#fff7ed', border: '#f97316' },
+  'context_length': { icon: '📝', color: '#8b5cf6', bg: '#f5f3ff', border: '#8b5cf6' },
+  'timeout': { icon: '🌐', color: '#3b82f6', bg: '#eff6ff', border: '#3b82f6' },
+  'connection': { icon: '🌐', color: '#3b82f6', bg: '#eff6ff', border: '#3b82f6' },
+  'network': { icon: '🌐', color: '#3b82f6', bg: '#eff6ff', border: '#3b82f6' },
+  'proxy': { icon: '🔒', color: '#6366f1', bg: '#eef2ff', border: '#6366f1' },
+  'service_unavailable': { icon: '⚠️', color: '#eab308', bg: '#fefce8', border: '#eab308' },
+  'service_overloaded': { icon: '⚠️', color: '#eab308', bg: '#fefce8', border: '#eab308' },
+  '503': { icon: '⚠️', color: '#eab308', bg: '#fefce8', border: '#eab308' },
+  'gateway_error': { icon: '🔀', color: '#f59e0b', bg: '#fffbeb', border: '#f59e0b' },
+  'gateway_timeout': { icon: '🔀', color: '#f59e0b', bg: '#fffbeb', border: '#f59e0b' },
+  '502': { icon: '🔀', color: '#f59e0b', bg: '#fffbeb', border: '#f59e0b' },
+  '504': { icon: '🔀', color: '#f59e0b', bg: '#fffbeb', border: '#f59e0b' },
+  'server_error': { icon: '🔧', color: '#64748b', bg: '#f8fafc', border: '#64748b' },
+  '500': { icon: '🔧', color: '#64748b', bg: '#f8fafc', border: '#64748b' },
+  'insufficient_quota': { icon: '💰', color: '#ec4899', bg: '#fdf2f8', border: '#ec4899' },
+  '402': { icon: '💰', color: '#ec4899', bg: '#fdf2f8', border: '#ec4899' },
+  'model_not_found': { icon: '🤖', color: '#14b8a6', bg: '#f0fdfa', border: '#14b8a6' },
+  'default': { icon: '❌', color: '#6b7280', bg: '#f9fafb', border: '#6b7280' }
+};
+
+// Retry configuration
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelayMs: 2000,
+  maxDelayMs: 30000,
+  backoffMultiplier: 2,
+  jitterPercent: 0.2
+};
+
+// Retryable error categories
+const RETRYABLE_CATEGORIES = new Set([
+  'rate_limit', 'timeout', 'connection', 'network', 'proxy',
+  'service_unavailable', 'service_overloaded', 'gateway_error', 'gateway_timeout', 'server_error'
+]);
+
+// Retry state
+let retryState = {
+  sessionId: null,
+  messageText: null,
+  retryCount: 0,
+  isRetrying: false,
+  timeoutId: null
+};
+
+function isRetryableError(errorInfo) {
+  if (!errorInfo) return false;
+  const category = errorInfo.category || '';
+  if (RETRYABLE_CATEGORIES.has(category)) return true;
+  // Check title keywords
+  const title = errorInfo.title || '';
+  return ['限流', '超时', '服务', '过载', '网络', '网关'].some(kw => title.includes(kw));
+}
+
+function calculateDelay(attempt) {
+  let delay = RETRY_CONFIG.initialDelayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt);
+  const jitter = delay * RETRY_CONFIG.jitterPercent;
+  delay += (Math.random() * 2 - 1) * jitter;
+  return Math.min(delay, RETRY_CONFIG.maxDelayMs);
+}
+
+function formatDelay(ms) {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}秒`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}分${remainingSeconds}秒`;
+}
+
+function renderErrorMessage(errorInfo) {
+  const category = errorInfo.category || 'default';
+  const style = ERROR_CATEGORIES[category] || ERROR_CATEGORIES['default'];
+  
+  const showOriginal = errorInfo.original_message && 
+    errorInfo.original_message !== errorInfo.detail && 
+    errorInfo.original_message !== errorInfo.title;
+  
+  const showRetry = isRetryableError(errorInfo) && retryState.retryCount < RETRY_CONFIG.maxRetries;
+  
+  return `
+    <div class="message-error" style="background: ${style.bg}; border-left: 3px solid ${style.border};">
+      <div class="message-error-header">
+        <span class="message-error-icon">${style.icon}</span>
+        <span class="message-error-title" style="color: ${style.color};">${errorInfo.title || '请求失败'}</span>
+      </div>
+      <div class="message-error-detail">${errorInfo.detail || ''}</div>
+      ${showOriginal ? `
+        <details class="message-error-raw">
+          <summary>原始错误信息</summary>
+          <pre>${escapeHtml(String(errorInfo.original_message))}</pre>
+        </details>
+      ` : ''}
+      ${showRetry ? `
+        <div class="message-error-retrying" style="color: ${style.color};">
+          <span class="retry-indicator">⏳</span>
+          <span class="retry-text">将在 <span class="retry-countdown">${formatDelay(calculateDelay(retryState.retryCount))}</span> 后自动重试...</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function getErrorStyle(errorInfo) {
+  const category = errorInfo?.category || 'default';
+  return ERROR_CATEGORIES[category] || ERROR_CATEGORIES['default'];
+}
+
+function cancelRetry() {
+  if (retryState.timeoutId) {
+    clearTimeout(retryState.timeoutId);
+    retryState.timeoutId = null;
+  }
+  retryState.isRetrying = false;
+  retryState.sessionId = null;
+  retryState.messageText = null;
+  retryState.retryCount = 0;
+  
+  // Remove retry notices
+  document.querySelectorAll('.retry-notice').forEach(n => n.remove());
+}
+
+async function executeRetry() {
+  const { sessionId, messageText, retryCount } = retryState;
+  
+  if (!sessionId || !messageText) {
+    cancelRetry();
+    return;
+  }
+  
+  // Remove previous retry notices
+  document.querySelectorAll('.retry-notice').forEach(n => n.remove());
+  
+  try {
+    // Get current session history
+    const sessions = loadSessions();
+    const session = sessions[sessionId];
+    const history = extractHistoryForAPI(session);
+    
+    // Show retry notice
+    const noticeEl = document.createElement('div');
+    noticeEl.className = 'message notice retry-notice';
+    noticeEl.innerHTML = `
+      <div class="message-notice" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 1px solid #f59e0b;">
+        <span style="margin-right: 8px;">🔄</span>
+        <span style="color: #92400e;">第 ${retryCount + 1}/${RETRY_CONFIG.maxRetries} 次重试...</span>
+        <button class="notice-cancel" style="margin-left: auto; background: none; border: none; color: #92400e; cursor: pointer; font-size: 16px;" title="取消重试">×</button>
+      </div>
+    `;
+    noticeEl.querySelector('.notice-cancel').addEventListener('click', cancelRetry);
+    chatMessages.appendChild(noticeEl);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Send message via API
+    await window.api.agentSendMessage(sessionId, messageText, history);
+    
+    // Success - cancel retry state
+    cancelRetry();
+    
+  } catch (error) {
+    // Failed again
+    if (isRetryableError(error) && retryCount < RETRY_CONFIG.maxRetries - 1) {
+      // Continue retrying
+      scheduleRetry(error);
+    } else {
+      // Max retries exceeded or non-retryable
+      cancelRetry();
+    }
+  }
+}
+
+function scheduleRetry(errorInfo) {
+  const attempt = retryState.retryCount;
+  const delay = calculateDelay(attempt);
+  
+  retryState.retryCount++;
+  retryState.isRetrying = true;
+  
+  // Show countdown in error message
+  const msg = getStreamingMessageEl(retryState.sessionId);
+  if (msg) {
+    const bubble = msg.querySelector('.message-bubble');
+    if (bubble && bubble.querySelector('.message-error')) {
+      const style = getErrorStyle(errorInfo);
+      const countdownSpan = bubble.querySelector('.retry-countdown');
+      if (countdownSpan) {
+        let remaining = delay;
+        const interval = setInterval(() => {
+          remaining -= 1000;
+          if (remaining > 0) {
+            countdownSpan.textContent = formatDelay(remaining);
+          } else {
+            clearInterval(interval);
+          }
+        }, 1000);
+        
+        // Store interval for cleanup
+        countdownSpan.dataset.intervalId = interval;
+      }
+    }
+  }
+  
+  retryState.timeoutId = setTimeout(() => {
+    executeRetry();
+  }, delay);
+}
+
+function extractHistoryForAPI(session) {
+  if (!session || !session.messages) return [];
+  return session.messages.map(m => ({
+    role: m.sender === 'user' ? 'user' : 'assistant',
+    content: m.text || m.error?.original_message || ''
+  }));
+}
+
+function retryLastMessage() {
+  if (retryState.sessionId && retryState.messageText) {
+    switchToSession(retryState.sessionId);
+    const input = document.getElementById('chat-input');
+    if (input) {
+      input.value = retryState.messageText;
+      input.focus();
+      setTimeout(() => sendMessage(), 100);
+    }
+  }
+}
+
+function getLastUserMessage(sessionId) {
+  const sessions = loadSessions();
+  const session = sessions[sessionId];
+  if (!session || !session.messages) return null;
+  for (let i = session.messages.length - 1; i >= 0; i--) {
+    if (session.messages[i].sender === 'user') {
+      return session.messages[i].text;
+    }
+  }
+  return null;
+}
+
+
+function finalizeStreamingMessage(sessionId, errorData = null) {
   if (!sessionId) return;
   
   // Find streaming message by sessionId
@@ -2651,6 +2901,10 @@ if (window.api) {
         break;
       case 'complete':
         removePromptOverlay(sessionId);
+        // Cancel any ongoing retry on success
+        if (retryState.sessionId === sessionId) {
+          cancelRetry();
+        }
         finalizeStreamingMessage(sessionId);
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
@@ -2658,15 +2912,33 @@ if (window.api) {
           if (stopBtn) stopBtn.style.display = 'none';
         }
         break;
-      case 'error':
+      case 'error': {
         removePromptOverlay(sessionId);
-        finalizeStreamingMessage(sessionId, data.data);
+        
+        // Parse structured error or convert plain text
+        let errorInfo;
+        if (data.data && typeof data.data === 'object' && data.data.type === 'api_error') {
+          errorInfo = data.data;
+        } else {
+          errorInfo = {
+            type: 'api_error',
+            category: 'unknown',
+            title: '请求失败',
+            detail: String(data.data || '未知错误'),
+            original_message: String(data.data || '未知错误'),
+            retryable: isRetryableError({ title: String(data.data) })
+          };
+        }
+        
+        finalizeStreamingMessage(sessionId, errorInfo);
+        
         if (sessionId === currentSessionId) {
           sendBtn.disabled = false;
           sendBtn.textContent = '发送';
           if (stopBtn) stopBtn.style.display = 'none';
         }
         break;
+      }
       case 'stopped':
         removePromptOverlay(sessionId);
         finalizeStreamingMessage(sessionId);

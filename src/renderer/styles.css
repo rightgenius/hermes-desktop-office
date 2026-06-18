@@ -4668,3 +4668,130 @@ body {
 .cron-log-files-search-count {
   margin-right: auto;
 }
+
+/* ============================
+   Error Message Styles
+   ============================ */
+
+.message-error {
+  padding: 14px 16px;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+
+.message-error-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.message-error-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.message-error-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.message-error-detail {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.message-error-raw {
+  margin: 12px 0 8px;
+  font-size: 12px;
+}
+
+.message-error-raw summary {
+  cursor: pointer;
+  color: #6b7280;
+  user-select: none;
+}
+
+.message-error-raw summary:hover {
+  color: #374151;
+}
+
+.message-error-raw pre {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #374151;
+}
+
+.message-error-retrying {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.retry-indicator {
+  font-size: 14px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.retry-text {
+  color: inherit;
+}
+
+.retry-countdown {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Retry notice */
+.retry-notice {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.notice-cancel:hover {
+  opacity: 0.7;
+}
+
+/* Streaming cursor animation */
+.message.streaming .message-bubble::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  background: var(--accent, #3b82f6);
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: blink 0.8s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

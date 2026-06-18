@@ -48,6 +48,101 @@ def _emit(obj):
 
 
 # Session management
+
+# Error classification for API errors
+_ERROR_TYPE_MAP = {
+    # 认证类
+    "401": ("auth_failed", "认证失败", "请检查 API Key 是否正确，或是否已过期"),
+    "invalid api key": ("auth_failed", "认证失败", "API Key 无效，请到设置中更新"),
+    "unauthorized": ("auth_failed", "认证失败", "未授权访问，请检查 API Key 配置"),
+    "authentication": ("auth_failed", "认证失败", "认证失败，请检查 API Key 配置"),
+    # 限流类
+    "429": ("rate_limit", "请求过于频繁", "已触发限流，请稍后重试"),
+    "rate_limit": ("rate_limit", "请求过于频繁", "已触发限流，请稍后重试"),
+    "too many requests": ("rate_limit", "请求过于频繁", "已触发限流，请稍后重试"),
+    # 上下文超限
+    "context_length": ("context_length", "对话过长", "上下文超出模型限制，建议开启新对话"),
+    "max_tokens": ("max_tokens", "回复过长", "单次回复超出限制，请减少请求内容"),
+    "token limit": ("context_length", "对话过长", "上下文超出模型限制，建议开启新对话"),
+    # 网络类
+    "timeout": ("timeout", "请求超时", "网络连接超时，请检查网络或代理设置"),
+    "connection": ("connection", "网络错误", "无法连接服务器，请检查网络或代理设置"),
+    "connection refused": ("connection", "网络错误", "无法连接服务器，请检查网络或代理配置"),
+    "connection reset": ("connection", "网络错误", "连接被重置，请检查网络"),
+    "proxy": ("proxy", "代理错误", "代理连接失败，请检查代理配置"),
+    "network": ("network", "网络错误", "网络连接问题，请检查网络设置"),
+    "read timed out": ("timeout", "请求超时", "读取超时，请检查网络连接"),
+    # 服务类
+    "503": ("service_unavailable", "服务不可用", "服务器暂时过载，请稍后重试"),
+    "service_unavailable": ("service_unavailable", "服务不可用", "服务器暂时过载，请稍后重试"),
+    "overloaded": ("service_overloaded", "服务过载", "服务器过载，请稍后重试"),
+    "model overloaded": ("service_overloaded", "服务过载", "服务器过载，请稍后重试"),
+    "server error": ("server_error", "服务器错误", "服务器内部错误，请稍后重试"),
+    # 余额类
+    "402": ("insufficient_quota", "余额不足", "账户余额不足，请充值"),
+    "insufficient": ("insufficient_quota", "余额不足", "账户余额不足，请充值"),
+    "quota": ("insufficient_quota", "配额耗尽", "API 配额已用尽，请等待重置或升级套餐"),
+    "balance": ("insufficient_quota", "余额不足", "账户余额不足，请充值"),
+    "billing": ("insufficient_quota", "余额不足", "账户余额不足，请充值"),
+    # 模型类
+    "model_not_found": ("model_not_found", "模型不存在", "指定的模型未找到，请检查模型名称"),
+    "unsupported_model": ("model_not_found", "不支持的模型", "该模型不可用，请选择其他模型"),
+    "model not found": ("model_not_found", "模型不存在", "指定的模型未找到，请检查模型名称"),
+    # 网关类
+    "502": ("gateway_error", "网关错误", "网关错误，请稍后重试"),
+    "504": ("gateway_timeout", "网关超时", "网关超时，请稍后重试"),
+    "gateway timeout": ("gateway_timeout", "网关超时", "网关超时，请稍后重试"),
+    "bad gateway": ("gateway_error", "网关错误", "网关错误，请稍后重试"),
+}
+
+_RETRYABLE_CATEGORIES = {
+    "rate_limit", "timeout", "connection", "proxy", "network",
+    "service_unavailable", "service_overloaded", "gateway_error", "gateway_timeout", "server_error"
+}
+
+
+def _classify_error(error_msg):
+    """
+    Classify an error message and return structured error info.
+    
+    Returns:
+        dict with keys: type, category, title, detail, original_message, retryable
+    """
+    msg_lower = str(error_msg).lower()
+    
+    # 检查 HTTP 状态码
+    http_code = None
+    for code in ["401", "402", "429", "500", "502", "503", "504"]:
+        if code in msg_lower:
+            http_code = code
+            break
+    
+    # 匹配错误类型
+    for key, (category, title, detail) in _ERROR_TYPE_MAP.items():
+        if key in msg_lower:
+            retryable = category in _RETRYABLE_CATEGORIES
+            return {
+                "type": "api_error",
+                "category": category,
+                "title": title,
+                "detail": detail,
+                "original_message": str(error_msg),
+                "http_code": http_code,
+                "retryable": retryable
+            }
+    
+    # 默认错误
+    return {
+        "type": "api_error",
+        "category": "unknown",
+        "title": "请求失败",
+        "detail": "发生未知错误，请查看详情或重试",
+        "original_message": str(error_msg),
+        "http_code": http_code,
+        "retryable": False
+    }
+
+
 _sessions = {}  # session_id -> AIAgent instance
 _session_callbacks = {}  # session_id -> interactive callbacks for thread-local binding
 _sessions_lock = threading.Lock()
@@ -377,7 +472,7 @@ def _handle_message(msg):
     cron_job_id = msg.get("cron_job_id") or None
 
     if not content:
-        _emit({"type": "error", "session_id": session_id, "message": "Empty message"})
+        _emit({**_classify_error("Empty message"), "session_id": session_id})
         return
 
     request_started = time.perf_counter()
@@ -461,7 +556,7 @@ def _handle_message(msg):
             })
 
         except Exception as e:
-            _emit({"type": "error", "session_id": session_id, "message": str(e)})
+            _emit({**_classify_error(str(e)), "session_id": session_id})
     finally:
         # Restore env so we don't leak cron-session flag into the next chat.
         for key, prior in _env_save.items():
@@ -534,7 +629,7 @@ def main():
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
-            _emit({"type": "error", "session_id": "", "message": "Invalid JSON"})
+            _emit({**_classify_error("Invalid JSON"), "session_id": ""})
             continue
 
         msg_type = msg.get("type", "")
