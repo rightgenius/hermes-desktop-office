@@ -163,15 +163,16 @@ function killProcessTree(child, signal = 'SIGTERM') {
 ```js
 async start() {
   if (this.running) return { success: false, error: 'Gateway 已在运行中' };
-  await this.cleanupOrphanGateway();                // 新增
-  if (this.externalGateway) {                        // 现有检查保留
-    return { success: false, error: '检测到外部 Gateway 正在运行...' };
+  await this.cleanupOrphanGateway();                // 1. 清自己留下的孤儿
+  await this.detectExternalGateway();                // 2. 强制重扫一次（关键：防 IIFE 还没跑完 / TUI 刚启等竞态）
+  if (this.externalGateway) {                        // 3. 检查 in-memory state
+    return { success: false, error: '检测到外部 Gateway 正在运行，请使用「重启外部 Gateway」或「由 GUI 接管」后再启动' };
   }
-  // ... 现有逻辑
+  // ... 现有 spawn 逻辑
 }
 ```
 
-`await this.detectExternalGateway()` 在 `start()` 入口显式调一次也行（不依赖之前 IIFE 跑过的结果）——选择 `cleanupOrphanGateway()` 后再走原 `externalGateway` 检查，因为 `start()` 入口前 IPC handler 路径可能已经重扫过（`gateway-status` 路径会重扫）。
+**为什么 `start()` 必须做 fresh `detectExternalGateway()`**：这是覆盖"用户手快"、"TUI 刚启"、"另一个 GUI 刚启"这些 in-memory `externalGateway` 还没更新的场景。`spawn --replace` 会**无条件杀掉现有 gateway 并替换**，所以必须先用最新的检测结果挡住。
 
 **进入 Gateway 页**（`renderer/app.js` 显示 `#page-gateway` 的入口）调一次 `gatewayStatus` IPC。`ipc-handlers.js:1159` 现有逻辑"两个都是 null 时重扫"保持，但额外加：renderer 进入页面时主动发 `gateway-recheck`（不依赖页面状态）。
 
@@ -223,6 +224,9 @@ process.on('exit', () => {
 | **GUI A 崩溃，GUI B 启动** | `cleanupOrphanGateway` 看到 `parentGuiPid` 死了 → 杀孤儿 + 删 JSON → 正常流程 |
 | **GUI A 正常跑，GUI B 启动** | `cleanupOrphanGateway` 看到 `parentGuiPid` 活着 → no-op → GUI B 进入观察模式 |
 | **GUI A 正常退出（before-quit 跑完）** | A 删 JSON + 杀 gateway → GUI B 下次重扫时找不到 → 进入"无 gateway"状态，等用户操作 |
+| **TUI 跑着 gateway，用户在 GUI 点"启动"** | `start()` 入口 fresh `detectExternalGateway` → `gateway.pid` 命中 → 拒绝，提示"外部 Gateway 运行中"。**不会**触发 `--replace` 杀 TUI |
+| **TUI 跑着 gateway，用户在 GUI 点"接管"** | `takeover()` 给 TUI gateway 发 SIGTERM → TUI 进程跟着退出（TUI 在等子进程）→ GUI `start()` 自启 |
+| **TUI 用 `os.setsid` 启动 gateway（gateway 脱离 TUI）** | TUI 死了 gateway 还活；`gateway.pid` 命中 → GUI 观察；用户可 takeover 杀 |
 
 ### 7. 数据流
 
@@ -245,8 +249,10 @@ GUI 启动
 
 用户点"启动 Gateway"
   │
-  ├─ start() 入口 cleanupOrphanGateway()（防 last-second 孤儿）
-  ├─ 检查 externalGateway
+  ├─ start() 入口
+  │   ├─ cleanupOrphanGateway()  ← 杀自己留的孤儿
+  │   ├─ detectExternalGateway() ← 强制重扫（防 IIFE 未完 / TUI 刚启）
+  │   └─ 检查 externalGateway：命中 → 拒绝（不触发 --replace）
   └─ 自启：spawn(detached) → _verifyStartup → 写 JSON（带 parentGuiPid=process.pid）
                                           → emitStatusChange({source: 'gui'})
 
@@ -306,6 +312,8 @@ process.exit (崩溃)
   - 场景 D：开 dev + packaged 两个 GUI → 第二个启动时第一个已启的 gateway 应被识别为"非本实例管理"，第二个进观察模式
   - 场景 F：**GUI A 崩溃后 GUI B 启动** → 验证 `parentGuiPid` 检测：GUI B 进入 `cleanupOrphanGateway` → 杀孤儿 + 删 JSON → 进入正常自启流程（这是关键的崩溃恢复路径）
   - 场景 E：feishu/dingtalk app_id 锁竞争回归——确保杀掉主进程时 channel workers 也死（`detached` 起的进程组，`ps -A` 看不到遗留 workers）
+  - 场景 G：**TUI 跑着 gateway，GUI 启动 + 用户点"启动 Gateway"** → 验证 `start()` 入口的 fresh `detectExternalGateway` 会发现 TUI 的 `gateway.pid`，**拒绝启动**，**不会**因为 `--replace` 杀掉 TUI 的 gateway
+  - 场景 H：**TUI 跑着 gateway，GUI 启动 + 用户点"接管"** → 验证 TUI 进程会跟着 gateway 一起退出（TUI 在等子进程）
 
 ## 待定
 
