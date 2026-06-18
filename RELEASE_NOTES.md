@@ -1,3 +1,28 @@
+# Release Notes v0.9.5
+
+## 新增与改进
+
+### 定时任务交互
+
+- 定时任务卡片的「立即执行」改为**对话模式**：不再走 gateway 调度队列，而是新建一个 chat session，把任务的内联 prompt（`job.prompt`，兼容老格式 `job.taskPrompt`）作为用户消息发给 agent，然后跳转到对话页面让用户实时看到 agent 的流式响应。任务的定时调度不受影响，gateway 该跑照跑。
+- 抽出 `sendChatMessage(text, options)` 公共函数，对话输入框和 cron 触发按钮共用同一条「加入用户消息 → 调 agentSendMessage」路径，cron 触发的 session 支持 `options.title` 覆盖自动生成的标题（侧栏带 ⏰ 前缀）。
+
+### 定时任务可追溯性
+
+- 定时任务卡片标题右侧新增任务 hash（`job.id`，12 字符）小标签，**点击复制到剪贴板**（带「已复制」视觉反馈），方便跟 `~/.hermes/cron/jobs.json` 里的条目一一对应。
+
+## 修复
+
+- 修复 cron 弹窗技能列表 checkbox 漂在 name 标题上方一行的 bug。根因是父元素 `.cron-skill-list` 是 `display: flex`，子 `<label>` 作为 flex item 在 Chromium 里被 blockify，`display: grid` 被静默降级为 `display: block`（CSS Display 规范只规定 blockify 行内级值，这是 Chromium 长期存在的偏差）。改为 2 列 grid + 3 行显式 row 布局（checkbox | name 在第 1 行，description 在第 2 行，path 在第 3 行），并加 `display: grid !important` 绕开 flex item blockify。
+- 恢复 cron 弹窗「自动授权策略」三列横排，窄屏（@media max-width:720px）塌成单列，与 `test-cron-modal-ui.js` 的契约对齐（之前被改成单列 flex 时把测试弄挂了）。
+
+## 测试
+
+- 新增 e2e 回归测试 `tests/cron-skill-row-alignment.spec.js`：打开 cron 弹窗，截图技能列表，对每行做硬断言 `|checkbox.top - name.firstChild.top| ≤ 2px`。回滚验证：去掉 `display: grid !important` 测试立即 fail（delta 21.5px），证明测试真的在守这个回归点。
+- 主进程 + 渲染回归测试 214 项全过；新增 cron UI e2e 测试 1 项全过。
+
+---
+
 # Release Notes v0.9.4
 
 ## 新增与改进
