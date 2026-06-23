@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('api', {
   configGet: () => ipcRenderer.invoke('config-get'),
   configSave: (data) => ipcRenderer.invoke('config-save', data),
   configBrowseFolder: () => ipcRenderer.invoke('config-browse-folder'),
+  hermesConfigGet: (key) => ipcRenderer.invoke('hermes-config-get', key),
+  hermesConfigSave: (key, value) => ipcRenderer.invoke('hermes-config-save', key, value),
   isFirstRun: () => ipcRenderer.invoke('is-first-run'),
 
   // Auth

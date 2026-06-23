@@ -265,6 +265,7 @@ const els = {
   workspacePath: document.getElementById('workspace-path'),
   autoStart: document.getElementById('auto-start'),
   gatewayAutoStart: document.getElementById('gateway-auto-start'),
+  cronApprovalMode: document.getElementById('cron-approval-mode'),
   saveConfig: document.getElementById('save-config'),
   toggleApiKey: document.getElementById('toggle-api-key'),
   browseFolder: document.getElementById('browse-folder'),
@@ -484,6 +485,16 @@ async function loadConfig() {
     els.workspacePath.value = config.workspacePath || '';
     els.autoStart.checked = config.autoStart !== false;
     if (els.gatewayAutoStart) els.gatewayAutoStart.checked = config.gatewayAutoStart === true;
+
+    // Load approvals.cron_mode from ~/.hermes/config.yaml
+    if (els.cronApprovalMode) {
+      try {
+        const cronMode = await window.api.hermesConfigGet('approvals.cron_mode');
+        els.cronApprovalMode.value = (cronMode === 'approve' || cronMode === 'allow' || cronMode === 'off') ? 'approve' : 'deny';
+      } catch {
+        if (els.cronApprovalMode) els.cronApprovalMode.value = 'deny';
+      }
+    }
     
     updateProviderUI();
   } catch (err) { console.error('Load config failed:', err); }
@@ -6115,6 +6126,16 @@ els.gatewayAutoStart?.addEventListener('change', async () => {
   } catch (err) {
     els.gatewayAutoStart.checked = !els.gatewayAutoStart.checked;
     alert(`保存 Gateway 自动启动设置失败: ${err.message}`);
+  }
+});
+
+// Cron approval mode — saves approvals.cron_mode to ~/.hermes/config.yaml
+els.cronApprovalMode?.addEventListener('change', async () => {
+  const value = els.cronApprovalMode.value;
+  try {
+    await window.api.hermesConfigSave('approvals.cron_mode', value);
+  } catch (err) {
+    alert(`保存定时任务权限设置失败: ${err.message || err}`);
   }
 });
 

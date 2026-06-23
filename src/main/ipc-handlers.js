@@ -7,6 +7,7 @@ const { AgentManager } = require('./agent-manager');
 const { CronManager } = require('./cron-manager');
 const skillScanner = require('./skill-scanner');
 const { getBundledCliDirMap } = require('./cli-runtime');
+const YAML = require('yaml');
 
 const fsPromises = fs.promises;
 
@@ -139,6 +140,49 @@ function setupIPCHandlers(mainWindow) {
 
   handle('config-get', () => configStore.get());
   handle('config-save', (_, data) => configStore.save(data));
+
+  // Read a key from ~/.hermes/config.yaml (e.g., "approvals.cron_mode")
+  handle('hermes-config-get', async (_, key) => {
+    try {
+      const hermesHome = skillScanner.getHermesHome();
+      const configPath = path.join(hermesHome, 'config.yaml');
+      if (!fs.existsSync(configPath)) return null;
+      const config = YAML.parse(fs.readFileSync(configPath, 'utf-8')) || {};
+      const parts = key.split('.');
+      let current = config;
+      for (const part of parts) {
+        if (current === undefined || current === null) return null;
+        current = current[part];
+      }
+      return current ?? null;
+    } catch { return null; }
+  });
+
+  // Save a key to ~/.hermes/config.yaml (e.g., approvals.cron_mode)
+  handle('hermes-config-save', async (_, key, value) => {
+    try {
+      const hermesHome = skillScanner.getHermesHome();
+      const configPath = path.join(hermesHome, 'config.yaml');
+      let config = {};
+      try {
+        if (fs.existsSync(configPath)) {
+          config = YAML.parse(fs.readFileSync(configPath, 'utf-8')) || {};
+        }
+      } catch {}
+      // Navigate to nested key like "approvals.cron_mode"
+      const parts = key.split('.');
+      let current = config;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!(parts[i] in current)) current[parts[i]] = {};
+        current = current[parts[i]];
+      }
+      current[parts[parts.length - 1]] = value;
+      fs.writeFileSync(configPath, YAML.stringify(config), 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 
   handle('config-browse-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'], title: '选择工作空间路径' });

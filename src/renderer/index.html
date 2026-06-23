@@ -545,7 +545,14 @@
           <h2>定时任务</h2>
           <div class="cron-header-actions">
             <span class="cron-status-badge" id="cron-status-badge">Agent 未启动</span>
-            <button class="btn btn-secondary" id="cron-sync-resume-btn" style="display:none">恢复同步</button>
+            <div class="cron-approval-control">
+              <label for="cron-approval-mode" class="cron-approval-label">命令权限：</label>
+              <select id="cron-approval-mode" class="cron-approval-select">
+                <option value="deny">拒绝（Deny）</option>
+                <option value="approve">允许（Approve）</option>
+              </select>
+              <button class="btn btn-secondary" id="cron-sync-resume-btn" style="display:none">恢复同步</button>
+            </div>
             <span class="cron-sync-hint" id="cron-sync-hint" style="display:none">只影响界面自动刷新，不代表 Gateway 停止执行任务。</span>
             <button class="btn btn-primary" id="new-cron-btn">新建任务</button>
           </div>
