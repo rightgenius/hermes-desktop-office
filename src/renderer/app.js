@@ -1788,7 +1788,7 @@ function addMessage(text, sender = 'user', isStreaming = false, reasoning = '', 
       innerHTML += `<div class="message-bubble"></div>`;
     }
   } else {
-    innerHTML += `<div class="message-bubble">${escapeHtml(text)}</div>`;
+    innerHTML += `<div class="message-bubble">${renderMarkdown(text)}</div>`;
   }
   msg.innerHTML = innerHTML;
   const bubble = msg.querySelector('.message-bubble');
@@ -2573,7 +2573,14 @@ function finalizeStreamingMessage(sessionId, errorData = null) {
   msg.classList.remove('streaming');
   hideReasoning(sessionId);
   const bubble = msg.querySelector('.message-bubble');
+  if (!bubble) {
+    delete streamingSessions[sessionId];
+    return;
+  }
+  const errorText = errorData ? renderErrorMessage(errorData) : null;
   const text = errorText !== null ? errorText : (bubble._rawText || bubble.textContent);
+  bubble.innerHTML = errorText !== null ? errorText : renderMarkdown(text);
+  renderToolCalls(bubble);
   const reasoning = bubble._rawReasoning || '';
   const toolCalls = bubble._toolCalls || {};
   const agentMessageIndex = addMessageToSession(text, 'agent', reasoning, toolCalls);
@@ -2594,7 +2601,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// Lightweight markdown-to-HTML renderer for chat messages
+// Lightweight markdown-to-HTML renderer for chat bubbles
 function renderMarkdown(text) {
   if (!text) return '';
 

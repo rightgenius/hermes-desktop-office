@@ -30,6 +30,22 @@ describe('renderer regressions', () => {
     assert.match(linkRule[1], /word-break\s*:\s*break-word/);
   });
 
+  test('user chat messages are rendered as markdown', () => {
+    const userBranch = appJs.match(
+      /else\s*\{\s*innerHTML\s*\+=\s*`<div class="message-bubble">\$\{([\s\S]*?)\}<\/div>`;\s*\}/,
+    );
+    assert.ok(userBranch, 'addMessage user branch should be findable');
+    assert.match(userBranch[1], /renderMarkdown\(text\)/);
+    assert.doesNotMatch(userBranch[1], /escapeHtml\(text\)/);
+  });
+
+  test('streaming agent messages are markdown-rendered when finalized', () => {
+    const finalizer = appJs.match(/function\s+finalizeStreamingMessage\s*\([^)]*\)\s*\{([\s\S]*?)\n\}\n\nfunction\s+escapeHtml/);
+    assert.ok(finalizer, 'finalizeStreamingMessage body should be findable');
+    assert.match(finalizer[1], /const\s+errorText\s*=\s*errorData\s*\?\s*renderErrorMessage\(errorData\)\s*:\s*null/);
+    assert.match(finalizer[1], /bubble\.innerHTML\s*=\s*errorText\s*!==\s*null\s*\?\s*errorText\s*:\s*renderMarkdown\(text\)/);
+  });
+
   test('logs page exposes filtering, search, export, and count controls', () => {
     assert.match(indexHtml, /id="log-level-filter"/);
     assert.match(indexHtml, /id="log-search"/);
